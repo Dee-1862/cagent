@@ -546,6 +546,10 @@ async function loadStats() {
     const elastic = stats.backend === "elastic";
     $("stats-source").textContent = elastic ? `Elastic ES|QL · ${Math.round(stats.took_ms ?? 0)} ms` : "Hub counts · Elastic not connected";
     $("stats-source").className = elastic ? "cyan" : "";
+    // Simulated traffic is real processing of synthetic calls: always labelled, never shown as real usage.
+    const simulated = stats.simulated_runs?.length || 0;
+    $("stats-simulated").hidden = !simulated;
+    $("stats-simulated").textContent = `Simulated traffic · ${simulated} run${simulated === 1 ? "" : "s"} included`;
     $("stat-esql").textContent = stats.esql || "No query: Elastic is not configured on this hub.";
   } catch {
     $("stats-source").textContent = "Analytics unavailable";
