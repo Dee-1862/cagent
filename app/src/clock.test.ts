@@ -45,3 +45,23 @@ describe("mic frames", () => {
     expect(Math.abs(out - 16000)).toBeLessThanOrEqual(1);
   });
 });
+
+import { hubFromLocation } from "./hub";
+
+describe("which hub the page talks to", () => {
+  const at = (href: string) => new URL(href) as unknown as Location;
+  it("a copy served by a hub uses that hub, even with a baked-in address", () => {
+    expect(hubFromLocation(at("https://192.168.1.5:8765/pilot/"))?.http).toBe("https://192.168.1.5:8765");
+  });
+  it("a ?hub= link wins", () => {
+    expect(hubFromLocation(at("https://x.vercel.app/?hub=https://h.onrender.com&token=t"))).toEqual(
+      { http: "https://h.onrender.com", ws: "wss://h.onrender.com", token: "t" });
+  });
+});
+
+describe("public demo default", () => {
+  it("a Vercel address uses the public Render hub with no settings", () => {
+    const loc = new URL("https://cagent-abc123-dee-1862s-projects.vercel.app/") as unknown as Location;
+    expect(hubFromLocation(loc)?.http).toBe("https://unstep.onrender.com");
+  });
+});

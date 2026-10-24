@@ -10,8 +10,13 @@ services:
         value: "*.onrender.com"
       - key: UNSTEP_OFFLINE    # delete this to use real Cartesia, Moss and Elastic
         value: "1"
-      - key: UNSTEP_GATEWAY_TOKEN   # room code: only people with the QR link can join or spend API credits
-        generateValue: true
+      # The public demo runs offline (no API spend), so it needs no room code. Before going live
+      # (UNSTEP_OFFLINE removed), add UNSTEP_GATEWAY_TOKEN here and VITE_UNSTEP_TOKEN in Vercel.
+      - key: UNSTEP_PUBLIC_URL
+        value: "https://unstep.onrender.com"
+      # The pilot app on Vercel: every deployment address of this project, plus the production one.
+      - key: UNSTEP_ALLOWED_ORIGINS
+        value: "https://cagent*.vercel.app,https://*-dee-1862s-projects.vercel.app"
       - key: UNSTEP_ATC_PASSWORD
         sync: false
       - key: CARTESIA_API_KEY

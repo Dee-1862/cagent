@@ -8,6 +8,8 @@ import { bestOffset, Sample, Sync } from "./clock";
 export type Hub = { http: string; ws: string; token: string | null };
 
 const STORE = "unstep.hub";
+// The public demo hub (render.yaml). Not a secret: the room code, when set, is separate.
+const PUBLIC_HUB = "https://unstep.onrender.com";
 
 export function hubFromLocation(loc: Location = window.location): Hub | null {
   const q = new URLSearchParams(loc.search);
@@ -22,7 +24,10 @@ export function hubFromLocation(loc: Location = window.location): Hub | null {
     } catch { /* ignore */ }
   }
   // A hosted build (Vercel) can bake in its hub: VITE_UNSTEP_HUB=https://<service>.onrender.com.
-  const built = import.meta.env.VITE_UNSTEP_HUB as string | undefined;
+  const built = (import.meta.env.VITE_UNSTEP_HUB as string | undefined)
+    || (loc.hostname.endsWith(".vercel.app") ? PUBLIC_HUB : undefined);
+  const servedByHub = loc.pathname.startsWith("/pilot"); // the hub mounts this app at /pilot/
+  if (!raw && servedByHub) raw = loc.origin;
   if (!raw && built) {
     raw = built;
     token = token || (import.meta.env.VITE_UNSTEP_TOKEN as string | undefined) || null;
