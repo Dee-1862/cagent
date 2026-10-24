@@ -126,3 +126,25 @@ def test_join_needs_the_room_token_when_set(monkeypatch):
     client = TestClient(create_live_app(live=False, sink=MemorySink()))
     assert client.post("/live/join").status_code == 403
     assert client.post("/live/join?token=s3cret").status_code == 200
+
+
+def test_pilot_link_points_the_hosted_app_at_this_hub(monkeypatch):
+    monkeypatch.setattr(room_mod, "create_memory", LocalMemory)
+    monkeypatch.setenv("UNSTEP_GATEWAY_TOKEN", "s3cret")
+    monkeypatch.setenv("UNSTEP_ALLOWED_ORIGINS", "https://unstep-pilot.vercel.app")
+    monkeypatch.setenv("UNSTEP_PILOT_APP_URL", "https://unstep-pilot.vercel.app")
+    monkeypatch.setenv("UNSTEP_PUBLIC_URL", "https://hub.example.com")
+    client = TestClient(create_live_app(live=False, sink=MemorySink()))
+    link = client.get("/live/pilot-link").json()
+    assert link == {"url": "https://unstep-pilot.vercel.app/?hub=https%3A%2F%2Fhub.example.com&token=s3cret",
+                    "hosted": True}
+    assert client.get("/live/qr.svg", params={"u": link["url"]}).status_code == 200
+    assert client.get("/live/qr.svg", params={"u": "https://evil.example/"}).status_code == 400
+
+
+def test_pilot_link_falls_back_to_the_copy_on_the_hub(monkeypatch):
+    monkeypatch.setattr(room_mod, "create_memory", LocalMemory)
+    for k in ("UNSTEP_GATEWAY_TOKEN", "UNSTEP_PILOT_APP_URL", "UNSTEP_PUBLIC_URL"):
+        monkeypatch.delenv(k, raising=False)
+    client = TestClient(create_live_app(live=False, sink=MemorySink()))
+    assert client.get("/live/pilot-link").json() == {"url": "http://testserver/pilot/", "hosted": False}

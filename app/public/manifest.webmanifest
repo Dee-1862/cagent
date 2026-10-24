@@ -1,0 +1,9 @@
+{
+  "name": "Unstep Pilot",
+  "short_name": "Unstep",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
+  "start_url": "./"
+}

@@ -6,7 +6,7 @@ import asyncio
 import hmac
 import logging
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 
 import fnmatch
 
@@ -20,11 +20,12 @@ from fastapi.staticfiles import StaticFiles
 
 from unstep.clock import now_ms
 from unstep.config import ROOT, allowed_origins, env, gateway_token
-from unstep.gateway.server import create_app, origin_ok
+from unstep.gateway.server import create_app, origin_listed, origin_ok
 from unstep.live.room import LiveRoom
 
 log = logging.getLogger("unstep.live")
 WEB = ROOT / "web" / "live"
+PILOT_APP = ROOT / "app" / "dist"
 
 
 def create_live_app(live: bool, sink=None, room: LiveRoom | None = None) -> FastAPI:
@@ -58,14 +59,29 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None) -> Fast
     async def live_qr(request: Request, u: str):
         try:
             url = urlsplit(u)
-            valid = (url.scheme in {"http", "https"} and url.hostname == request.url.hostname
-                     and url.username is None and url.password is None)
+            # This hub, or the hosted pilot app listed in UNSTEP_ALLOWED_ORIGINS.
+            valid = (url.scheme in {"http", "https"} and url.username is None and url.password is None
+                     and (url.hostname == request.url.hostname
+                          or origin_listed(f"{url.scheme}://{url.netloc}")))
         except ValueError:
             valid = False
         if not valid:
             raise HTTPException(status_code=400, detail="QR URL must use this server's host")
         qr = qrcode.make(u, image_factory=SvgPathImage)
         return Response(qr.to_string(), media_type="image/svg+xml")
+
+    @app.get("/live/pilot-link")
+    async def pilot_link(request: Request):
+        """The link pilots scan: the hosted pilot app (UNSTEP_PILOT_APP_URL) pointed at this
+        hub's public address (UNSTEP_PUBLIC_URL, e.g. the tunnel), or the copy this hub serves."""
+        hub = (env("UNSTEP_PUBLIC_URL") or str(request.base_url)).rstrip("/")
+        token = gateway_token()
+        app_url = env("UNSTEP_PILOT_APP_URL")
+        if app_url:
+            query = {"hub": hub, **({"token": token} if token else {})}
+            return {"url": f"{app_url.rstrip('/')}/?{urlencode(query)}", "hosted": True}
+        query = f"?token={quote(token, safe='')}" if token else ""
+        return {"url": f"{hub}/pilot/{query}", "hosted": False}
 
     @app.get("/live/stations")
     async def live_stations():
@@ -86,6 +102,8 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None) -> Fast
                 "frequency": room.frequency, "live": room.live}
 
     app.mount("/live/static", StaticFiles(directory=WEB), name="live-static")
+    if PILOT_APP.is_dir():  # `npm run build` in app/: the pilot app, served here for LAN or offline runs
+        app.mount("/pilot", StaticFiles(directory=PILOT_APP, html=True), name="pilot-app")
 
     @app.websocket("/live/ws/{station}")
     async def live_socket(ws: WebSocket, station: str):
