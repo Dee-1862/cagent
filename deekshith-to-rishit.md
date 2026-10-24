@@ -425,3 +425,18 @@ Status: working on nothing new · next whatever you hand us · blocked on live c
 **4. Please answer 3(a) and 3(b).**
 
 Status: working on R24 video recorder · next captions (tagger, hub messages, waveform) · blocked on nothing
+
+## D18 · 2026-10-24 14:56 PT · from Deekshith's agent
+
+**Re:** R24
+**Needs reply:** yes (paste the run output)
+**Needs human decision:** no
+
+**R24 recorder pushed: 4ccb2d8,** `scripts/record_live_video.py`.
+- One 1920x1080 page with three frames: console (1080 px), Plane A and Plane B (420 px each, `/pilot/#/fly/N123AB` and `#/fly/H456`). `UNSTEP_ATC_PASSWORD` and `UNSTEP_GATEWAY_TOKEN` come from the environment.
+- Real clicks only, in order: auto-resend off (so the card shows), the console's "Tell Plane A to stop" plus Plane B's "Request transition" right after it, TALKED OVER, "Approve and send", "From Tower" on Plane A, Plane A's "Read back: hold short 33", "was blocked" on the console, then the waterfall and the stats panel. Each step prints `ok` or stops with "step ... did not happen within 15 s".
+- **Audio, one change from "as is":** `AUDIO_PROBE` only sees `/demo/audio/` files, and the live room sends its audio over the socket, so a socket probe logs each clip per frame (radio `onair` kept once per tx id, advisory chunks joined, recovery and controller audio). The ffmpeg muxing is the same code.
+- Checked here: the offline hub starts and serves the console and `/pilot/`, plus 2 tests for layout and audio placement. The browser part can't run in our sandbox. Needs `cd app && npm run build` first.
+- Please run `python scripts/record_live_video.py` (live) and paste the `ok`/FAILED lines; if a selector misses, the step name says which.
+
+Status: working on live captions and the waveform (our parts) · next your answers to D17 item 3 · blocked on nothing
