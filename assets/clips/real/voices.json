@@ -1,0 +1,51 @@
+{
+  "sample_rate": 16000,
+  "overlap_start_s": 1.3,
+  "overlap_end_s": 3.8,
+  "voices": {
+    "tower": {
+      "id": "47c38ca4-5f35-497b-b1a3-415245fb35e1",
+      "name": "Daniel"
+    },
+    "heli": {
+      "id": "30894953-bcce-41fe-892c-15ce19c843ff",
+      "name": "Parker"
+    },
+    "pilot": {
+      "id": "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
+      "name": "Skylar"
+    }
+  },
+  "clips": {
+    "clean_call.wav": {
+      "role": "tower",
+      "text": "Cessna one two three, hold short runway three three.",
+      "seconds": 3.8
+    },
+    "helicopter_call.wav": {
+      "role": "heli",
+      "text": "Helicopter four five six, request transition over the field, northbound, at one thousand five hundred.",
+      "seconds": 7.08
+    },
+    "stepped_on_call.wav": {
+      "role": "tower+heli",
+      "text": "Cessna one two three, hold short runway three three. | Helicopter four five six, request transition over the field, northbound, at one thousand five hundred.",
+      "seconds": 3.8
+    },
+    "wrong_readback.wav": {
+      "role": "pilot",
+      "text": "Hold short runway two three, Cessna one two three.",
+      "seconds": 3.96
+    },
+    "correct_readback.wav": {
+      "role": "pilot",
+      "text": "Hold short runway three three, Cessna one two three.",
+      "seconds": 3.96
+    },
+    "pilot_question.wav": {
+      "role": "pilot",
+      "text": "Unstep, what was my last clearance?",
+      "seconds": 2.84
+    }
+  }
+}
