@@ -73,8 +73,12 @@ class ApprovalLoop:
         self.current, self.pending, self.deadline = None, None, None
         return result
 
-    def timeout(self) -> VoiceApproval | None:
-        if self.current and self.pending is None and self.deadline is not None and self.clock() >= self.deadline:
+    def timeout(self, force: bool = False) -> VoiceApproval | None:
+        """`force` ends the window even if the clock is a hair short of the deadline
+        (sleeps can wake early on Windows), so a proposal can never stay current forever."""
+        if self.current and self.pending is None and self.deadline is not None and (
+            force or self.clock() >= self.deadline
+        ):
             return self._finish("", "unclear")
         return None
 
@@ -176,13 +180,13 @@ async def _answer(loop: ApprovalLoop, prompt: str, voice: ControllerVoice, stt_f
                             await voice.say(action)
                     else:
                         await asyncio.sleep(max(0, loop.deadline - loop.clock()))
-                        action = loop.timeout()
+                        action = loop.timeout(force=True)
             if loop.pending is None:
                 if isinstance(action, VoiceApproval):
                     await emit(action)
                 return
     except TimeoutError:
-        action = loop.timeout()
+        action = loop.timeout(force=True)
         if action:
             await emit(action)
         return

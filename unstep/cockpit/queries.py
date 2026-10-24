@@ -1,8 +1,8 @@
 """Pilot voice queries (task A10), text in and text out. STT and TTS are wired in later.
 
 Intents: last clearance, say again, which taxiway. Answers come from the Moss
-flight session, with the source record and search time. Unknown or unmatched
-questions get "Advisory. No record found. Ask the controller."
+flight session, with the source record and search time. Unmatched questions may
+use an injected answerer with locally retrieved, validated record quotes.
 
 "Latest" always means newest by `ts` from a filter-only fetch, never the best
 ranked search hit. "Say again" never reads back an unapproved "Likely" hint.
@@ -11,6 +11,7 @@ Any memory error (Moss offline) answers "No record found" instead of crashing.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import datetime, timezone
@@ -18,6 +19,7 @@ from typing import Literal, Optional
 
 from unstep.clock import now_ms
 from unstep.cockpit.hint import names_other_aircraft
+from unstep.cockpit.inference import Answerer
 from unstep.cockpit.memory import Doc, Memory
 from unstep.cockpit.seed import COCKPIT
 from unstep.contracts import PilotQuery
@@ -129,13 +131,68 @@ async def _answer(memory: Memory, flight_index: str, callsign: str, intent: Inte
     return answer, source, moss_ms
 
 
+def quoted_source(answer: str, records: list[Doc]) -> Optional[Doc]:
+    """Accept only an attributable quote, never an invented prefix or suffix.
+
+    Requiring the whole quote to occur in a record is stronger than a three-word
+    overlap, which could otherwise launder an invented clearance beside a quote.
+    """
+    match = re.fullmatch(r'(?:Recorded: )?["“]([^"“”\n]+)["”][.]?', answer)
+    if not match:
+        return None
+    quote = " ".join(match[1].casefold().split())
+    if len(re.findall(r"\b\w+\b", quote)) < 3:
+        return None
+    for doc in records:
+        text = " ".join(doc.text.casefold().split())
+        if re.search(r"(?<!\w)" + re.escape(quote) + r"(?!\w)", text):
+            return doc
+    return None
+
+
+async def _freeform(memory, flight_index, airport_index, callsign, question, answerer, metrics):
+    # Only approved flight clearances, never a local 'Likely' advisory.
+    flight, moss_ms = await _all(memory, flight_index, callsign, "clearance")
+    flight = [d for d in flight if d.metadata.get("callsign") == callsign
+              and d.metadata.get("type") == "clearance"]
+    records = [Doc(f"{flight_index}/{d.id}", d.text, d.metadata) for d in flight[:3]]
+    if airport_index:
+        airport = await memory.query(airport_index, question, top_k=3)
+        moss_ms += airport.time_taken_ms
+        records.extend(Doc(f"{airport_index}/{d.id}", d.text, d.metadata)
+                       for d in airport.docs[:3] if not names_other_aircraft(d.text, callsign))
+    if not records:
+        return "No record found.", None, moss_ms
+    result = await answerer.answer(question, records)
+    if metrics is not None and result.first_token_ms is not None:
+        metrics["llm_first_token_ms"] = result.first_token_ms
+    answer = result.text.strip()
+    if answer == "No record found.":
+        return answer, None, moss_ms
+    source = quoted_source(answer, records)
+    if source is None:
+        return NO_RECORD, None, moss_ms
+    if airport_index and source.id.startswith(f"{airport_index}/"):
+        # Airport procedures and NOTAMs must never sound like a clearance.
+        answer = "Airport information, not a clearance: " + answer.removeprefix("Recorded: ")
+    return answer, source, moss_ms
+
+
 async def answer_query(memory: Memory, flight_index: str, callsign: str, question: str,
-                       query_id: Optional[str] = None) -> PilotQuery:
+                       query_id: Optional[str] = None, *, airport_index: Optional[str] = None,
+                       answerer: Optional[Answerer] = None,
+                       metrics: Optional[dict[str, float]] = None) -> PilotQuery:
     intent = classify_intent(question)
     try:
-        answer, source, moss_ms = await _answer(memory, flight_index, callsign, intent)
+        if intent == "unknown" and answerer is not None:
+            answer, source, moss_ms = await asyncio.wait_for(
+                _freeform(memory, flight_index, airport_index, callsign, question, answerer, metrics),
+                timeout=3.0,
+            )
+        else:
+            answer, source, moss_ms = await _answer(memory, flight_index, callsign, intent)
     except Exception:  # Moss offline or session closed: say so rather than crash
-        log.exception("pilot query failed; answering no record")
+        log.warning("pilot query failed; answering no record")
         answer, source, moss_ms = NO_RECORD, None, None
 
     return PilotQuery(
@@ -143,6 +200,6 @@ async def answer_query(memory: Memory, flight_index: str, callsign: str, questio
         callsign=callsign,
         question=question,
         answer=answer,
-        source_doc_id=f"{flight_index}/{source.id}" if source else None,
+        source_doc_id=(source.id if intent == "unknown" else f"{flight_index}/{source.id}") if source else None,
         moss_ms=round(moss_ms, 3) if moss_ms is not None else None,
     )

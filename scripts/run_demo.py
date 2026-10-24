@@ -38,6 +38,7 @@ import websockets  # noqa: E402
 from unstep.cockpit.audio import WavFileSource, read_wav  # noqa: E402
 from unstep.cockpit.edge import AudioOut, CockpitEdge, GatewayLink, Line  # noqa: E402
 from unstep.cockpit.memory import LocalMemory, create_memory  # noqa: E402
+from unstep.cockpit.inference import FakeAnswerer  # noqa: E402
 from unstep.cockpit.stt import FakeManualSTT, FakeTurnSTT, ReplayTurnSTT  # noqa: E402
 from unstep.cockpit.tts import FakeTTS  # noqa: E402
 from unstep.clock import now_ms  # noqa: E402
@@ -177,6 +178,7 @@ async def demo(clean: bool, play: bool, live: bool = False) -> int:
         edge = CockpitEdge(
             link=GatewayLink(url),
             memory=LocalMemory(),
+            answerer=FakeAnswerer(),
             tts=FakeTTS(),
             manual_stt_factory=lambda: FakeManualSTT(["Cessna 1-2-3 [static]"]),
             turn_stt_factory=lambda: FakeTurnSTT(READBACKS),
@@ -208,9 +210,12 @@ async def demo(clean: bool, play: bool, live: bool = False) -> int:
                 if live:
                     question = await transcribe_turn(question_stt)
                 q = await edge.ask(question)
+                freeform = await edge.ask("Unstep, what runway was I told to stop at?")
                 results = [m for m in edge.sent if isinstance(m, ReadbackResult)]
                 ok = (outcome == "confirmed" and [r.match for r in results] == [False, True]
                       and "hold short" in q.answer.lower() and q.source_doc_id is not None
+                      and "hold short" in freeform.answer.lower()
+                      and freeform.source_doc_id == q.source_doc_id
                       and events[0].local_hint.kind == "restrictive"
                       and not edge.outbox)
         await asyncio.sleep(0.1)

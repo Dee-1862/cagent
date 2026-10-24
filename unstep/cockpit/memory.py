@@ -246,7 +246,10 @@ def to_moss_filter(flt: Optional[dict]) -> Optional[dict]:
 
 
 class MossMemory(_OwnedIndexes):
-    """Moss sessions, one per index. Queries run in-process; `push` hands off via Moss Cloud.
+    """Loaded airport knowledge and flight/frequency sessions, queried in-process.
+
+    Airport indexes are read-only here. Only the ingestion script writes them.
+    Session `push` hands off via Moss Cloud.
 
     Moss metadata is a string map, so values are stored as strings. Filters are
     translated by `to_moss_filter` into Moss's {"field", "condition"} form with
@@ -263,6 +266,8 @@ class MossMemory(_OwnedIndexes):
         self.sessions: dict[str, Any] = {}
 
     async def _session(self, index: str):
+        if index.startswith("airport-"):
+            raise PermissionError("Airport indexes are read-only; use pre-flight ingestion")
         # Opening a session checks credentials with Moss Cloud, so open before going offline.
         if index not in self.sessions:
             self.sessions[index] = await self.client.session(index)
@@ -270,7 +275,18 @@ class MossMemory(_OwnedIndexes):
 
     async def open(self, *indexes: str) -> None:
         for index in indexes:
-            await self._session(index)
+            if index.startswith("airport-"):
+                await self.load_airport(index)
+            else:
+                await self._session(index)
+
+    async def load_airport(self, index: str) -> None:
+        """Hydrate persistent knowledge without opening a writable session."""
+        if not hasattr(self, "_loaded_airports"):
+            self._loaded_airports: set[str] = set()
+        if index not in self._loaded_airports:
+            await self.client.load_index(index)
+            self._loaded_airports.add(index)
 
     async def add_docs(self, index: str, docs: list[Doc], writer: str) -> int:
         from moss import DocumentInfo
@@ -304,9 +320,14 @@ class MossMemory(_OwnedIndexes):
     async def query(self, index, text, top_k=3, alpha=0.8, filter=None) -> QueryResult:
         from moss import QueryOptions
 
-        session = await self._session(index)
         started = time.perf_counter()
-        result = await session.query(text, QueryOptions(top_k=top_k, alpha=alpha, filter=to_moss_filter(filter)))
+        options = QueryOptions(top_k=top_k, alpha=alpha, filter=to_moss_filter(filter))
+        if index.startswith("airport-"):
+            await self.load_airport(index)
+            result = await self.client.query(index, text, options)
+        else:
+            session = await self._session(index)
+            result = await session.query(text, options)
         wall_ms = (time.perf_counter() - started) * 1000
         docs = [Doc(id=d.id, text=d.text, metadata=dict(d.metadata or {}), score=d.score) for d in result.docs]
         return QueryResult(

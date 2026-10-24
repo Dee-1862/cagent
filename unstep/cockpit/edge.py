@@ -36,6 +36,7 @@ from unstep import scenario
 from unstep.clock import now_ms
 from unstep.cockpit.audio import AudioSource, WavFileSource
 from unstep.cockpit.hint import advisory_text, derive_hint
+from unstep.cockpit.inference import Answerer, create_answerer
 from unstep.cockpit.memory import LocalMemory, Memory, airport_index, create_memory, flight_index
 from unstep.cockpit.overlap import OverlapDetector, OverlapWindow
 from unstep.cockpit.queries import answer_query, record
@@ -268,12 +269,16 @@ class CockpitEdge:
         detector: Optional[OverlapDetector] = None,
         gps: Optional[Gps] = None,
         taxiway_node: Optional[str] = "B4",
+        answerer: Optional[Answerer] = None,
     ):
         self.callsign = callsign
         self.frequency = frequency
         self.link = link or GatewayLink()
         self.link.on_message = self.on_message
         self.memory = memory or create_memory()
+        self.answerer = answerer
+        if self.answerer is None and self.memory.backend == "moss":
+            self.answerer = create_answerer()
         self.tts = TimedTTS(tts or default_tts())
         self.voice = AdvisoryVoice(self.tts)
         self.manual_stt_factory = manual_stt_factory or default_manual_stt()
@@ -550,13 +555,16 @@ class CockpitEdge:
     async def ask(self, question: str):
         self._note("PILOT", f"asks: {question!r}")
         t = time.perf_counter()
-        q = await answer_query(self.memory, self.flight_idx, self.callsign, question)
+        metrics: dict[str, float] = {}
+        q = await answer_query(self.memory, self.flight_idx, self.callsign, question,
+                               airport_index=self.airport_idx, answerer=self.answerer, metrics=metrics)
+        self._measure("llm_first_token_ms", metrics.get("llm_first_token_ms"))
         answer_ms = _ms(t)
         self._measure("moss_ms", q.moss_ms)
         await self.speak(q.answer, moss_ms=q.moss_ms)
         self._measure("query_to_audio_ms", answer_ms + (self.tts.last_first_audio_ms or 0.0))
         await self.send(q)
-        await self.audit(q.query_id, "pilot_query", q.moss_ms, source_doc_id=q.source_doc_id)
+        await self.audit(q.query_id, "pilot_query", q.moss_ms, source_doc_id=q.source_doc_id, **metrics)
         return q
 
     # ------------------------------------------------------------ reporting
