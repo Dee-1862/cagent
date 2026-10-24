@@ -20,6 +20,7 @@ function send(message) {
 function controls() {
   $("autonomy").disabled = !state.ready;
   $("transmit").disabled = !state.ready;
+  $("reset").disabled = !state.ready;
   document.querySelectorAll("[data-say]").forEach((b) => { b.disabled = !state.ready; });
   updateCountdowns();
 }
@@ -136,6 +137,15 @@ function receive(message) {
     case "flow":
       // Transport flow is evidence of routing, not evidence of delivery or timing.
       $("event-label").textContent = `Latest activity: ${message.label}`;
+      break;
+    case "room_reset":
+      // Presenter reset: walk-up planes are gone; the board starts clean for the next group.
+      state.traces.clear(); state.lanes.clear(); state.reports.clear(); state.pending.clear();
+      state.liveOverlap.clear(); state.keyed = {};
+      setStations(message.stations);
+      renderMap(); renderTraces(); renderRadio(); renderInbox();
+      $("happened").textContent = "Room reset. Scan the QR code to fly a plane.";
+      notice("Room reset. Walk-up planes were freed; the team planes stayed.");
       break;
     case "status": state.pending.clear(); renderInbox(); notice(message.text); break;
   }
@@ -362,6 +372,7 @@ function steps(trace) {
     switch (step.kind) {
       case "detected": sentence = `Heard a blocked radio call in ${shortName(trace.callsign)}’s cockpit.`; agent = "Cockpit agent"; break;
       case "hint": sentence = `The plane’s memory suggests “${hint?.text || "a stop instruction"}”; this is a hint, not permission.`; agent = "Cockpit agent"; sponsor = trace.callsign === "N123AB" ? "Moss / local (backend unreported)" : "Local memory"; break;
+      case "moss_search": agent = "Cockpit agent"; sponsor = step.data?.backend === "moss" ? "Moss" : "Local memory"; break;
       case "proposed": sentence = `Recovered “${instruction}”${trace.tower ? " from the tower’s own words" : " without a tower transcript"}.`; agent = "Ground agents"; sponsor = "Stand-in · Elastic pending"; break;
       case "auto_relay": sentence = "Every policy check passed, so the tower’s own stop/wait instruction can be re-sent."; agent = "Policy agent"; sponsor = "policy"; break;
       case "escalate": sentence = reason(trace); agent = "Policy agent"; sponsor = "policy"; break;
@@ -394,6 +405,7 @@ const STAGES = {
   call_end: ["The call ended", ""],
   cockpit_stt_final: ["Cartesia transcribed what the cockpit heard", "cartesia"],
   event_raised: ["The cockpit flagged a lost call", ""],
+  moss_search: ["Moss searched the plane's memory", "moss"],
   hint: ["Moss found the likely instruction", "moss"],
   tower_stt_final: ["Cartesia finished the tower transcript", "cartesia"],
   tower_transcript: ["Cartesia transcribed the tower", "cartesia"],
@@ -445,6 +457,9 @@ async function play(encoded) {
     source.connect(state.audio.destination); source.start();
   } catch { notice("Audio could not play. The radio text is still available."); }
 }
+$("reset").addEventListener("click", () => {
+  if (confirm("Reset the room? Every walk-up plane is disconnected and the board is cleared.")) send({type: "reset"});
+});
 $("sound").addEventListener("click", async () => {
   try {
     state.audio ||= new AudioContext(); await state.audio.resume();
