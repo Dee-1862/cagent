@@ -19,6 +19,31 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: Dev A status on branch `rishit`
+
+**Type:** Added
+**Area:** Edge device
+
+| Task | Status |
+| --- | --- |
+| A1 audio input, clips | Done: synthetic clips plus real Cartesia-voiced clips in `assets/clips/real/` |
+| A2 overlap detector | Done, tuned on real speech. Only proven on clips we mixed (RA-4) |
+| A3 cockpit STT | Done: Cartesia `ink-2` manual mode, finalize on squelch close, live tested |
+| A4 Moss hint | Done with local fallback. Real Moss untested (no keys), filters translated to Moss format |
+| A5 Frequency Monitor | Done |
+| A6 advisory TTS | Done: `sonic-3.6`, pronunciation dictionary uploaded, chime, left ear, live tested |
+| A7 readback check | Done: live tested on real readback clips |
+| A8 offline | Done: pre-generated alert, outbox, memory fails safe |
+| A9 latency | Measured live: TTS first audio about 100 ms, manual STT 143 ms, turn end about 650 ms |
+| A10 pilot queries | Done: live tested on a real question clip |
+
+- Red team found 18 issues across the gateway and cockpit. All fixed with regression tests (130 tests pass).
+- `python scripts/run_demo.py` runs offline. `--live` runs on the real Cartesia API.
+- Cartesia feedback logged in [09-cartesia-feedback.md](09-cartesia-feedback.md).
+- **For Dev B:** tower STT must choose between `ink-2` (key terms) and `ink-whisper` (word timestamps), see CF-9. The gateway now enforces per-role senders and rebuilds directives from the stored proposal.
+
+**Related:** [README](../README.md), [Work Split](04-work-split.md)
+
 ## 2026-10-23: Blue-team fixes to the Moss layer, local hint and pilot queries
 
 **Type:** Fixed
