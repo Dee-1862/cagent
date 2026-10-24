@@ -221,6 +221,18 @@ class Gateway:
         return [p for p, received in self.pending.values() if received >= cutoff]
 
 
+class HostCheck(TrustedHostMiddleware):
+    """Host allowlist (blocks DNS rebinding), except /health: cloud health checks (Render)
+    call it from their own network with an internal Host header, and it exposes no room data
+    beyond counts. Without this the host returns 400 to the check and the service shows 502."""
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("path") == "/health":
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
+
 def origin_ok(ws: WebSocket) -> bool:
     """Browsers send Origin. Accept pages served by this gateway, local tools, and the
     origins listed in UNSTEP_ALLOWED_ORIGINS (the hosted pilot app)."""
@@ -246,7 +258,7 @@ def create_app(sink=None, pending_ttl_s: float = PENDING_TTL_S,
 
     app = FastAPI(title="Unstep gateway", lifespan=lifespan)
     # Host allowlist: blocks DNS rebinding for HTTP and WebSocket requests alike.
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts())
+    app.add_middleware(HostCheck, allowed_hosts=allowed_hosts())
     # Elastic checks readbacks only when Elastic also stores the events; tests and offline runs stay local.
     gw = Gateway(sink, pending_ttl_s, percolator_from_env() if isinstance(sink, ElasticSink) else None)
     app.state.gateway = gw

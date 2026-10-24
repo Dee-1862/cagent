@@ -448,6 +448,7 @@ class LiveRoom:
         self.claims: dict[str, float] = {}  # station -> hub time join() handed it out
         self._join_lock = asyncio.Lock()
         self._moss_used = 0
+        self._shared_moss = None
         self.reset_at = 0  # hub time of the last presenter reset; /live/stats never counts before it
 
     # ------------------------------------------------------------ setup
@@ -488,7 +489,9 @@ class LiveRoom:
                                               on_error=lambda t: self._status(f"policy: {t}"))
             # The hub's frequency session (freq-<frequency>): a Moss session when live, written
             # only by the Frequency Monitor, never pushed. Local memory offline or if Moss fails.
-            monitor = self.monitor = FrequencyMonitor(create_memory() if self.live else LocalMemory())
+            if self.live and self._shared_moss is None:
+                self._shared_moss = create_memory()  # one client for the monitor and every plane
+            monitor = self.monitor = FrequencyMonitor(self._shared_moss if self.live else LocalMemory())
 
             async def monitor_on(msg):
                 try:
@@ -522,7 +525,11 @@ class LiveRoom:
         # which per-aircraft sessions never call, so the plan's index limit does not cap them
         # (six real sessions checked by Rishit, R3). UNSTEP_MOSS_AIRCRAFT (default 6) planes get Moss.
         use_moss = self.live and self._moss_used < moss_aircraft()
-        memory = create_memory() if use_moss else LocalMemory()
+        # One Moss client (one embedding model in memory) shared by every plane; each plane still
+        # has its own flight session. A client per plane ran Render's 512 MB instance out of memory.
+        if use_moss and self._shared_moss is None:
+            self._shared_moss = create_memory()
+        memory = self._shared_moss if use_moss else LocalMemory()
         self._moss_used += 1
 
         def build(mem):

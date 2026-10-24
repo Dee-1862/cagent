@@ -4,8 +4,12 @@ services:
     name: unstep
     runtime: docker
     plan: free               # sleeps after about 15 minutes idle and takes about a minute to wake; 512 MB RAM
-    healthCheckPath: /live/stations
+    healthCheckPath: /health   # answered for any Host header, so Render's internal check passes
     envVars:
+      # Free plan has 512 MB: live mode with Moss on every plane ran out of memory. One Moss plane
+      # fits; raise it (up to 6) on a bigger plan.
+      - key: UNSTEP_MOSS_AIRCRAFT
+        value: "1"
       - key: UNSTEP_ALLOWED_HOSTS
         value: "*.onrender.com"
       - key: UNSTEP_OFFLINE    # delete this to use real Cartesia, Moss and Elastic
