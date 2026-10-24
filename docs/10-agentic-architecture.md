@@ -141,6 +141,23 @@ The gateway stays the single enforcement point: it holds the proposal, accepts o
 
 No agent can send a directive. No agent talks to another agent: they hand results to the Workflow, which passes them on.
 
+### 4.4 As built (B5), not yet deployed live
+
+Definitions are files in `elastic/` and `scripts/deploy_elastic.py` creates them. The hub code is `unstep/ground/elastic_agents.py`, off unless `UNSTEP_ELASTIC_AGENTS=1`.
+
+| Piece | What it is |
+| --- | --- |
+| Tools | `unstep_faa_search` (index search over `unstep-faa`), `unstep_recent_blocked_calls` and `unstep_readback_history` (ES\|QL over the events index) |
+| Agents | `unstep-intercept`, `unstep-compliance`, `unstep-readback-auditor`, each limited to its own tools and told to answer JSON only |
+| Workflow `unstep-blocked-call` | Manual trigger with the event, the tower text, the lost words and the hub's instruction. Intercept, then Compliance (`ai.agent` steps), then `elasticsearch.index` into `unstep-proposals` under the event id |
+| Workflow `unstep-readback-audit` | Started on a wrong readback, off the radio path. Readback Auditor, then `unstep-findings` |
+
+Changes from the design above, and why:
+- **Two short runs instead of `waitForInput`.** The controller decides on the Unstep console and the gateway stays the one enforcement point. The external resume endpoint needs a per-step token we have not tested, so we used the fallback from 4.2.
+- **The agents never write the instruction.** The hub builds it from the controller's own transcript. The agents can add the FAA citation (kept only if that paragraph exists in `unstep-faa`) and can lower the confidence, which sends the call to the controller. A slow run (over `UNSTEP_AGENTS_WAIT_S`, default 6 s) or any error keeps the local proposal.
+
+API paths used, read on 2026-10-24 from Elastic's API reference through search results and the step syntax from Elastic's public `elastic/workflows` example repository: `POST /api/agent_builder/tools`, `POST /api/agent_builder/agents` (agent tools as `configuration.tools[].tool_ids`), `POST /api/workflows` (bulk create, `yaml` per workflow), `POST /api/workflows/workflow/{id}/run` with `{"inputs": ...}` (added in 9.4.0, GA on Serverless), `ai.agent` steps with `agent-id`, output at `steps.<name>.output.message`. Not yet run against a real cluster: our sandbox cannot reach Elastic. Checked offline with mocked Kibana and Elasticsearch (`tests/test_elastic_agents.py`).
+
 ## 5. Cockpit: Local Compute with Cartesia and Moss
 
 ```mermaid

@@ -1,0 +1,18 @@
+{
+  "id": "unstep_recent_blocked_calls",
+  "type": "esql",
+  "description": "Stepped-on (blocked) calls detected by the cockpits for one callsign in the last 30 minutes, newest first.",
+  "tags": [
+    "unstep",
+    "audit"
+  ],
+  "configuration": {
+    "query": "FROM unstep-events | WHERE type == \"AnomalyEvent\" AND callsign == ?callsign AND @timestamp >= NOW() - 30 minutes | SORT @timestamp DESC | KEEP @timestamp, event_id, callsign, frequency | LIMIT 20",
+    "params": {
+      "callsign": {
+        "type": "keyword",
+        "description": "Aircraft callsign, for example N123AB"
+      }
+    }
+  }
+}

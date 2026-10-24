@@ -19,6 +19,494 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Benchmark report against the status quo and published work
+
+**Type:** Docs
+**Area:** Docs
+
+- [18-benchmark.md](18-benchmark.md), written by `scripts/benchmark_report.py` (docs/17 is the Devpost draft). Simulated traffic, synthetic speech, recorded sessions and ATCO2 each get their own heading; simulated numbers are only under "Simulated traffic (n=...)".
+- **Status quo** is 0% automatic detection, with the sources already in our research (FAA CAMI 1.16% and "no alerting system", SKYbrary, the NTSB quote).
+- **Simulated traffic** (500 calls, 157 stepped on), each with a Wilson 95% interval: 91.7% of step-ons detected by the audio detector, 0 false events on 343 clean calls, recovered instruction correct in 144 of 144, restrictive instruction delivered in 91 of 97. The report says these run on exact text and measure the pipeline's logic, not speech recognition.
+- **Timing:** a modelled "say again" exchange (assumptions labelled) is set against Unstep's measured 6.1 s before the on-air fix and its offline-model 0.43 s after, with the live number left as [confirm live].
+- **Still to run:** the speech, HAAWAII comparison, ATCO2 and recorded-session sections list the commands to run.
+
+**Related:** agent mail D20, D21
+
+## 2026-10-24: Traffic simulator, labelled simulated, and a fix it found
+
+**Type:** Added
+**Area:** Other
+
+- `scripts/simulate_traffic.py`: scripted synthetic traffic through the real room code (offline voice, local memory).
+  - **What it simulates:** several planes, restrictive and permissive instructions, step-ons at a set rate, a simulated controller deciding, and readbacks that are wrong on purpose at a set rate. The seed is fixed. Calls are back-dated so 500 calls run in about 10 minutes: counts and rates are meaningful, timings are not.
+  - **Labelling:** every call row and every gateway record carries `simulated: true` and the `run_id`. With `--elastic`, records go to their own `unstep-sim-events` index, never the real events index.
+- `/live/stats?include_simulated=1` adds that index and returns `simulated_runs`, so the console can show a "Simulated traffic" badge (asked from Rishit's side). Real stats never include simulated records unless asked.
+- **Fixed, found by the simulator:** Rishit's cockpit voice now passes `speed` and `language` to the TTS engine (d711e89). The live room's TTS wrappers (`SerialTTS`, `StreamingTTS`) didn't accept them, so every wrong-readback correction crashed in the live room. They now pass the options through.
+- Checked: 4 simulator and report tests, 1 test for the voice options, and a 500-call run with no errors (summary feeds docs/18).
+
+**Related:** agent mail D20, D21
+
+## 2026-10-24: Recording-session mode: a real dataset of us talking over each other
+
+**Type:** Added
+**Area:** Audio
+
+- To record a real dataset in about an hour, the presenter opens `/live/record/`, names the session and the tower speaker, ticks consent and starts recording (controller seat only).
+  - **Who is recorded:** pilots type a first name and tick "My voice is recorded for the Unstep dataset" when they join. Only people who ticked it are recorded.
+  - **What is saved:** every push-to-talk becomes a 16 kHz WAV in `data/recordings/<session>/` (gitignored) with a manifest row: speaker, prompted line and its kind, live transcript, key times, overlaps from key timing, readback target, QC. Every stepped-on cluster is saved as the mix a cockpit heard, with its overlap windows.
+- **Prompter (`unstep/live/recording.py`):** everyone sees their next line above the talk button, and the tower reads its lines on the record page. Pilot lines include some readbacks that are wrong on purpose. Every third tower call cues one plane: "Talk NOW, over the tower".
+- **QC:** clips under 0.3 s are dropped; clipping and near silence are flagged. Live counts show on the record page and the phones.
+- **Export:** `scripts/export_recordings.py` writes a datasets-style folder (train/test split by speaker, mixes, `DATASET_CARD.md` crediting the recorders by name; the licence is the recorders' decision, default "for evaluation only").
+- **Evaluation:** `scripts/eval_unstep.py --recordings <folder>` scores the real set: WER against the prompted lines, callsign and runway agreement, readback precision and recall, and the audio-only overlap detector against key-timing ground truth.
+- Checked: 3 tests (recorder, consent and key-timing overlaps in a room run, export plus eval). A headless browser run took a real fake-mic clip from join with consent through the prompter to the manifest. Vitest and build pass. Steps are in [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md) section 6a.
+
+**Related:** agent mail D21
+
+## 2026-10-24: Devpost draft: lines we can prove filled in
+
+**Type:** Docs
+**Area:** Docs
+
+- [17-devpost.md](17-devpost.md) (handed over by Rishit's side, R27 item 4): added live captions and the waveform, walk-up seats, transcribing while on air, word alignment, the benchmark harness, the ATCO2 loader and the test counts, each traceable to a commit. New numbers that need a live run are marked [confirm live]. The social post no longer calls stepped-on calls a "collision".
+
+**Related:** agent mail R27 item 4
+
+## 2026-10-24: Console fixes taken over from Rishit's side (R27)
+
+**Type:** Fixed
+**Area:** Other
+
+- The Elastic readback step printed raw floats ("local, 0.07650000043213367 ms"); the room now rounds that time to 2 decimals.
+- The hint step's sponsor read "Moss / local (backend unreported)". The room now puts the plane's memory backend on the hint step (`data.backend`) and the console names "Moss" only when the event says so, otherwise "Local memory". Rishit's side was going quiet, so this console change was ours by agreement (R27 item 4).
+- Checked: 1 new room test; console tests pass.
+
+**Related:** agent mail R27 items 3b and 4
+
+## 2026-10-24: Transcribe while the call is on air, not after it (R27 3a)
+
+**Type:** Changed
+**Area:** Audio
+
+- Rishit's live video: the tower transcript was final 2.7 s and the cockpit's 2.9 s after release, and the call end to the pilot hearing the fix took 6.1 s. The audio went to Cartesia only after the transmission, and Cartesia then needs time to work through it before `finalize` can answer.
+- **Tower:** a typed tower line now streams to the tower transcriber at real-time pace from the moment it goes on air (push-to-talk already did, P3), so it is final about 100 ms after it ends.
+- **Cockpits:** new `LiveMix` (`unstep/live/radio.py`) sums the transmissions as their audio arrives (typed lines at once, push-to-talk frame by frame), with the same receiver model as the cluster mix (half-gain voices plus a beat tone where two are keyed). Every cockpit's STT is fed from it during the call and finalized when the cluster ends; the overlap detector still runs on the full cluster mix. If the live mix also holds a newer call, or a stream fails, the old after-the-call path runs (W3 fast send).
+- Offline model (Cartesia working at 1.5 times real time from when audio arrives, finalize 100 ms after catching up), one stepped-on call: tower final 2766 to 141 ms after release, cockpit 4810 to 101 ms, call end to proposal 5135 to 426 ms. The live number needs a run with keys.
+- Checked: 3 new tests (live mix against the cluster mix, before and after on the model, a mix holding a newer call falls back).
+
+**Related:** agent mail R27 item 3a
+
+## 2026-10-24: Benchmark under radio conditions, with 95% intervals
+
+**Type:** Added
+**Area:** Audio
+
+- The first eval (40 clean lines, Cartesia TTS heard by Cartesia STT, one voice, no noise) was circular and small. `scripts/eval_bench.py` adds:
+  - **Radio conditions:** every line through our VHF voice channel at several noise levels (clean, radio, radio-20, radio-10, radio-5 dB SNR), with the room's three Cartesia voices round robin.
+  - **Key terms A/B** on radio-10.
+  - **Readbacks:** labelled wrong and right readbacks checked through radio-10.
+  - **Stepped-on mixes:** made the way the live room mixes a cluster, scoring the cockpit's audio-only overlap detector (recall at IoU 0.5 or more, latency to the first active frame, false alarms on clean lines) and STT on the damaged audio.
+  - **Real speech (optional):** the ATCO2 1-hour test set from Hugging Face. It only runs after `--atco2-licence-ok`, once the dataset card's licence has been read; its audio stays local.
+- Every accuracy has a Wilson 95% interval, WER a bootstrap 95% interval, latency p50 and p95. Helpers are in `unstep/evaluation.py`. `--store` indexes the run summary in `unstep-eval` when Elastic is configured.
+- `--fake` runs the harness with tone "speech" and a scripted STT; its output is marked fake, says its numbers mean nothing, and is never stored.
+- Checked: 6 tests. No real numbers yet: Rishit's side runs `--live`.
+
+**Related:** agent mail D20
+
+## 2026-10-24: Pilot app redesign: one hold button that becomes a voice memo, and a lyrics-style caption card
+
+**Type:** Changed
+**Area:** Other
+
+- Deekshith's design (reference: iOS Voice Memos and Spotify lyrics). The flying screen is now only a small header (plane, callsign, connection dot), the big HOLD TO TALK button and a caption card. Tap-to-say lines, Ask Unstep, timings and log moved behind one quiet "More" link (still needed for no-mic fallback and debugging).
+- Hold to talk: the button turns in place into a Voice Memos style panel: dark, a time ruler (00:02, 00:04 ...), rounded warm orange bars from the live mic level scrolling right to left, a red playhead with dots at 60 percent, a dotted line ahead, elapsed time in the corner. Bars turn red while someone else is keyed (talked over). Release turns it back after the usual tail.
+- Caption card (warm mustard, big bold white text): one line per transmission from the hub's `caption` messages, the current line bright and earlier ones dimmed, auto-scrolling. A line's text changes at most once per second; the final caption replaces the interim at once. Keywords are underlined, not coloured. Others' calls are prefixed ("Tower:", "Plane B:"); Unstep's private advisory shows as a calm "Only you" line in plain wording ("three", not "tree", without the spoken "Advisory."); a step-on adds a "Talked over" line. The label under the card shows "Cartesia live caption · N ms behind your voice" (or "TTS timing" for typed lines).
+- "More" also has a multi-lane radio waveform (`Waveform.tsx`) from the hub's `level` and `caption` messages. Reduced motion is respected everywhere. Earcons, join, clock sync, streamed mic frames and language are unchanged.
+- Checked: vitest (lines, throttling, readable advisories, waveform state; 25 pass), the app build, and a headless phone (390x844, fake mic) on the offline hub: idle, holding while another station keys (red bars), captions mid-line and after; no page errors.
+
+**Related:** [16-sponsor-depth.md](16-sponsor-depth.md) C2, agent mail D17, D19
+
+## 2026-10-24: Live captions use Cartesia's streamed text as checked live
+
+**Type:** Changed
+**Area:** Audio
+
+- Rishit checked the real ink-2 manual endpoint (R26, 626a26b): no interim messages, but final-text deltas about every 0.5 to 0.7 s while audio streams, which can split a word. `CartesiaManualSTT(on_text=callback(delta, so_far))` now exposes them. The room sets `on_text` before the socket opens and captions show the whole utterance so far, never raw deltas; `TowerStream` passes it to its ink-2 stream.
+- The caption tagger reads runway numbers as ink-2 writes them ("runway thirty three", "thirty-three").
+- Checked: tests with a fake STT that streams deltas like Cartesia's.
+
+**Related:** agent mail R26
+
+## 2026-10-24: Live captions and waveform levels from the hub
+
+**Type:** Added
+**Area:** Audio
+
+- To show how fast Cartesia is, every seat now gets `caption {station, id, text, final, source, lag_ms, words: [{text, kind, at_ms}], ts}` while someone talks: interim text while the key is held (`source: "stt"`, `lag_ms` = hub now minus the hub time of the end of the audio sent so far), the final text at release, and for typed lines each word at its spoken time from the TTS word timestamps (`source: "tts"`).
+- `level {station, id, t_ms, step_ms: 50, rms: [...]}`: one loudness value per 50 ms of the audio already arriving (push-to-talk frames, or the TTS audio of a typed line), for a scrolling waveform. Numbers only, no audio; neither message goes to Elastic.
+- `unstep/live/captions.py` tags words as callsign, action, runway or taxiway, for spoken and written forms ("Cessna one two three", "Runway 28L", "via Bravo", "cross runway two niner").
+- Interim results need an `on_partial` callback in Rishit's `CartesiaManualSTT` (asked in D17); until then the room sets it and STT classes without it simply send no partials. `TowerStream` passes it to its ink-2 stream.
+- Checked: 3 tagger tests and 2 room tests with a fake STT that emits partials.
+
+**Related:** agent mail D17
+
+## 2026-10-24: Recorder for a live-room demo video (R24)
+
+**Type:** Added
+**Area:** Other
+
+- `scripts/record_live_video.py` starts the hub, opens one 1920x1080 page with the ATC console and two pilot phones (Plane A, Plane B) side by side, and drives only real clicks: auto-resend off, the tower's hold short while Plane B talks, TALKED OVER, Approve and send, "From Tower" on Plane A, the correct readback, the recovery line for Plane B, then the waterfall and Elastic panel. Each step must appear within 15 s or the run stops naming the step.
+- Sound: the room's audio arrives over the socket, so a socket probe logs each clip's time in every frame and the same ffmpeg muxing as `record_demo_video.py` places it. Radio clips heard in several frames are kept once; streamed advisory chunks are joined.
+- Checked here: the hub starts offline and serves the console and the pilot app; 2 tests for the layout and audio placement. The browser part can't run in our sandbox; Rishit's side runs it live.
+
+**Related:** agent mail R24
+
+## 2026-10-24: Render blueprint ready for going live, with a checklist
+
+**Type:** Changed
+**Area:** Other
+
+- `render.yaml` now lists `UNSTEP_GATEWAY_TOKEN` (required once `UNSTEP_OFFLINE` is removed), `CARTESIA_PRONUNCIATION_DICT_ID` (the new `unstep-atc-v2` id with the niner fix) and `UNSTEP_ELASTIC_AGENTS`, all filled in the dashboard.
+- [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md) section 2: "Going live on Render", the steps only Deekshith can do in the Render and Vercel dashboards, the plan choice, and that pitch latency numbers come from laptop runs only.
+
+**Related:** agent mail R25
+
+## 2026-10-24: The Moss search step says why no hint came out
+
+**Type:** Fixed
+**Area:** Edge device
+
+- Rishit's review of M3 (R23): the search runs before the age check, so the console could show "Moss searched... top hit X" followed by no hint, as if the hit were ignored. The evidence now carries `no_hint` (clearance too old, no restrictive instruction to guess, or runway not at this airport) and the trace step ends with "No hint: ...".
+- Checked: 1 new test (stale clearance).
+
+**Related:** agent mail R23
+
+## 2026-10-24: Cartesia feedback: the "niner" respelling lesson
+
+**Type:** Docs
+**Area:** Audio
+
+- [09-cartesia-feedback.md](09-cartesia-feedback.md) new section: our own pronunciation entry `niner -> NY-ner` made Sonic say "N-one-er" and broke ink-2 on every runway with a 9. Found by the TTS to STT eval; before and after numbers (runway 0.852 to 1.0, readback precision 0.882 to 1.0). Mild request to Cartesia: document the respelling format or validate entries.
+- Action for Deekshith: upload the new dictionary (`python scripts/upload_pronunciation_dict.py --name unstep-atc-v2`) and set `CARTESIA_PRONUNCIATION_DICT_ID` to the printed id.
+
+**Related:** agent mail R22
+
+## 2026-10-24: Seats for walk-up pilots: freed when the phone is gone, presenter reset, full-room answer
+
+**Type:** Added
+**Area:** Other
+
+- Judges may scan the console QR and become planes (R22). A walk-up plane's seat is now freed when its phone has been gone for 20 s: its key and stream end, open events for it are marked "cancelled" (nothing was sent), its cockpit agent stops, and it leaves `/live/stations`, so the plane goes back to the fleet. The team planes (N123AB, H456) are never freed.
+- Presenter reset: the controller seat sends `{type: "reset"}`; every walk-up seat is freed (its phone gets `seat_freed` and is closed), traces, radio log, insights, reports and the key log are cleared, every seat gets `room_reset`, and `/live/stats` counts only from the reset.
+- A full room answers "All 6 planes are taken. Watch on the projector." with `full: true`; the pilot app shows it as a message, not an error.
+- Checked: 3 tests (freeing after a disconnect, reset only from the controller seat, full room through the real route); vitest and build pass.
+
+**Related:** agent mail R22
+
+## 2026-10-24: First live evaluation numbers, and per-line rows in the eval output
+
+**Type:** Docs
+**Area:** Audio
+
+- Rishit ran `scripts/eval_unstep.py --live --n 40` on real Cartesia (R21): callsign 0.95, action 1.0, runway 0.852, readback-error precision 0.882 and recall 1.0, finalize p50 598.5 ms and p95 1514 ms. Recorded in [16-sponsor-depth.md](16-sponsor-depth.md) section 7 with Rishit's Moss numbers (0 to 1 ms over six sessions, no cloud indexes, Inference first token about 165 ms warm).
+- The script now writes one row per line (`text, heard, callsign_ok, runway_ok, action_ok, flagged, labelled, reason`, plus audio length in live runs) and prints every miss, so runway misses can be turned into key terms or pronunciation fixes.
+
+**Related:** agent mail R21
+
+## 2026-10-24: STT finalize time per hop on the live trace (S1)
+
+**Type:** Added
+**Area:** Audit
+
+- Two new trace timings so the console waterfall shows where speech-to-text time goes: `cockpit_stt_final` (the cockpit's own finalize on what it heard, from its `cockpit_stt` audit) and `tower_stt_final` (the tower's words final, ms after key release when streamed, or after the clip was sent on the fallback path).
+- Checked: 1 room test covering both.
+
+**Related:** [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md) section 4, agent mail R14, D13
+
+## 2026-10-24: Loader for FAA JO 7110.65 into Elastic (W2)
+
+**Type:** Added
+**Area:** Ground agents
+
+- `scripts/ingest_faa.py` splits the Order's chapter pages (HTML or text downloaded from faa.gov; we don't ship the text) into one document per numbered paragraph and indexes them into `unstep-faa` with id = paragraph number, `text` as `semantic_text` for hybrid search and `body` for BM25. `--dry-run` shows what it found. `UNSTEP_FAA_INFERENCE_ID` pins the inference endpoint.
+- The Compliance agent's `unstep_faa_search` tool searches this index, and the hub keeps a citation only if `unstep-faa/_doc/<paragraph>` exists (B5).
+- Checked: 3 tests on a made-up fixture page. Needs Deekshith to download the chapters and run it against the cluster.
+
+**Related:** [10-agentic-architecture.md](10-agentic-architecture.md) 4.4, agent mail R10 (W2)
+
+## 2026-10-24: Eyes-free cues use the agreed wording and never talk over the pilot (C2)
+
+**Type:** Changed
+**Area:** Other
+
+- Earcons now follow Rishit's side's wording (R20): two rising notes to join, a click on air, a low double buzz when busy, two clashing notes when you were talked over, one soft clash for others, a rising note for a correct readback, two falling notes for a wrong one, falling and rising tones for the link, a low note when the mic is off.
+- Short spoken lines ("You are Plane A.", "Frequency busy.", "You were talked over.", "Back online.", "Tap a line to talk.") are spoken by the hub in Unstep's own voice, left ear only (`cue_audio`). The hub only speaks these fixed phrases; readback cues are not spoken because the cockpit already says them.
+- Cues wait while the pilot's own key is down or an advisory is still playing, then play in order.
+- Checked: 5 vitest tests (including the queue rule) and 1 room test (fixed phrases, left ear only); build passes. Not tried on a phone with AirPods yet.
+
+**Related:** agent mail R20
+
+## 2026-10-24: Evaluation script for speech and readback checks
+
+**Type:** Added
+**Area:** Audio
+
+- `scripts/eval_unstep.py` (agreed in R19): a seeded synthetic set of instruction and readback pairs built from the fleet's callsigns and FAA-style phraseology, about 30 percent of readbacks carrying one labelled error (runway digit, callsign, action, missing callsign). No public ATC corpus is bundled.
+- `--dry-run` scores the checkers on the exact words (the baseline: all 1.0); `--live` speaks every line with Cartesia TTS and transcribes it with Cartesia STT (ink-2 with key terms, sent fast), then scores callsign, action and runway accuracy, readback-error precision and recall, and STT finalize p50 and p95; `--sessions` summarises latency per stage and readback outcomes from a live-session event log. Results go to `data/eval/` (gitignored).
+- Rishit's side runs `--live` where Cartesia is reachable; numbers go into docs/09 and the pitch only after that run.
+- Checked: 5 tests with fake speech.
+
+**Related:** [16-sponsor-depth.md](16-sponsor-depth.md) section 8, agent mail R19
+
+## 2026-10-24: Eyes-free pilot mode: every screen cue also has an earcon (C2, placeholders)
+
+**Type:** Added
+**Area:** Other
+
+- In the demo the pilot wears AirPods and doesn't look at the phone. `app/src/cues.ts` plays a short tone pattern in the left ear (Unstep's side; the radio plays in both ears) for: joined, frequency busy when you press, your call stepped on, others stepped on, readback correct, readback wrong, link lost and back, mic off. Rising means good, falling means bad, repeated means urgent; each is under 400 ms.
+- The tones are placeholders until Rishit's side sends the earcon wording (D12 item 3). Not yet tested with AirPods: the AirPods mic may switch Bluetooth to call mode and break left-ear-only, which needs a real phone.
+- Checked: 3 vitest tests (lengths, rising/falling, readback cue only on a status change); build passes.
+
+**Related:** [16-sponsor-depth.md](16-sponsor-depth.md) C2, agent mail R18, D12
+
+## 2026-10-24: Console data for each private advisory: waited, spoke, overlapped (C5)
+
+**Type:** Added
+**Area:** Audio
+
+- After every private advisory the room sends `advisory_report {station, id, waited_ms, spoke_ms, overlapped_ms, overlapped_by, cancelled, ts}` to the ATC console, the observer and that pilot. `waited_ms` is how long the cockpit held it for a gap (Rishit's held/released audits), `spoke_ms` the chime plus speech, `overlapped_ms` how much of it ran while anyone was keyed on the frequency (should be 0: the voice is cut when someone keys).
+- The room now keeps a short log of key presses for this. Drawing is Rishit's side.
+- Checked: 2 tests (numbers from a scripted key overlap, and a real room run).
+
+**Related:** [16-sponsor-depth.md](16-sponsor-depth.md) C5, agent mail R18
+
+## 2026-10-24: A pilot whose call was stepped on is told to say again (C1, blocked caller)
+
+**Type:** Added
+**Area:** Edge device
+
+- Merged Rishit's `CockpitEdge.notify_blocked()` (ab2f1db: busy hold, directives go first) and the "From Tower" prefix on directives (eca04b0).
+- The room now calls `notify_blocked` for every aircraft whose own transmission was in a stepped-on overlap ("Your last call was blocked. Say again."), skipping anything older than 30 s, and audits each as stage `recovery`.
+- Intercept agent wording fixed after Rishit's review: the stepped-on call is usually the controller's call to the pilot.
+- [16-sponsor-depth.md](16-sponsor-depth.md) updated with R19's decisions.
+- Checked: 1 new room test with fake edges.
+
+**Related:** agent mail R19
+
+## 2026-10-24: The controller hears who stepped on them (C1, tower side)
+
+**Type:** Added
+**Area:** Ground agents
+
+- A controller who was transmitting never hears the call that stepped on them. After a stepped-on cluster, the room now tells the tower seat, in Unstep's own voice: "Advisory. Helicopter 4-5-6 was blocked: request transition." The words come from the blocked pilot's typed line or streamed transcript; with none, "Ask them to say again".
+- Sent only to the `atc` seat as `recovery {to, from_station, kind: "blocked_caller", priority, text, tx_id, ts, audio}`, waits for the controller to stop talking (up to 10 s), and is dropped if older than 30 s. Each one is also an `AuditRecord` (stage `recovery`, with `delivered_ms`).
+- No contract change. The ATC console needs to play `recovery.audio` (Rishit's side). The blocked caller's own notice waits for Rishit's answer on the cockpit entry point.
+- Checked: 2 room tests (delivered to the controller only, with audio and an audit; stale ones dropped). Offline voice only.
+
+**Related:** [16-sponsor-depth.md](16-sponsor-depth.md) C1, agent mail R18, D11 item 3
+
+## 2026-10-24: Moss searches the plane's memory with what the cockpit heard (M3)
+
+**Type:** Added
+**Area:** Edge device
+
+- The garbled fragment the cockpit heard (Rishit's live run: "Cessna 123, short runway 30") now runs as a hybrid Moss search (`alpha` 0.5) over this plane's own clearances, offline, in the same call that builds the hint (`unstep/cockpit/hint.py`).
+- The safety rule is unchanged (agreed in R18): the hint still comes from the newest clearance, so a better-ranked older clearance can never revive. The search is evidence: query, top hit, score, search ms and whether it agrees with the newest clearance.
+- The cockpit sends it as an `AuditRecord` (stage `hint_search`); the live trace shows "Moss searched this plane's session for ...: top hit ... (score ...), in ... ms" and a `moss_search` timing for the console.
+- Checked: 4 tests (garbled fragment finds the taxi clearance, an older better match never wins, failures keep the hint path safe, full room run shows the step). Local memory only; not run against live Moss.
+
+**Related:** [16-sponsor-depth.md](16-sponsor-depth.md) M3, agent mail R18
+
+## 2026-10-24: Sponsor depth plan agreed
+
+**Type:** Docs
+**Area:** Docs
+
+- [16-sponsor-depth.md](16-sponsor-depth.md): one real moment per sponsor with a measured number on the console, each item labelled built (with commit), agreed or proposed. The three demo moments picked with Rishit's side (R18): three-way recovery (Cartesia), Moss recovering the instruction from the garbled fragment, Elastic agents citing the FAA paragraph.
+
+**Related:** agent mail D10, R18
+
+## 2026-10-24: Pilots pick a language for Unstep's private repeat when they join
+
+**Type:** Added
+**Area:** Other
+
+- Rishit's cockpit now repeats approved directives in the pilot's language after the English (d711e89; Spanish, Hindi, French, only if every number survives). The join side is ours.
+- `POST /live/join?language=es` stores the language for that seat and calls `CockpitEdge.set_language()`; a `{type: "language", code}` socket message changes it later. Only `unstep.cockpit.translate.LANGUAGES` are kept, anything else means English only. `/live/stations` lists the offered languages.
+- Pilot app: a small "English, then ..." picker on the join screen, remembered on the phone.
+- Checked: 1 new test through the real routes and socket; vitest and build pass.
+
+**Related:** agent mail R17 (a), R18 item 2
+
+## 2026-10-24: Elastic ground agents as files, a deploy script and the hub client (B5)
+
+**Type:** Added
+**Area:** Ground agents
+
+- `elastic/`: three Agent Builder tools, three agents (Intercept, Compliance, Readback Auditor) and two Workflows (`unstep-blocked-call`, `unstep-readback-audit`). `scripts/deploy_elastic.py` creates them (`--dry-run` prints every request).
+- `unstep/ground/elastic_agents.py`: with `UNSTEP_ELASTIC_AGENTS=1` the live room runs the workflow per stepped-on call and reads the agents' answers back from `unstep-proposals`. The agents never write the instruction: they add the FAA citation (kept only if that paragraph exists in `unstep-faa`) and can lower the confidence. A wrong readback starts the Readback Auditor off the radio path. Slow or failing runs keep the local proposal.
+- Two short runs instead of `waitForInput`, so the gateway stays the one enforcement point (see [10-agentic-architecture.md](10-agentic-architecture.md) 4.4).
+- Checked: 8 tests with mocked Kibana and Elasticsearch, plus a consistency check of the definitions. Not deployed: our sandbox can't reach Elastic, so the live deploy runs on Deekshith's machine. `unstep-faa` (W2) is still to be filled.
+
+**Related:** PRD FR-6, [10-agentic-architecture.md](10-agentic-architecture.md), agent mail R15, D9 item 4
+
+## 2026-10-24: Transmissions sound like a radio; Unstep's voice stays clean (R17 e)
+
+**Type:** Added
+**Area:** Audio
+
+- People in the room now hear every transmission the way an aircraft VHF radio sounds: band-limited to about 300 to 3400 Hz, mild clipping, a little hiss, a short squelch tail (`radio_voice()` in `unstep/live/radio.py`). Unstep's private advisory is never shaped, so the contrast itself says "this is not ATC".
+- Only the audio sent to listeners (`onair`, now with `radio: true`) is shaped. Cartesia STT, the overlap detector and the tower transcript still get the clean mix.
+- `UNSTEP_RADIO_SOUND=0` turns it off. This is local signal processing, not Cartesia's voice changer.
+- Checked: 2 tests (band limits, tail, never louder, room sends shaped audio while the mix stays clean). Not listened to on real speakers yet.
+
+**Related:** [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md) section 5 (Cartesia), agent mail R17
+
+## 2026-10-24: Every heard call goes into the plane's Moss session; "what did the tower tell me?" (P4, part 2)
+
+**Type:** Added
+**Area:** Edge device
+
+- `CockpitEdge.index_heard()` (`unstep/cockpit/edge.py`, agreed with Rishit in R15): every transmission a cockpit hears goes into its own `flight-<callsign>` session the moment its STT finishes, with `callsign`, `speaker`, `speakers`, `ts`, `stepped_on` and the event id for blocked calls. It indexes what this cockpit actually heard, static and gaps included, never the tower's full text. The pilot's own readbacks are indexed too (`type: readback`). Written through the cockpit writer only; never pushed.
+- `unstep/cockpit/queries.py` new intent "recent": "what did the tower tell me in the last minute?", "what did I miss?", "last 2 minutes". A Moss session query over heard docs filtered on `ts` (and `speaker: atc` when the question says tower); the answer reads the two newest matches, marks stepped-on ones, and cites the newest doc with the search time. Calls naming another aircraft are left out.
+- The live room tells each cockpit who was keyed for the audio it hears. Pilot app: new Ask line, and the private panel shows "Found in your Moss session in X ms".
+- Checked: 2 new tests (answer from local memory; a full stepped-on room run indexed and answered). Not run against live Moss here.
+
+**Related:** PRD 6.4, [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md) section 5, agent mail R15
+
+## 2026-10-24: Private advisory streams to the pilot's phone as Cartesia speaks it
+
+**Type:** Changed
+**Area:** Audio
+
+- Rishit's live run showed about 1.5 s from approval to sound while Cartesia's first audio was 131 ms (R14): the phone got the advisory only after the whole line was synthesized.
+- `unstep/live/room.py` `StreamingTTS`: each TTS chunk goes to the pilot's phone at once as `advisory_chunk {id, seq, sample_rate, pcm}` (the first chunk starts with the advisory chime), then `advisory_end {id, chunks, cancelled}`. The full clip still follows as `advisory_audio` with `streamed: true`, for "Play again" and older pages.
+- Pilot app (`app/src/audio.ts`): plays chunks back to back in the left ear, in `seq` order; a cut-off line (pilot keys, frequency busy) stops at once.
+- Checked: 4 Python tests (chunk order, chime first, cut-off, full room run) and a vitest for PCM decoding; `npm run build` passes. Not heard on a real phone or with live Cartesia yet.
+
+**Related:** PRD section 9, agent mail R14 item 2
+
+## 2026-10-24: Moss session for every plane, and a Moss frequency session on the hub (P4, part 1)
+
+**Type:** Changed
+**Area:** Edge device
+
+- `UNSTEP_MOSS_AIRCRAFT` now defaults to 6 (`config.moss_aircraft()`), so every plane that joins gets its own Moss session when live. Rishit checked six real sessions at once (agent mail R3): 0 to 1 ms searches, no new cloud indexes. Per-aircraft sessions are never pushed.
+- The hub's Frequency Monitor now keeps `freq-<frequency>` in Moss when live (local memory offline). It stays the only writer; any other writer is refused. If Moss fails, the monitor switches to local memory and keeps raising insights.
+- Next (needs Rishit's yes, his files): index every transmission a plane hears and every readback into its own session, and answer "what did the tower tell me in the last minute?" with a Moss search filtered on `ts`.
+- Checked: 2 tests with local memory and a failing stand-in for Moss; not run against live Moss here.
+
+**Related:** PRD 6.4, [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md) section 5, agent mail R3, R4
+
+## 2026-10-24: First call after the hub starts is no longer lost
+
+**Type:** Fixed
+**Area:** Other
+
+- Rishit saw the tower's first line after a server start never go on air, with no error (R13 item 2).
+- `python -m unstep.live` now starts the room (cockpit agents, Moss sessions, links) when the server starts (`create_live_app(warm_start=True)`), not on the first socket. Tests keep the lazy start, so the ATC password check still runs before the room starts there.
+- A seat that connects while the room is still starting gets a `status` "Room is warming up" within 0.5 s; what it sends meanwhile waits in the socket and is handled once the room is ready (checked with a slow start in a test).
+- A typed line whose speech fails or comes back with no audio is no longer dropped quietly: the seat and the console get a `status` "Not sent: ... Try again." and the server logs it.
+- Checked: 3 new tests; not reproduced live here (no Cartesia), so the root cause of Rishit's case is not confirmed.
+
+**Related:** agent mail R13
+
+## 2026-10-24: Live Elastic stats per frequency for the console (W4)
+
+**Type:** Added
+**Area:** Audit
+
+- `GET /live/stats?since_ms=<run start>` returns `{frequency, since_ms, window_s, backend, blocked_calls, readback_errors, auto_resends, per_callsign: [{callsign, blocked, readback_errors, auto_resends}], esql, took_ms}`. Answers are cached for 2 s, so many consoles polling every 5 s ask Elastic at most once per 2 s.
+- With Elastic configured, two ES|QL queries run over the events index (`unstep/ground/stats.py`): blocked calls per event and callsign on this frequency, and readback errors and auto-relays per event. Readbacks and approvals carry no frequency or callsign, so they are joined to their blocked call by `event_id`. The query text goes back in `esql` so the console can show it. The frequency and time are checked and inlined, never free text.
+- Without Elastic, or if the cluster fails, the same counts come from the room's traces (`backend: "local"`, plus `elastic_error`).
+- `auto_resends` means directives the policy agent re-sent on its own (`approved_via: "auto"`).
+- Checked: 6 tests, Elastic mocked with `httpx.MockTransport`; not run against a real cluster here.
+
+**Related:** agent mail R10 (W4), R11 item 2
+
+## 2026-10-24: Hub serves https for phone microphones on the LAN (W5)
+
+**Type:** Added
+**Area:** Other
+
+- Phones only allow the microphone on https. `python -m unstep.live --https` makes a self-signed certificate for localhost, 127.0.0.1 and the laptop's LAN address (`unstep/live/certs.py`, stored in `data/certs/`, gitignored) and serves https and wss. `--cert` and `--key` use your own. Uses the `cryptography` package if installed, otherwise the `openssl` tool.
+- The tunnel in docs/15 section 2 stays the main path; this is the no-internet fallback. Each phone accepts the certificate warning once.
+- Checked: 3 tests, including a real hub process answering https and a wss socket with the generated certificate. Not yet tried on a real phone.
+
+**Related:** [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md) section 2, agent mail R10 (W5)
+
+## 2026-10-24: Cockpit voices hold while the frequency is busy (P5 hook)
+
+**Type:** Added
+**Area:** Edge device
+
+- Merged Rishit's `CockpitEdge.set_frequency_busy(busy)` (82ee93e): busy cuts the advisory being spoken and holds new ones, free releases them in order.
+- `unstep/live/room.py` `_key()` now calls it on every aircraft's cockpit agent when the first key goes down and when the last key comes up. A plane that joins while someone is talking starts held. Failures are logged, never raised into the key path.
+- Checked: 1 new room test with fake edges, Rishit's 8 `tests/test_edge_busy.py` tests pass here.
+
+**Related:** PRD FR-10, agent mail R11, R12
+
+## 2026-10-24: Live room sends replays to Cartesia fast, not at real time (W3)
+
+**Type:** Changed
+**Area:** Audio
+
+- Rishit's 15-run re-test showed the manual endpoint (`/stt/websocket`) transcribes audio sent as fast as possible just as well, so waiting a clip's length before finalize was wasted time (about 3 s per call).
+- The room no longer paces the tower clip fallback (`TowerTranscriber(realtime=False)`), the cockpit hearing the radio mix (`run_audio(realtime=False)`), or the readback clip fallback. Streamed push-to-talk (P3) is unchanged; the turns endpoint keeps real-time pacing.
+- `UNSTEP_REALTIME_REPLAY=1` brings back real-time pacing if Cartesia ever starts returning empty transcripts again. `TowerTranscriber` still paces by default, so presenter mode is unchanged.
+- The room now forwards the P7b word alignment report as an `AuditRecord` (stage `tower_word_alignment`) after each tower transcript.
+- Checked with fake STT (3 new tests); not run against live Cartesia here.
+
+**Related:** [09-cartesia-feedback.md](09-cartesia-feedback.md) "Measured re-test", agent mail R9, R10 (W3)
+
+## 2026-10-24: Tower words from ink-2 now carry ink-whisper's times (P7b)
+
+**Type:** Fixed
+**Area:** Ground agents
+
+- Cartesia gives key terms only on `ink-2` and word times only on `ink-whisper`, so the two tower texts could differ and the struck "blocked words" could be the wrong words.
+- `unstep/ground/tower.py` `align_words()`: both texts are cut into comparison keys (lowercase, one digit per key, spoken digits as digits) and matched with difflib. Each `ink-2` word takes the time span of the keys it matched, so "1-2-3" gets the span of "one two three". Words with no match get times interpolated between their neighbours.
+- `TowerTranscriber` and `TowerStream` both use it and keep the report in `last_alignment`; `alignment_audit()` turns it into an `AuditRecord` (stage `tower_word_alignment`) listing the interpolated words. No contract change.
+- Checked with fake STT streams only (8 new tests); not run against live Cartesia.
+
+**Related:** [09-cartesia-feedback.md](09-cartesia-feedback.md) item 2, agent mail D4, D7
+
+## 2026-10-24: Cartesia re-test written up, repro script runs without PYTHONPATH
+
+**Type:** Docs
+**Area:** Audio
+
+- [09-cartesia-feedback.md](09-cartesia-feedback.md): new "Measured re-test" section from Rishit's 15-run `scripts/cartesia_repro.py` results, only what reproduced: the manual endpoint accepts fast (not real-time) audio, word timestamps only on `ink-whisper`, handshake and finalize numbers. The hedged-finalize workaround (P7a) never won, so it is dropped.
+- `scripts/cartesia_repro.py` adds the repo root to `sys.path`, so it runs from anywhere.
+- Earlier today, not logged before: P1 per-stage `timings` on every live trace (e040a1a), P2 Elastic percolator readback check (453c396), P3 mic frames streamed to STT while the key is held (d3e183b), P7c the repro script itself (08ce979).
+
+**Related:** agent mail R9, D7
+
+## 2026-10-24: Pilot app, join on demand, and a sponsor plan
+
+**Type:** Added
+**Area:** Other
+
+- `app/`: pilot phone app (React, TypeScript, Vite) that runs on Vercel or at `/pilot/` on the hub. One tap joins as the next free plane; hold-to-talk with live "someone is talking" and TALKED OVER states, private advisory panel, readback result, tap-to-say lines, Ask Unstep, timings.
+- Hub: `POST /live/join` (six-plane fleet, cockpit agent per plane on demand), live `keyed` and `stepon_live` messages, ping/pong clock sync, `UNSTEP_ALLOWED_ORIGINS`, `/live/pilot-link` for the QR, `UNSTEP_MOSS_AIRCRAFT`.
+- Seed data uses each plane's own spoken callsign, so H456 no longer gets Cessna clearances.
+- [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md): hosting, crowd demo flow, millisecond-level ideas, Moss in-session indexing, Cartesia and Elastic plans, dataset build and validation.
+- CLAUDE.md: agent mail rules, no force pushes on shared branches, commit as the human.
+- Our 5 commits from earlier today were re-authored from a tool identity to Dee-1862; Rishit was told in agent mail (D2).
+
+**Related:** [Pilot App and Sponsor Plan](15-pilot-app-and-sponsor-plan.md), [Live Demo](11-live-demo.md)
+
+## 2026-10-24: Projector-ready Control Tower console
+
+**Type:** Added
+**Area:** Other
+
+- Added `/live/atc/` with an illustrative airport, evidence-driven aircraft states, plain-English event summary, decision cards with policy reasons and expiry, radio lanes, and numbered explanations with honest timing labels.
+- Added a three-seat picker and password dialog. `UNSTEP_ATC_PASSWORD` protects the tower socket with constant-time comparison before joining; existing plane and observer protocols are unchanged.
+- Added route, authentication, role isolation and policy wording tests in `tests/test_atc_console.py`. Tests were written but pytest was not run in this sandbox.
+- Join URL is displayed prominently; QR generation remains a TODO. Ground-agent stand-ins and missing timing measurements are disclosed on screen.
+
+**Related:** [ATC console spec](14-atc-console.md), [Live demo](11-live-demo.md)
+
 ## 2026-10-24: Live room built: pick a seat, agents in the middle, controller for edge cases
 
 **Type:** Added

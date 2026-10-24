@@ -16,6 +16,21 @@ The 2-minute demo-first pitch, a 30-second version per sponsor, and answers to t
 - **If anything fails, say "here's the recording" and play the backup video.** Don't debug on stage.
 - **Name the sponsor at the moment its tech acts**, not in a list at the end.
 
+## 1a. The hook, with a source
+
+At the NTSB hearing on the 2025 Washington DC midair collision, the DCA tower operations manager was asked whether a controller can tell that a call was stepped on. His answer: **"There's nothing."** ([AIN, 2025-08-04](https://backend.ainonline.com/aviation-news/air-transport/2025-08-04/ntsb-dc-midair-hearing-panel-3-covers-frequency-issues)). Use this line, not the unsourced February 2026 story.
+
+**Prior art to name if asked** (it shows we did our homework): Rohde & Schwarz DSiT warns the *ground* that calls overlapped, but doesn't recover the words or tell the pilot. The EU HAAWAII project detected readback errors in controller trials (about 80% caught, 11% false alarms) and found meaning-based comparison works better than word by word. Enhanced Radar (YC W25) does ATC transcription and after-the-fact readback review. Unstep's difference: it recovers what was lost, a human approves, and the pilot hears it privately within seconds. Details: [research-pilots-and-controllers.md](research-pilots-and-controllers.md).
+
+**Objections real pilots and controllers raised, and our answer:**
+
+| They said | Our answer |
+| --- | --- |
+| "This is not the place to guess or AI-hallucinate." | It never guesses an instruction: the words come from the controller's own transmission, the pilot's answers must quote a real record, and anything uncertain says "Say again" |
+| "If it gives false warnings 5 times a day, it will be ignored." | We measure it: the clean call raises nothing. Next step is false-alarm rates on real recordings |
+| "Who is liable? More work for the controller?" | The controller decides edge cases in one click or one word; routine stop/wait calls repeat the controller's own words |
+| "Another voice in my head." | Chime plus "Advisory", distinct voice, left ear only, stops when the pilot speaks |
+
 ## 2. Two-minute pitch
 
 | Time | Key | Screen | Say |
@@ -35,7 +50,7 @@ The 1.16% figure is from the FAA CAMI study DOT/FAA/AM-05/19 (research RB-1). Sa
 ## 3. Thirty-second versions
 
 **Cartesia (lead with voice):**
-"Listen." *(squeal)* "That instruction was lost. Unstep caught it, and now Cartesia speaks the fix in the pilot's left ear, then checks the readback." *(23 caught, corrected)* "Voice in and voice out for every person in the loop: Ink with ATC key terms, Sonic with our pronunciation dictionary for 'niner' and 'tree', barge-in with context cancel. First audio in about a hundred milliseconds, measured right here."
+"Listen." *(squeal)* "That instruction was lost. Unstep caught it, and now Cartesia speaks the fix in the pilot's left ear, then checks the readback." *(23 caught, corrected)* "Voice in and voice out for every person in the loop: Ink with ATC key terms, Sonic with our pronunciation dictionary for 'tree' and 'fife', barge-in with context cancel. First audio in about a hundred milliseconds, measured right here."
 
 **Moss (lead with speed and memory):**
 "Listen." *(squeal)* "The cockpit only heard noise. Moss searched the aircraft's own clearance history locally, under a millisecond, and found the likely instruction, with its source record on screen. Then the pilot asks 'what runway was I told to stop at?' and Moss plus Moss Inference answer with an exact quote of the approved clearance. Nothing it says can be invented: every answer must quote a real record."

@@ -1,0 +1,10 @@
+{
+  "id": "unstep_readback_history",
+  "type": "esql",
+  "description": "Readback results for one blocked-call event: whether each readback matched the delivered directive.",
+  "tags": ["unstep", "audit"],
+  "configuration": {
+    "query": "FROM unstep-events | WHERE type == \"ReadbackResult\" AND event_id == ?event_id | SORT @timestamp ASC | KEEP @timestamp, event_id, match | LIMIT 10",
+    "params": {"event_id": {"type": "keyword", "description": "The blocked-call event id"}}
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "tower_transcript": "The tower’s original words are unavailable, so a human must check the instruction.",
+  "addressed": "The tower’s call may be for a different plane, so a human must check the recipient.",
+  "fresh": "The tower’s instruction may be out of date, so a human must check it still applies.",
+  "restrictive": "This is not a verified stop/wait instruction and could let the plane move, so a human must decide.",
+  "confidence": "The agents are not confident enough that these are the right words, so a human must check them.",
+  "hint_agrees": "The plane’s memory disagrees with the recovered instruction, so a human must resolve the difference.",
+  "autonomy_on": "Auto-resend is switched off, so a human must decide whether to send this instruction."
+}

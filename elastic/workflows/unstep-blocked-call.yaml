@@ -1,0 +1,60 @@
+# One run per stepped-on call (B5). The hub starts it with the manual trigger and
+# reads the result back from the unstep-proposals index by event id. The hub, not
+# this workflow, builds the instruction text from the controller's transcript and
+# the gateway enforces the human decision (FR-6): the agents only confirm the match,
+# explain it, and cite the FAA paragraph. A separate run (unstep-readback-audit)
+# handles readbacks, instead of a waitForInput step here: the controller decides on
+# the Unstep console, and the gateway is the one enforcement point.
+version: "1"
+name: unstep-blocked-call
+description: Intercept and Compliance agents for one stepped-on radio call
+enabled: true
+triggers:
+  - type: manual
+    inputs:
+      - name: event_id
+        type: string
+        required: true
+      - name: callsign
+        type: string
+        required: true
+      - name: heard_text
+        type: string
+        required: true
+      - name: tower_text
+        type: string
+        required: true
+      - name: lost_words
+        type: string
+        required: false
+      - name: instruction
+        type: string
+        required: true
+steps:
+  - name: intercept
+    type: ai.agent
+    agent-id: unstep-intercept
+    create-conversation: true
+    with:
+      message: |-
+        Event {{ inputs.event_id }} for {{ inputs.callsign }}.
+        The cockpit heard: "{{ inputs.heard_text }}"
+        The controller said at the same time: "{{ inputs.tower_text }}"
+        Words lost in the overlap: "{{ inputs.lost_words }}"
+  - name: compliance
+    type: ai.agent
+    agent-id: unstep-compliance
+    create-conversation: true
+    with:
+      message: |-
+        Proposed instruction for {{ inputs.callsign }}: "{{ inputs.instruction }}"
+  - name: store
+    type: elasticsearch.index
+    with:
+      index: unstep-proposals
+      id: "{{ inputs.event_id }}"
+      document:
+        event_id: "{{ inputs.event_id }}"
+        execution_id: "{{ execution.id }}"
+        intercept: "{{ steps.intercept.output.message }}"
+        compliance: "{{ steps.compliance.output.message }}"

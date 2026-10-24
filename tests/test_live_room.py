@@ -136,6 +136,7 @@ def test_stepped_on_call_runs_end_to_end(make_room):
         await wait_for(lambda: only_trace(room)["status"] in ("confirmed", "readback_wrong"))
         trace = only_trace(room)
         kinds = [s["kind"] for s in trace["steps"]]
+        kinds = [k for k in kinds if k != "moss_search"]  # M3 search evidence can land anywhere in between
         assert kinds[:3] == ["detected", "hint", "proposed"] or kinds[:2] == ["detected", "proposed"]
         assert {"approved", "delivered", "readback"} <= set(kinds)
         assert trace["tower"]["text"] == TOWER_TEXT
@@ -195,6 +196,8 @@ def test_app_serves_seats_and_joins(monkeypatch):
     assert [s["id"] for s in seats["stations"]] == ["atc", "N123AB", "H456", "observer"]
     with client.websocket_connect("/live/ws/atc") as ws:
         hello = ws.receive_json()
+        if hello["type"] == "auth_status":  # the ATC seat reports its password state first
+            hello = ws.receive_json()
         assert hello["type"] == "hello" and hello["you"] == "atc" and hello["autonomy"] is True
         assert {n["id"] for n in hello["graph"]} >= {"radio", "gateway", "policy", "controller", "elastic"}
         ws.send_json({"type": "autonomy", "on": False})

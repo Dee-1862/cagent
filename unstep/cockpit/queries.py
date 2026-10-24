@@ -26,13 +26,16 @@ from unstep.contracts import PilotQuery
 
 log = logging.getLogger("unstep.queries")
 
-Intent = Literal["last_clearance", "say_again", "taxi_route", "unknown"]
+Intent = Literal["recent", "last_clearance", "say_again", "taxi_route", "unknown"]
 
 NO_RECORD = "Advisory. No record found. Ask the controller."
 SAY_AGAIN = "Advisory. Say again."
 
 # Order matters: "repeat the last clearance" is a last-clearance question, not a say again.
 _INTENTS: list[tuple[Intent, re.Pattern]] = [
+    # "What did the tower tell me in the last minute?", "what did I miss?" (P4: Moss session search)
+    ("recent", re.compile(r"\b(last|past) (minute|\d+ (seconds?|minutes?)|few minutes)\b"
+                          r"|\bwhat did (the )?tower (say|tell)|\bwhat did i miss\b")),
     ("last_clearance", re.compile(r"\b(last|latest|current|my) (clearance|instruction)\b")),
     ("taxi_route", re.compile(r"\b(which|what) (taxiway|route)\b|\btaxi (route|via)\b|\bwhere do i taxi\b")),
     ("say_again", re.compile(r"\b(say again|repeat( that)?|what did (you|it) say)\b")),
@@ -94,14 +97,61 @@ async def _all(memory: Memory, flight_index: str, callsign: str, kind: str) -> t
     return sorted(docs, key=_ts, reverse=True), res.time_taken_ms
 
 
+RECENT_WINDOW_MS = 60_000
+NOTHING_RECENT = "Advisory. Nothing heard for you on the frequency in that time. Ask the controller."
+
+
+def recent_window_ms(question: str) -> int:
+    """'last 2 minutes' -> 120000, 'last 30 seconds' -> 30000, otherwise one minute."""
+    m = re.search(r"\b(\d+) (second|minute)s?\b", question.lower())
+    if not m:
+        return 3 * 60_000 if "few minutes" in question.lower() else RECENT_WINDOW_MS
+    return min(int(m[1]) * (1000 if m[2] == "second" else 60_000), 30 * 60_000)
+
+
+async def _recent(memory: Memory, flight_index: str, callsign: str, question: str,
+                  now: Optional[int] = None) -> tuple[str, Optional[Doc], float]:
+    """What this cockpit heard in the last window: a Moss session search filtered on ts.
+
+    Semantic search ranks the heard transmissions against the question; the answer then
+    reads the newest matches, oldest first. Only what this cockpit actually heard is
+    indexed, so a stepped-on call comes back with its gaps, never the tower's full text.
+    """
+    since = (now or now_ms()) - recent_window_ms(question)
+    clauses: list[dict] = [{"callsign": {"$eq": callsign}}, {"type": {"$eq": "heard"}}, {"ts": {"$gte": since}}]
+    if "tower" in question.lower():
+        clauses.append({"speaker": {"$eq": "atc"}})
+    flt = {"$and": clauses}
+    res = await memory.query(flight_index, question, top_k=5, filter=flt)
+    moss_ms = res.time_taken_ms
+    docs = res.docs
+    if not docs:  # nothing ranked (keyword stand-in offline): every heard doc in the window
+        fetched = await memory.fetch(flight_index, filter=flt)
+        moss_ms += fetched.time_taken_ms
+        docs = fetched.docs
+    docs = [d for d in docs if not names_other_aircraft(d.text, callsign)]
+    if not docs:
+        return NOTHING_RECENT, None, moss_ms
+    newest = sorted(docs, key=_ts, reverse=True)[:2]
+    parts = []
+    for d in reversed(newest):
+        note = " (stepped on, words missing)" if str(d.metadata.get("stepped_on")).lower() == "true" else ""
+        parts.append(f"\"{d.text}\" at {_hhmm(_ts(d))}{note}")
+    who = "Heard from tower" if "tower" in question.lower() else "Heard on frequency"
+    answer = f"Advisory. {who} in the last {recent_window_ms(question) // 1000} seconds: " + "; then ".join(parts) + "."
+    return answer, newest[0], moss_ms
+
+
 def _clearance_answer(doc: Doc) -> str:
     return f"Advisory. Last clearance: {doc.text}, issued {_hhmm(_ts(doc))}."
 
 
-async def _answer(memory: Memory, flight_index: str, callsign: str, intent: Intent):
+async def _answer(memory: Memory, flight_index: str, callsign: str, intent: Intent, question: str = ""):
     answer, source, moss_ms = NO_RECORD, None, None
 
-    if intent == "last_clearance":
+    if intent == "recent":
+        answer, source, moss_ms = await _recent(memory, flight_index, callsign, question)
+    elif intent == "last_clearance":
         docs, moss_ms = await _all(memory, flight_index, callsign, "clearance")
         if docs:
             answer, source = _clearance_answer(docs[0]), docs[0]
@@ -195,7 +245,7 @@ async def answer_query(memory: Memory, flight_index: str, callsign: str, questio
                 timeout=5.0,  # a slightly cold Moss Inference needs more than 3 s
             )
         else:
-            answer, source, moss_ms = await _answer(memory, flight_index, callsign, intent)
+            answer, source, moss_ms = await _answer(memory, flight_index, callsign, intent, question)
     except Exception:  # Moss offline or session closed: say so rather than crash
         log.warning("pilot query failed; answering no record", exc_info=True)
         answer, source, moss_ms = NO_RECORD, None, None

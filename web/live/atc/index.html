@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Unstep · Control Tower</title>
+  <link rel="stylesheet" href="/live/static/atc/atc.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="/live/">UNSTEP<span class="brand-mark">↗</span></a>
+    <div class="identity"><strong>Control Tower</strong><small>KUNS · Radio <span id="frequency">118.700</span></small></div>
+    <div class="presence"><b id="planes">0 planes connected</b><small id="password-state">Checking tower access…</small></div>
+    <div class="pilot-join"><a id="join-qr" href="/live/"><img id="qr" width="96" height="96" alt="Scan to join as a plane"></a>
+    <div class="join"><small>JOIN AS A PLANE</small><a id="join-url" href="/live/"></a><small id="phone-hint" hidden>Phones: start with --host 0.0.0.0 and open this page via the laptop's LAN IP</small></div>
+    </div>
+    <span id="connection" class="connection">OFFLINE</span>
+    <button id="sound" class="quiet">Turn on sound</button>
+    <button id="reset" class="quiet" disabled title="Frees every walk-up plane and clears the board. The two team planes stay.">Reset room</button>
+  </header>
+  <main>
+    <section class="headline" aria-live="polite">
+      <h1>What just happened</h1>
+      <p id="happened">Waiting for the first radio call.</p>
+    </section>
+    <div class="hero">
+      <section class="map-panel panel">
+        <div class="section-title"><h2>The airport</h2><small>Illustration · positions are not live tracking</small></div>
+        <svg id="airport" viewBox="0 0 1000 440" role="img" aria-labelledby="map-title map-desc">
+          <title id="map-title">Connected aircraft at Unstep airport</title>
+          <desc id="map-desc">Connected planes are arranged on the taxiway and around the field. Positions are illustrative. Status and ON AIR labels update from radio events.</desc>
+          <defs><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#233041" stroke-width=".5"/></pattern></defs>
+          <rect width="1000" height="440" fill="url(#grid)"/>
+          <path d="M40 190H640" class="taxiway"/><path d="M40 190H640" class="taxi-center"/>
+          <rect x="640" y="25" width="70" height="365" rx="4" class="runway"/>
+          <path d="M675 75V340" class="runway-center"/>
+          <text x="659" y="57" class="runway-number">33</text><text x="659" y="377" class="runway-number">15</text>
+          <g id="stop-sign"><path d="M608 162V218M615 162V218" class="stop-line"/><text x="590" y="244" text-anchor="end" class="small-map">Stop line</text></g>
+          <text x="45" y="244" class="small-map">Taxiway B</text><text x="640" y="420" class="small-map">Runway 33</text>
+          <g id="tower" transform="translate(765 390)">
+            <path d="M-10 14L-7-8H7L10 14ZM-16-22H16L12-8H-12ZM0-22V-31M-20 14H20" class="tower-icon"/>
+            <text x="30" y="0" class="small-map">Tower &#183; You are here</text>
+            <text id="tower-on-air" x="30" y="20" class="map-on-air"></text>
+          </g>
+          <g id="map-planes"></g>
+        </svg>
+        <div class="legend"><span>○ Listening</span><span class="bad">◉ Missed a call</span><span class="amber">● Instruction delivered</span><span class="good">✓ Read back correctly</span></div>
+      </section>
+      <section class="decisions panel">
+        <div class="section-title"><h2>Needs your decision <span id="decision-count">0</span></h2><small>You have the final say</small></div>
+        <div id="inbox"></div>
+        <label class="switch"><input id="autonomy" type="checkbox" disabled><span>Auto-resend the tower’s own stop/wait instructions</span></label>
+      </section>
+    </div>
+    <section class="panel radio-panel">
+      <div class="section-title"><h2>Radio <small>One shared frequency</small></h2><span id="onair" class="cyan">Waiting for radio activity</span></div>
+      <div id="radio"></div>
+      <form id="say-form"><label class="sr-only" for="say">Tower radio message</label><input id="say" maxlength="300" placeholder="Say something on the tower radio…" required><button id="transmit" type="submit" disabled>Transmit</button></form>
+      <div class="suggestions"><button data-say="Cessna one two three, hold short runway three three.">Tell Plane A to stop</button><button data-say="Cessna one two three, cleared for takeoff runway three three.">Clear Plane A for takeoff</button></div>
+    </section>
+    <section class="panel analytics"><div class="section-title"><h2>Safety analytics <small id="stats-source">Elastic</small></h2><small id="stats-note">Counts since this console opened</small></div><div class="stat-tiles"><div><b id="stat-blocked">–</b><span>Blocked calls</span></div><div><b id="stat-readback">–</b><span>Readback errors caught</span></div><div><b id="stat-auto">–</b><span>Auto-resent stop/wait calls</span></div></div><details class="esql"><summary>Show the ES|QL query</summary><pre id="stat-esql"></pre></details></section>
+    <section class="panel explanation"><div class="section-title"><h2>How Unstep handled it</h2><small id="event-label">Evidence appears as it arrives</small></div><div id="steps"></div><div id="history"></div></section>
+    <aside id="notice" role="status"></aside>
+    <footer><span id="mode">Connecting to the room…</span> · Ground agents: stand-in until Elastic Workflow · Missing timings are labeled, never estimated.</footer>
+  </main>
+  <dialog id="auth"><form id="auth-form"><h2>Control Tower access</h2><p id="auth-note">Enter the ATC password to join.</p><label for="password">ATC password</label><input id="password" type="password" autocomplete="current-password"><button>Enter Control Tower</button><a href="/live/">Choose another seat</a></form></dialog>
+  <script>window.UNSTEP_TOKEN_QUERY = "__UNSTEP_TOKEN_QUERY__";</script>
+  <script type="module" src="/live/static/atc/atc.js"></script>
+</body>
+</html>

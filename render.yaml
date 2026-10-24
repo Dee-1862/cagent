@@ -1,0 +1,45 @@
+# Render blueprint: New > Blueprint, pick this repo and branch. Fill the secret values in the dashboard.
+services:
+  - type: web
+    name: unstep
+    runtime: docker
+    plan: free               # sleeps after about 15 minutes idle and takes about a minute to wake; 512 MB RAM
+    healthCheckPath: /health   # answered for any Host header, so Render's internal check passes
+    envVars:
+      # Free plan has 512 MB: live mode with Moss on every plane ran out of memory. One Moss plane
+      # fits; raise it (up to 6) on a bigger plan.
+      - key: UNSTEP_MOSS_AIRCRAFT
+        value: "1"
+      - key: UNSTEP_ALLOWED_HOSTS
+        value: "*.onrender.com"
+      - key: UNSTEP_OFFLINE    # delete this to use real Cartesia, Moss and Elastic
+        value: "1"
+      # Room code. Required whenever UNSTEP_OFFLINE is removed: with live keys and no code, anyone
+      # with the link spends our Cartesia credits. Set the same value as VITE_UNSTEP_TOKEN in Vercel.
+      - key: UNSTEP_GATEWAY_TOKEN
+        sync: false
+      - key: UNSTEP_PUBLIC_URL
+        value: "https://unstep.onrender.com"
+      # The pilot app on Vercel: every deployment address of this project, plus the production one.
+      - key: UNSTEP_ALLOWED_ORIGINS
+        value: "https://cagent*.vercel.app,https://*-dee-1862s-projects.vercel.app"
+      - key: UNSTEP_ATC_PASSWORD
+        sync: false
+      - key: CARTESIA_API_KEY
+        sync: false
+      - key: CARTESIA_VOICE_ID
+        sync: false
+      # The unstep-atc-v2 dictionary id (the niner fix), from scripts/upload_pronunciation_dict.py. Not the old id.
+      - key: CARTESIA_PRONUNCIATION_DICT_ID
+        sync: false
+      - key: MOSS_PROJECT_ID
+        sync: false
+      - key: MOSS_PROJECT_KEY
+        sync: false
+      - key: ELASTIC_CLOUD_URL
+        sync: false
+      - key: ELASTIC_API_KEY
+        sync: false
+      # Set to 1 once scripts/deploy_elastic.py has created the agents and workflows.
+      - key: UNSTEP_ELASTIC_AGENTS
+        sync: false

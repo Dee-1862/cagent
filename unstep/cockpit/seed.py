@@ -8,7 +8,7 @@ instead of looking hardcoded (M-014).
 from __future__ import annotations
 
 from unstep.cockpit.memory import Doc, Memory, MossMemory, airport_index, flight_index
-from unstep.scenario import CALLSIGN, FREQUENCY, T0
+from unstep.scenario import CALLSIGN, FREQUENCY, SPOKEN, T0
 
 AIRPORT_ICAO = "KUNS"  # fictional demo field
 PREFLIGHT = "preflight"
@@ -40,10 +40,11 @@ def flight_docs(callsign: str = CALLSIGN, t0: int = T0) -> list[Doc]:
                       "ts": t0 - minutes_ago * 60_000, **meta},
         )
 
+    said = SPOKEN.get(callsign, callsign)
     return [
-        clr("clr-0005", "Cessna 1-2-3, Unstep Ground, information Bravo, altimeter 2992", 6),
-        clr("clr-0006", "Cessna 1-2-3, VFR departure to the north approved", 5),
-        clr("clr-0007", "Cessna 1-2-3, Runway 33, taxi via Bravo", 3, runway="33", route="Bravo"),
+        clr("clr-0005", f"{said}, Unstep Ground, information Bravo, altimeter 2992", 6),
+        clr("clr-0006", f"{said}, VFR departure to the north approved", 5),
+        clr("clr-0007", f"{said}, Runway 33, taxi via Bravo", 3, runway="33", route="Bravo"),
     ]
 
 

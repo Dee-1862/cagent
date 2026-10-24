@@ -144,7 +144,7 @@ Every script prints `skipped: ...` and exits 0 when its keys are missing.
 
 ## Responsible use
 
-- **Human approval for every directive.** Nothing reaches the cockpit as a directive without a controller's Approve. The dashboard click always works.
+- **A human authored or approved every directive.** The policy agent may auto-resend a blocked call only when it repeats the controller's own transmitted words, is a stop/wait instruction, is fresh and high confidence; the gateway re-checks it. Every auto-resend appears on the ATC console with its checks, one switch turns auto-resend off, and everything else (anything that lets a plane move) waits for the controller's Approve.
 - **Restrictive-only hints, with sources.** Before approval the pilot only hears a "Likely" hint for instructions that make the aircraft stop or wait (hold short, go around). Permissive instructions (cleared for takeoff, cross runway) are never hinted. No source record, no hint.
 - **Only the Unstep key commands Unstep.** Speech on the radio frequency is transcribed but never obeyed.
 - **Never mistaken for ATC.** Every message starts with a chime and "Advisory", in a distinct synthetic voice. No voice cloning of controllers.
@@ -183,3 +183,13 @@ Every message is an envelope `{"type": "AnomalyEvent", "ts": 1792800000000, "dat
 ```bash
 python -m pytest -q   # 129 passed, 1 skipped, offline
 ```
+
+## Control Tower console
+
+Run `python -m unstep.live` and open `/live/atc/` on the server (normally `http://127.0.0.1:8765/live/atc/`). Open `/live/` on the phones to pick Plane A or Plane B. Use the server's LAN or HTTPS tunnel address on phones. The projector-only link retains the existing read-only observer seat.
+
+**Laptop as the tower, phones as planes:** start with `python -m unstep.live --host 0.0.0.0`, add the laptop's LAN IP to `UNSTEP_ALLOWED_HOSTS` in `.env` (the gateway only answers local hosts otherwise), open `http://<LAN IP>:8765/live/atc/` on the laptop, and scan the QR code in its header with each phone. Phone microphones need HTTPS; without it, phones use the "say" buttons, which still go on the radio for real.
+
+Set `UNSTEP_ATC_PASSWORD` in your shell or local `.env` before starting the room. Choose Control Tower in the seat picker and enter it. The server verifies the password before joining the tower socket; plane and observer seats do not need it. If unset, tower access is open and the console says **ATC password not set**. The existing gateway token and origin checks still apply. Passwords travel in the first WebSocket frame, not in URLs; use HTTPS when sharing across a network.
+
+Click **Turn on sound** once to hear the radio and controller prompts. Type a tower instruction or use the two suggested transmissions. Approve or reject escalated proposals in the decision inbox; the auto-resend switch controls only verified stop/wait instructions. The map is illustrative, not live aircraft tracking. Status, lost words, policy reasons and readbacks come from received room messages. Unreported timings say **not measured**; offline speech and ground stand-ins are labeled. QR generation remains a TODO; the header displays the join address instead.

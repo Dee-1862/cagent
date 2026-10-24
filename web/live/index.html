@@ -22,6 +22,7 @@
     <p class="lede">Everyone shares one radio frequency. When two people talk at once, the call is stepped on for real,
       and Unstep's agents recover it. The controller only steps in for edge cases.</p>
     <div id="seats" class="seats"></div>
+    <p><a id="projector-seat" href="#observer">Projector only (read-only)</a></p>
     <p class="hint">Tip: open this page on several devices (or browser windows), one seat each.</p>
   </main>
 
@@ -83,6 +84,16 @@
   </main>
 
   <div id="status" class="status"></div>
+  <dialog id="tower-access">
+    <form id="tower-access-form">
+      <h2>Control Tower (laptop)</h2>
+      <p>Enter the ATC password. Leave blank if the room has no password set.</p>
+      <label for="tower-password">ATC password</label>
+      <input id="tower-password" type="password" autocomplete="current-password">
+      <button>Enter Control Tower</button>
+      <button id="tower-cancel" type="button" class="ghost">Cancel</button>
+    </form>
+  </dialog>
   <script>window.UNSTEP_TOKEN_QUERY = "__UNSTEP_TOKEN_QUERY__";</script>
   <script src="/live/static/live.js"></script>
 </body>

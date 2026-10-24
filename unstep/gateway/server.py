@@ -13,6 +13,7 @@ Run: uvicorn unstep.gateway.server:app --port 8765
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 import json
 import logging
 import os
@@ -28,17 +29,20 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import ValidationError
 
 from unstep.clock import now_ms
-from unstep.config import allowed_hosts, gateway_token, pending_ttl_s
+from unstep.config import allowed_hosts, allowed_origins, gateway_token, pending_ttl_s
 from unstep.contracts import (
     ApprovedDirective,
+    AuditRecord,
     ProposedDirective,
+    ReadbackResult,
     RejectedDirective,
     VoiceApproval,
     unwrap,
     wrap,
 )
 from unstep.cockpit.phraseology import is_restrictive
-from unstep.gateway.sink import sink_from_env
+from unstep.gateway.sink import ElasticSink, sink_from_env
+from unstep.ground.percolate import LocalPercolator, percolator_from_env
 
 log = logging.getLogger("unstep.gateway")
 
@@ -82,8 +86,11 @@ def auto_relay_allowed(proposal: ProposedDirective) -> bool:
 
 
 class Gateway:
-    def __init__(self, sink, pending_ttl_s: float = PENDING_TTL_S):
+    def __init__(self, sink, pending_ttl_s: float = PENDING_TTL_S, percolator=None):
         self.sink = sink
+        # Readback matcher (P2): approved directives become stored queries, readbacks are checked against them.
+        self.percolator = percolator if percolator is not None else LocalPercolator()
+        self._tasks: set[asyncio.Task] = set()
         self.pending_ttl_ms = pending_ttl_s * 1000
         self.clients: dict[str, set[WebSocket]] = defaultdict(set)
         # Proposals waiting for a human decision: event_id -> (proposal, received_ms).
@@ -117,6 +124,25 @@ class Gateway:
         raw = wrap(msg)
         self.store({"source": "gateway", **json.loads(raw)})
         await self.broadcast(raw, type(msg).__name__)
+        if isinstance(msg, ApprovedDirective):
+            self._spawn(self.percolator.register(msg))
+
+    def _spawn(self, coro) -> None:
+        task = asyncio.create_task(coro)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    async def percolate(self, readback: ReadbackResult) -> None:
+        """Second opinion on a readback from Elastic, next to the cockpit's slot check."""
+        try:
+            verdict = await self.percolator.check(readback.event_id, readback.readback_text)
+        except Exception:
+            log.exception("readback percolate failed")
+            return
+        if verdict is not None:
+            await self.emit(AuditRecord(event_id=readback.event_id, stage="readback_percolate",
+                                        actor=verdict.backend, latency_ms=verdict.took_ms,
+                                        payload={**verdict.payload(), "slot_check_match": readback.match}))
 
     async def error(self, ws: WebSocket, message: str) -> None:
         await ws.send_json({"type": "Error", "ts": now_ms(), "data": {"message": message}})
@@ -162,6 +188,8 @@ class Gateway:
             await self.decide(msg.event_id, isinstance(msg, ApprovedDirective), via, ws)
         else:
             await self.broadcast(env.model_dump_json(), env.type)
+            if isinstance(msg, ReadbackResult):
+                self._spawn(self.percolate(msg))
 
     async def decide(self, event_id: str, approve: bool, via: str, ws: WebSocket) -> None:
         if via == "auto":
@@ -193,12 +221,29 @@ class Gateway:
         return [p for p, received in self.pending.values() if received >= cutoff]
 
 
+class HostCheck(TrustedHostMiddleware):
+    """Host allowlist (blocks DNS rebinding), except /health: cloud health checks (Render)
+    call it from their own network with an internal Host header, and it exposes no room data
+    beyond counts. Without this the host returns 400 to the check and the service shows 502."""
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("path") == "/health":
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
+
 def origin_ok(ws: WebSocket) -> bool:
-    """Browsers send Origin. Only accept pages served by this gateway (or local tools)."""
+    """Browsers send Origin. Accept pages served by this gateway, local tools, and the
+    origins listed in UNSTEP_ALLOWED_ORIGINS (the hosted pilot app)."""
     origin = ws.headers.get("origin")
     if origin is None:
         return True
-    return urlparse(origin).netloc == ws.headers.get("host")
+    return urlparse(origin).netloc == ws.headers.get("host") or origin_listed(origin)
+
+
+def origin_listed(origin: str) -> bool:
+    return any(fnmatch.fnmatchcase(origin.rstrip("/"), pattern) for pattern in allowed_origins())
 
 
 def create_app(sink=None, pending_ttl_s: float = PENDING_TTL_S,
@@ -213,8 +258,9 @@ def create_app(sink=None, pending_ttl_s: float = PENDING_TTL_S,
 
     app = FastAPI(title="Unstep gateway", lifespan=lifespan)
     # Host allowlist: blocks DNS rebinding for HTTP and WebSocket requests alike.
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts())
-    gw = Gateway(sink, pending_ttl_s)
+    app.add_middleware(HostCheck, allowed_hosts=allowed_hosts())
+    # Elastic checks readbacks only when Elastic also stores the events; tests and offline runs stay local.
+    gw = Gateway(sink, pending_ttl_s, percolator_from_env() if isinstance(sink, ElasticSink) else None)
     app.state.gateway = gw
 
     @app.get("/demo/index.html")

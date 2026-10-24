@@ -65,6 +65,23 @@ def allowed_hosts() -> list[str]:
     return sorted(set(hosts))
 
 
+def allowed_origins() -> list[str]:
+    """Web origins on other domains that may open a live room socket, for example the
+    pilot app on Vercel: UNSTEP_ALLOWED_ORIGINS=https://unstep.vercel.app (comma
+    separated, `*` wildcards allowed, as in https://*.vercel.app). Pages served by the
+    gateway itself are always allowed. The gateway token still applies.
+
+    Our own pilot app on Vercel (every deployment address of the project) is always
+    allowed, so a new Vercel deploy never needs a hub setting; the variable only adds more."""
+    extra = env("UNSTEP_ALLOWED_ORIGINS") or ""
+    listed = [o.strip().rstrip("/") for o in extra.split(",") if o.strip()]
+    return [*DEFAULT_PILOT_ORIGINS, *(o for o in listed if o not in DEFAULT_PILOT_ORIGINS)]
+
+
+# The project's Vercel pilot app: production and per-deployment addresses.
+DEFAULT_PILOT_ORIGINS = ("https://cagent*.vercel.app", "https://*-dee-1862s-projects.vercel.app")
+
+
 def gateway_token() -> str | None:
     """Optional shared secret (FR-13). When set, every client must send it."""
     return env("UNSTEP_GATEWAY_TOKEN")
@@ -99,6 +116,37 @@ def cartesia_stt_model() -> str:
 
 def cartesia_stt_timestamp_model() -> str:
     return env("CARTESIA_STT_TIMESTAMP_MODEL", default=DEFAULT_CARTESIA_STT_TIMESTAMP_MODEL)
+
+
+DEFAULT_MOSS_AIRCRAFT = 6
+
+
+def moss_aircraft() -> int:
+    """How many aircraft get their own Moss session (UNSTEP_MOSS_AIRCRAFT, default 6, the whole fleet).
+
+    A Moss session is a local in-memory index; only push_index() writes a cloud index,
+    and per-aircraft sessions are never pushed. Rishit ran six real sessions at once
+    (agent mail R3): 0 to 1 ms searches and no new cloud indexes.
+    """
+    try:
+        return max(0, int(env("UNSTEP_MOSS_AIRCRAFT", default=str(DEFAULT_MOSS_AIRCRAFT))))
+    except ValueError:
+        return DEFAULT_MOSS_AIRCRAFT
+
+
+def radio_sound() -> bool:
+    """Listeners hear transmissions band-limited like VHF radio (UNSTEP_RADIO_SOUND, default on)."""
+    return env("UNSTEP_RADIO_SOUND", default="1").lower() not in ("0", "false", "no", "off")
+
+
+def realtime_replay() -> bool:
+    """Pace replayed audio to the manual STT endpoint at real time (UNSTEP_REALTIME_REPLAY=1).
+
+    Off by default: a 15-run re-test showed /stt/websocket transcribes audio sent as
+    fast as possible just as well (docs/09-cartesia-feedback.md, "Measured re-test"),
+    which saves about the clip's length per replay. The turns endpoint is always paced.
+    """
+    return env("UNSTEP_REALTIME_REPLAY", default="0").lower() in ("1", "true", "yes", "on")
 
 
 def cartesia_tts_model() -> str:

@@ -119,17 +119,49 @@ async def derive_hint(
     since_ts: Optional[int] = None,
     now: Optional[int] = None,
     max_age_ms: int = DEFAULT_MAX_AGE_MS,
+    evidence: Optional[dict] = None,
 ) -> LocalHint:
-    """Hint from the newest recent taxi clearance. Fails safe: any memory error gives no hint."""
+    """Hint from the newest recent taxi clearance. Fails safe: any memory error gives no hint.
+
+    M3: the garbled fragment the cockpit heard is also run as a hybrid search over this
+    plane's clearances. If `evidence` is a dict it is filled with the query, the top hit,
+    its score and the search time, for the console. The rule is unchanged: the hint always
+    comes from the newest clearance, so a ranked hit never revives a superseded one; the
+    search says whether it agrees.
+    """
     try:
         return await _derive_hint(memory, callsign, heard_text, flight_index, airport_index,
-                                  since_ts, now, max_age_ms)
+                                  since_ts, now, max_age_ms, evidence)
     except Exception:  # Moss offline, session not open, anything: no hint beats a crash
         log.exception("local hint failed; returning no hint")
         return none_hint()
 
 
-async def _derive_hint(memory, callsign, heard_text, flight_index, airport_index, since_ts, now, max_age_ms):
+SEARCH_ALPHA = 0.5  # half semantic, half keyword: garbled radio text keeps some exact words ("runway", "123")
+
+
+def search_query(heard_text: str) -> str:
+    """The fragment as a search query: noise markers dropped, digits kept as spoken."""
+    return re.sub(r"\s+", " ", re.sub(r"\[.*?\]", " ", heard_text)).strip(" ,.")
+
+
+async def _search(memory, flight_index, flt, heard_text, callsign, evidence: dict) -> Optional[Doc]:
+    query = search_query(heard_text)
+    evidence.update({"query": query, "alpha": SEARCH_ALPHA})
+    if not query:
+        return None
+    res = await memory.query(flight_index, query, top_k=5, alpha=SEARCH_ALPHA, filter=flt)
+    evidence.update({"search_ms": round(res.time_taken_ms, 3), "backend": getattr(memory, "backend", "?")})
+    for d in res.docs:
+        if _is_movement_clearance(d.text) and not names_other_aircraft(d.text, callsign):
+            evidence.update({"top_hit_id": f"{flight_index}/{d.id}", "top_hit_text": d.text,
+                             "score": round(float(d.score), 4)})
+            return d
+    return None
+
+
+async def _derive_hint(memory, callsign, heard_text, flight_index, airport_index, since_ts, now, max_age_ms,
+                       evidence=None):
     if fragment_is_permissive(heard_text) or OTHER_ACTION_FRAGMENT.search(normalize(heard_text)):
         return none_hint()
 
@@ -145,12 +177,29 @@ async def _derive_hint(memory, callsign, heard_text, flight_index, airport_index
     if not candidates:
         return none_hint(moss_ms)
     best = max(candidates, key=_ts)
+    if evidence is not None:
+        try:
+            top = await _search(memory, flight_index, flt, heard_text, callsign, evidence)
+            moss_ms += evidence.get("search_ms", 0.0)
+            evidence["agrees"] = None if top is None else top.id == best.id
+            if top is not None and top.id != best.id:
+                evidence["note"] = "top hit is an older clearance; the newest one is used"
+        except Exception:  # the search is evidence only; never lose the hint over it
+            log.exception("hint search failed")
+            evidence["error"] = "search failed"
     now = now_ms() if now is None else now
+
+    def outcome(why: str) -> None:  # why no hint came out, so the console never shows a hit "ignored"
+        if evidence is not None:
+            evidence["no_hint"] = why
+
     if now - _ts(best) > max_age_ms:
+        outcome(f"the newest clearance is too old to use (over {max_age_ms // 60_000} min)")
         return none_hint(moss_ms)
 
     text = likely_instruction(best.text)
     if text is None or classify(text) != "restrictive":
+        outcome("the newest clearance gives no restrictive instruction to guess")
         return none_hint(moss_ms)
 
     # Confirm the runway exists at this airport before speaking it.
@@ -158,6 +207,7 @@ async def _derive_hint(memory, callsign, heard_text, flight_index, airport_index
     check = await memory.query(airport_index, f"Runway {runway}", top_k=3, alpha=0.2, filter={"type": {"$eq": "runway"}})
     moss_ms += check.time_taken_ms
     if not any(re.search(rf"\b{runway}\b", d.text, re.I) for d in check.docs):
+        outcome(f"Runway {runway} is not in this airport's records")
         return none_hint(moss_ms)
 
     return LocalHint(
