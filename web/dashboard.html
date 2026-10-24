@@ -51,6 +51,7 @@ function connect() {
     if (env.type === "ProposedDirective") showCard(env.data);
     if (env.type === "ApprovedDirective") markDecided(env.data.event_id, `Approved by ${env.data.approved_via}`);
     if (env.type === "RejectedDirective") markDecided(env.data.event_id, `Rejected by ${env.data.rejected_via}`);
+    if (env.type === "Error") statusEl.textContent = `gateway: ${env.data.message}`;
   };
 }
 
@@ -63,6 +64,7 @@ function highlight(text, blocked) {
 }
 
 function showCard(p) {
+  if (document.getElementById(`card-${p.event_id}`)) return;  // replayed after reconnect
   proposals[p.event_id] = p;
   const el = document.createElement("div");
   el.className = "card"; el.id = `card-${p.event_id}`;

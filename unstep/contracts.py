@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from unstep.clock import now_ms
 
@@ -31,12 +31,25 @@ class Gps(BaseModel):
     lon: float
 
 
+# PRD local hint rules: only instructions where a wrong guess makes the aircraft wait.
+RESTRICTIVE_ACTIONS = ("hold short", "hold position", "stop", "go around")
+
+
 class LocalHint(BaseModel):
     text: Optional[str] = None
     kind: Literal["restrictive", "none"] = "none"
     source_doc_id: Optional[str] = None
     source_text: Optional[str] = None
     moss_ms: Optional[float] = None
+
+    @model_validator(mode="after")
+    def _enforce_hint_rules(self):
+        if self.kind == "restrictive":
+            if not self.text or not self.source_doc_id:
+                raise ValueError("a restrictive hint needs text and a source_doc_id")
+            if not any(a in self.text.lower() for a in RESTRICTIVE_ACTIONS):
+                raise ValueError(f"hint is not a restrictive instruction: {self.text!r}")
+        return self
 
 
 class TowerTranscript(BaseModel):
@@ -167,9 +180,15 @@ def wrap(msg: BaseModel) -> str:
     return Envelope(type=type(msg).__name__, data=msg.model_dump(mode="json")).model_dump_json()
 
 
-def unwrap(raw: str) -> tuple[Envelope, BaseModel]:
-    """Parse an Envelope JSON string and validate its payload."""
+def unwrap(raw: str) -> tuple[Envelope, Optional[BaseModel]]:
+    """Parse an Envelope JSON string and validate its payload.
+
+    Gateway error replies ({"type": "Error"}) return (envelope, None) so clients
+    can log them without crashing.
+    """
     env = Envelope.model_validate_json(raw)
+    if env.type == "Error":
+        return env, None
     if env.type not in MODELS:
         raise ValueError(f"unknown message type: {env.type}")
     return env, env.parse()

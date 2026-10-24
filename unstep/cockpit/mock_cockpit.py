@@ -23,7 +23,10 @@ async def one_run(ws, run: int, timeout_s: float) -> bool:
     await ws.send(wrap(event))
     while True:
         raw = await asyncio.wait_for(ws.recv(), timeout=timeout_s)
-        _, msg = unwrap(raw)
+        env, msg = unwrap(raw)
+        if msg is None:
+            print(f"[{run}] gateway error: {env.data.get('message')}")
+            continue
         if getattr(msg, "event_id", None) != event.event_id:
             continue
         ms = (time.perf_counter() - started) * 1000
@@ -51,6 +54,6 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--url", default="ws://127.0.0.1:8765")
     p.add_argument("--runs", type=int, default=1)
-    p.add_argument("--timeout", type=float, default=120.0, help="seconds to wait for a decision")
+    p.add_argument("--timeout", type=float, default=60.0, help="seconds to wait for a decision (gateway TTL)")
     a = p.parse_args()
     raise SystemExit(asyncio.run(main(a.url, a.runs, a.timeout)))

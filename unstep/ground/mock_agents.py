@@ -41,7 +41,9 @@ async def run(url: str) -> None:
         print("mock agents connected")
         async for raw in ws:
             env, msg = unwrap(raw)
-            if isinstance(msg, AnomalyEvent):
+            if msg is None:
+                print(f"gateway error: {env.data.get('message')}")
+            elif isinstance(msg, AnomalyEvent):
                 await ws.send(wrap(propose(msg)))
                 print(f"proposed directive for {msg.event_id}")
 
