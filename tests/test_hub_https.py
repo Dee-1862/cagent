@@ -27,7 +27,8 @@ def test_self_signed_covers_localhost_and_lan_ip_and_is_reused(tmp_path):
     sans = _sans(cert)
     for name in ("localhost", "hub.local", "127.0.0.1", "192.168.1.20"):
         assert name in sans
-    assert oct(key.stat().st_mode & 0o777) == "0o600"
+    if sys.platform != "win32":  # Windows has no Unix permission bits; chmod 0o600 reads back as 0o666
+        assert oct(key.stat().st_mode & 0o777) == "0o600"
     first = cert.read_bytes()
     assert certs.self_signed(["192.168.1.20", "hub.local"], directory=tmp_path)[0].read_bytes() == first
     assert certs.self_signed(["192.168.1.21"], directory=tmp_path)[0].read_bytes() != first  # new host, new cert
