@@ -171,3 +171,17 @@ def test_offline_alert_is_held_and_uses_cached_audio():
         assert len(edge.out.clips) == 1
         assert [a.event_id for a in audits(edge, "released")] == ["offline"]
     asyncio.run(go())
+
+
+def test_blocked_notice_waits_behind_a_restrictive_directive():
+    async def go():
+        edge, tts = make_edge()
+        await edge.set_frequency_busy(True)
+        notice = asyncio.create_task(edge.notify_blocked("b"))
+        await asyncio.sleep(0)
+        directive = await queued(edge, "Hold short Runway 33", "a", kind="directive")
+        await edge.set_frequency_busy(False)
+        await asyncio.gather(notice, directive)
+        assert [a.event_id for a in audits(edge, "released")] == ["a", "b"]
+        assert any("blocked" in text for text in tts.spoken)
+    asyncio.run(go())

@@ -285,6 +285,8 @@ class _Advisory:
 
 
 CORRECTION_SPEED = 0.85  # within Sonic's documented 0.6 to 1.5
+BLOCKED_NOTICE = "Your last call was blocked. Say again."
+NOTICE_KINDS = {"blocked_caller"}  # lower priority than a directive
 
 
 class CockpitEdge:
@@ -471,12 +473,24 @@ class CockpitEdge:
                     replaced = True
                     break
         if not replaced:
-            self._advisories.append(item)
+            self._advisories.insert(self._queue_slot(kind), item)
         if self._frequency_busy or item.held_at is not None:
             item.held_at = item.held_at or time.perf_counter()
             await self.audit(event_id, "held", waited_ms=_ms(item.held_at), text=text)
         self._ensure_speech_worker()
         return await asyncio.shield(item.done)
+
+    def _queue_slot(self, kind: str) -> int:
+        """A restrictive directive goes ahead of queued notices; never ahead of the one speaking."""
+        if kind == "directive":
+            for i, old in enumerate(self._advisories):
+                if old.kind in NOTICE_KINDS and old is not self._active_advisory:
+                    return i
+        return len(self._advisories)
+
+    async def notify_blocked(self, event_id: str, text: str = BLOCKED_NOTICE):
+        """Tell this pilot their own call was blocked (C1). Waits while busy; directives go first."""
+        return await self.speak(text, event_id, kind="blocked_caller")
 
     async def _drain_advisories(self) -> None:
         while self._advisories and not self._frequency_busy:

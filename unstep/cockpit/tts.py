@@ -54,8 +54,10 @@ def msg_say_again() -> str:
     return advisory("Transmission blocked, request say again.")
 
 
-def msg_directive(instruction_text: str) -> str:
-    return advisory(f"{instruction_text.rstrip('.')}. Read back.")
+def msg_directive(instruction_text: str, source: str | None = "Tower") -> str:
+    """Says who the lost words came from, so the pilot never mistakes Unstep for the controller."""
+    said_by = f"From {source}: " if source else ""
+    return advisory(f"{said_by}{instruction_text.rstrip('.')}. Read back.")
 
 
 def msg_readback(say: str) -> str:
