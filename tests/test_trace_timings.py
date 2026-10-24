@@ -60,3 +60,23 @@ def test_stt_final_timings_per_hop(make_room):
         await room.stop()
 
     asyncio.run(go())
+
+
+def test_hint_step_names_its_memory_backend_and_elastic_ms_is_rounded(make_room):
+    import re
+
+    async def go():
+        room, atc, pilot = await make_room()
+        await stepped_on(room)
+        await wait_for(lambda: only_trace(room) and any(s["kind"] == "hint" for s in only_trace(room)["steps"]))
+        hint = next(s for s in only_trace(room)["steps"] if s["kind"] == "hint")
+        assert hint["data"]["backend"] == "local"  # the console names Moss only when the event says so
+        if only_trace(room)["status"] == "needs_you":
+            await room.decide(only_trace(room)["event_id"], approve=True)
+        await room.handle("N123AB", {"type": "say", "text": "Hold short runway three three, Cessna one two three."})
+        await wait_for(lambda: any(s["kind"] == "percolate" for s in only_trace(room)["steps"]), timeout=30)
+        text = next(s for s in only_trace(room)["steps"] if s["kind"] == "percolate")["text"]
+        assert not re.search(r"\d+\.\d{3,} ms", text)
+        await room.stop()
+
+    asyncio.run(go())

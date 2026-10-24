@@ -19,6 +19,17 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Console fixes taken over from Rishit's side (R27)
+
+**Type:** Fixed
+**Area:** Other
+
+- The Elastic readback step printed raw floats ("local, 0.07650000043213367 ms"); the room now rounds that time to 2 decimals.
+- The hint step's sponsor read "Moss / local (backend unreported)". The room now puts the plane's memory backend on the hint step (`data.backend`) and the console names "Moss" only when the event says so, otherwise "Local memory". Rishit's side was going quiet, so this console change was ours by agreement (R27 item 4).
+- Checked: 1 new room test; console tests pass.
+
+**Related:** agent mail R27 items 3b and 4
+
 ## 2026-10-24: Transcribe while the call is on air, not after it (R27 3a)
 
 **Type:** Changed

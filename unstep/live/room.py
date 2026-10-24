@@ -1424,7 +1424,8 @@ class LiveRoom:
             if hint.kind == "restrictive":
                 self._step(trace, f"cockpit:{msg.callsign}", "hint",
                            f"Local hint \"{hint.text}\" from Moss record {hint.source_doc_id} "
-                           f"in {hint.moss_ms} ms", source_text=hint.source_text, moss_ms=hint.moss_ms)
+                           f"in {hint.moss_ms} ms", source_text=hint.source_text, moss_ms=hint.moss_ms,
+                           backend=getattr(getattr(self.edges.get(msg.callsign), "memory", None), "backend", "local"))
                 self._time(trace, "hint", env_.ts, ms=hint.moss_ms, by="moss")
         else:
             # Only a detected blocked call starts a trace; speech, radio and query audits do not.
@@ -1503,7 +1504,8 @@ class LiveRoom:
             agrees = msg.payload.get("match") == msg.payload.get("slot_check_match")
             self._step(trace, "elastic", "percolate",
                        f"Elastic {'matched' if msg.payload.get('match') else 'did not match'} the readback against "
-                       f"the stored directive ({msg.actor}, {msg.latency_ms} ms): "
+                       f"the stored directive ({msg.actor}, "
+                       f"{round(msg.latency_ms, 2) if isinstance(msg.latency_ms, (int, float)) else msg.latency_ms} ms): "
                        f"{'agrees with' if agrees else 'disagrees with'} the slot check", **msg.payload)
             self._time(trace, "elastic_check", env_.ts, ms=msg.latency_ms, by=msg.actor)
         elif isinstance(msg, AuditRecord) and msg.stage == "hint_search":

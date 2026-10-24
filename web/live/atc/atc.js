@@ -409,7 +409,7 @@ function steps(trace) {
     let sentence = step.text, sponsor = "Unstep", agent = step.actor;
     switch (step.kind) {
       case "detected": sentence = `Heard a blocked radio call in ${shortName(trace.callsign)}’s cockpit.`; agent = "Cockpit agent"; break;
-      case "hint": sentence = `The plane’s memory suggests “${hint?.text || "a stop instruction"}”; this is a hint, not permission.`; agent = "Cockpit agent"; sponsor = trace.callsign === "N123AB" ? "Moss / local (backend unreported)" : "Local memory"; break;
+      case "hint": sentence = `The plane’s memory suggests “${hint?.text || "a stop instruction"}”; this is a hint, not permission.`; agent = "Cockpit agent"; sponsor = step.data?.backend === "moss" ? "Moss" : "Local memory"; break;
       case "moss_search": agent = "Cockpit agent"; sponsor = step.data?.backend === "moss" ? "Moss" : "Local memory"; break;
       case "proposed": sentence = `Recovered “${instruction}”${trace.tower ? " from the tower’s own words" : " without a tower transcript"}.`; agent = "Ground agents"; sponsor = "Stand-in · Elastic pending"; break;
       case "auto_relay": sentence = "Every policy check passed, so the tower’s own stop/wait instruction can be re-sent."; agent = "Policy agent"; sponsor = "policy"; break;
