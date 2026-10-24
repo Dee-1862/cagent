@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
@@ -30,6 +31,7 @@ from unstep.ground.tower import FakeTowerTranscriber, TowerTranscriber
 from unstep.ground.voice_approval import ApprovalLoop, ControllerVoice, _answer
 
 ROOT = Path(__file__).resolve().parents[2]
+log = logging.getLogger("unstep.demo")
 SCENES = ("Radio", "Controller approval", "Directive and readbacks", "Pilot questions",
           "Full view", "Analytics", "Close")
 QUESTIONS = ("Unstep, what was my last clearance?", "Unstep, what runway was I told to stop at?")
@@ -243,6 +245,7 @@ class Presenter:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            log.exception("scene %s failed", scene)
             self.status = f"Scene failed ({type(exc).__name__}). Reset to retry; no result fabricated."
         finally:
             # The current task is finishing; publish busy=False.

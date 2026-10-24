@@ -77,6 +77,25 @@ def _url(base: str, params: list[tuple[str, str]]) -> str:
     return f"{base}?{urlencode(params, quote_via=quote)}"
 
 
+async def _connect(url: str, api_key: str, attempts: int = 3):
+    """Open a Cartesia STT WebSocket, retrying a timed-out or refused handshake.
+
+    Seen live: an occasional handshake hangs for the full open timeout. A short
+    timeout plus a retry recovers in seconds instead of failing the turn.
+    """
+    import websockets
+
+    for attempt in range(1, attempts + 1):
+        try:
+            return await websockets.connect(url, additional_headers={"X-API-Key": api_key},
+                                            max_size=None, open_timeout=4)
+        except (TimeoutError, OSError):
+            if attempt == attempts:
+                raise
+            log.warning("Cartesia STT handshake failed (attempt %d); retrying", attempt)
+            await asyncio.sleep(0.5 * attempt)
+
+
 @dataclass
 class Transcript:
     text: str
@@ -115,7 +134,7 @@ class CartesiaManualSTT:
     async def __aenter__(self):
         import websockets
 
-        self._ws = await websockets.connect(self.url, additional_headers={"X-API-Key": self.api_key}, max_size=None)
+        self._ws = await _connect(self.url, self.api_key)
         return self
 
     async def __aexit__(self, *exc):
@@ -165,7 +184,7 @@ class CartesiaTurnSTT:
     async def __aenter__(self):
         import websockets
 
-        self._ws = await websockets.connect(self.url, additional_headers={"X-API-Key": self.api_key}, max_size=None)
+        self._ws = await _connect(self.url, self.api_key)
         return self
 
     async def __aexit__(self, *exc):
@@ -328,7 +347,7 @@ class ReplayTurnSTT:
                         final = ev
                         break
                     yield ev
-            except RuntimeError:
+            except (RuntimeError, TimeoutError, OSError):
                 if attempt == 2:
                     raise
             if final is not None and (final.transcript.strip() or attempt == 2):
