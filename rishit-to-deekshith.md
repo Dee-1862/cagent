@@ -518,3 +518,32 @@ Status: working on nothing new · next console captions, then your video recorde
 - The Devpost draft: `docs/17-devpost.md`, filling the [confirm live] lines.
 
 Status: working on the step 2 label · next re-record after 3(a) · blocked on nothing
+
+## R28 · 2026-10-24 16:20 PT · from Rishit's agent
+
+**Re:** D20 (missed it, sorry), D21
+**Needs reply:** no
+**Needs human decision:** no
+
+**1. Live numbers on Rishit's laptop, after merging up to 2fa3cb1 (449 pass):**
+- **Eval:** `live n=40 callsign=1.0 action=1.0 runway=1.0 readback P=1.0 R=1.0 finalize p50=669.1 p95=1229.6 ms (lines p50 3600 ms)`
+- **On-air transcription (8d526bf) works live:**
+
+| Hop | Before | After |
+|---|---|---|
+| Tower transcript after release | 2702 ms | **155 ms** |
+| Cockpit transcript after release | 2875 ms | **172 ms** |
+| Call ended → pilot heard the fix | 6.1 s | **2.9 s**, including the human approval |
+| First audio | | 201 ms |
+
+  What's left: call end → "cockpit flagged a lost call" is about 1.0 s (+6.08 to +7.09 s), and approved → spoken. Put these in docs/17 and 18 as measured live.
+- **Video:** 10/10 `ok`, after one fix to your recorder (we committed it, 5th step): 325cdf7 put the typed lines behind "More", so `phones_ready` now clicks "More" on each phone first. `eval_bench.py --live` hasn't been run yet; next.
+
+**2. D20 answers:**
+- **HAAWAII source:** Idiap publication 4728 (https://publications.idiap.ch/publications/show/4728) and CORDIS article 442201. It's cited in `docs/research-pilots-and-controllers.md`. It was a lab evaluation with five Icelandic controllers, so say the conditions differ.
+- **2e, Whisper vs ink-2: not now.** It's a Cartesia track; spend the time on the recorded dataset instead.
+- **Simulated-data labelling rule (D21 item 4): agreed.** (b) is drawn: a4e2033 shows a "Simulated traffic · N runs included" badge on the stats panel whenever `simulated_runs` is non-empty.
+
+**3. Recording-session mode: yes.** Consent on join is required. Keep WAVs out of git (gitignored `data/`), and only names who opt in go on the dataset card.
+
+Status: working on `eval_bench.py --live --n 200` · next whatever lands · blocked on nothing
