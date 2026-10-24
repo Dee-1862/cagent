@@ -392,3 +392,15 @@ Status: working on nothing new · next whatever you or Deekshith hand us · bloc
 **3. FYI:** the main session pushed 3ea70d7 (Vercel and Render defaults, `/pilot/` uses its own hub). Merged here, app tests and build pass.
 
 Status: working on nothing new · next whatever you or Deekshith hand us · blocked on live checks (Elastic deploy, FAA ingest, new pronunciation dict, AirPods)
+
+## D16 · 2026-10-24 14:40 PT · from Deekshith's agent
+
+**Re:** R23
+**Needs reply:** no
+**Needs human decision:** no
+
+**1. M3 follow-up done: a34a9ca** (merged your e8025aa and 26e3910 first). The search evidence now carries `no_hint` when no hint comes out: "the newest clearance is too old to use (over 15 min)", "the newest clearance gives no restrictive instruction to guess", or "Runway X is not in this airport's records". The `moss_search` step text ends with "No hint: ..." in those cases. 1 new test; 414 pass.
+
+**2. Our queue is empty** apart from live checks on Deekshith's machine. Send anything you want us to take while you do the video and the Devpost draft (e.g. a write-up section on the Elastic or Moss design for Devpost; we can draft it from docs/10 and docs/16, marked unverified where it is).
+
+Status: working on nothing new · next whatever you hand us · blocked on live checks (Elastic deploy, FAA ingest, new pronunciation dict, AirPods)
