@@ -4,9 +4,11 @@ A plan, not a build. Nothing in section 5 or 6 is started. It exists so Deekshit
 
 | Field | Value |
 | --- | --- |
-| Status | Proposal v0.1, 2026-10-24. Waits for a yes from Rishit's side and Deekshith (see section 7) |
+| Status | v0.2. Decided in R29 (2026-10-24): M-1, M-2, E-1, E-2, E-3 agreed and the not-now list agreed; M-3 and E-4 are not to be built before the demo. M-2, E-2 and E-3 are built and tested offline; M-1 and E-1 need keys (section 8) |
 | Written by | Deekshith's side (agent), for review by Rishit's side |
 | Related | [16-sponsor-depth.md](16-sponsor-depth.md), [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md), [10-agentic-architecture.md](10-agentic-architecture.md), [18-benchmark.md](18-benchmark.md) |
+
+Step ids (M-1 to M-4, E-1 to E-4) belong to this plan. They are not the M1 to M6 and E1 to E3 items in docs/16 (for example docs/16's E3 is the CHANGE_POINT idea, which is still not now).
 
 ## 1. How Much Of This Is Verified
 
@@ -143,7 +145,7 @@ A judge who reads our repo finds an event store plus two features that have neve
 
 ### 5.3 Proposed steps
 
-Proposed owner for all Elastic steps: **Rishit's side builds and owns the Elastic track end to end** (agents, workflows, ES|QL, percolator, dashboards, the eval index), with Deekshith's side reviewing. Honest dependency: Rishit's laptop has no Elastic keys (R27). Definitions, query text, mocks and tests need no keys and can be built and reviewed offline. Every live deploy, ingest and measurement needs Deekshith's machine or keys, or keys given to Rishit.
+**Owner, as decided in R29: Deekshith's side keeps the Elastic track and Rishit's side reviews.** This reverses the split first proposed here (Rishit's side owning it end to end): Deekshith has the Elastic keys, so live deploys and measurements happen where they can run. Rishit's side still writes queries and definitions on request. Rishit's laptop has no Elastic keys (R27); definitions, query text, mocks and tests need none.
 
 | Id | Step | Files touched | Offline test plan | Needs live | Effort | Risk |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -203,11 +205,45 @@ This is a proposal for both humans (Rishit and Deekshith), because it changes wh
 
 | Item | Proposal | Yes needed from |
 | --- | --- | --- |
-| Elastic track ownership | Rishit's side owns it end to end (E-1 to E-3, and E-4 if agreed); Deekshith's side reviews and keeps merging | Rishit and Deekshith |
-| Moss track ownership | Stays with Deekshith's side (M-1 to M-3, M-4 as a spike); Rishit's side reviews | Rishit and Deekshith |
-| Elastic keys for Rishit | Needed for E-1 to E-3 live. Otherwise every live step waits for Deekshith's machine | Deekshith |
-| M-3 and E-4 (they add or change what the pilot hears) | Only with both humans, after the simulator and eval give the false-hint and false-alarm rates | Rishit and Deekshith |
-| Wording fixes in section 2 (Devpost, docs/16, the social post) | Make them now; they are docs only | Either side |
-| `smoke_moss.py` default to no push | Make it now | Either side |
+| Elastic track ownership | **Decided (R29):** Deekshith's side owns it, Rishit's side reviews. Deekshith had asked for it to go to Rishit's side; applied as written for now, Deekshith can still decide otherwise | Deekshith |
+| Moss track ownership | **Decided (R29):** stays with Deekshith's side, Rishit's side reviews | done |
+| Elastic keys for Rishit | Not needed now that Deekshith owns Elastic | n/a |
+| M-3 and E-4 | **Decided (R29): not before the demo.** M-3: the newest-clearance rule stays and Moss's search stays evidence; it needs a measured false-hint rate first. E-4: a percolator disagreement is flagged on the console for the controller to decide, never an automatic say again | done |
+| Wording fixes in section 2 | **Done** (docs/12, 15, 16, 17 and the social post): "Moss searches the plane's own memory; the newest clearance gives the hint" and "Elastic checks and remembers" | done |
+| `smoke_moss.py` default to no push | **Done**: it pushes only with `--push` | done |
 
-Order if everything is agreed: M-1 and E-1 first, in parallel, since both are live proofs and both are blocked only on keys; then M-2 and E-3; then E-2 and M-3 if time allows. M-4 only after a spike.
+Order as agreed: M-1 and E-1 first, in parallel, since both are live proofs and blocked only on keys; then M-2, E-3, E-2 (built offline already, section 8). M-3 and E-4 are off. M-4 only after a spike.
+
+## 8. Built Offline, And The Exact Steps For The Live Runs
+
+### 8.1 What was built from this plan, all tested with fakes and mocks
+
+| Step | Built | What was checked offline | What only a live run can show |
+| --- | --- | --- | --- |
+| M-2 | Ordering, grouping and our own score floor in `unstep/cockpit/memory.py`; "what was the whole exchange" answer; floor on the hint's search evidence only (the hint rule is unchanged) | 7 tests, including a fake Moss session that refuses `sort_by` | The right floor value (`UNSTEP_MOSS_MIN_SCORE`, placeholder 0.25) and whether Moss's own sort and grouping behave (step M-1, part 3). Moss documents `min_score` for loaded indexes, not session queries, so the floor is ours |
+| E-3 | `unstep-eval` and `unstep-sim-events` indexes with explicit mappings, run summaries stored with flat headline numbers (`kind` benchmark or simulation, simulated runs labelled), Kibana data views in the deploy script, `UNSTEP_STATS_INCLUDE_SIMULATED=1` so the console's "Simulated traffic" badge lights | Mocked Elastic: document shape against the strict mapping, fake runs never stored, real stats exclude simulated records, dry-run lists every request | The data view API path (the deploy script treats a failure as a warning), the dashboard itself (built by hand in Kibana, section 8.3), real mappings accepted |
+| E-2 | Agent `unstep-audit` and four read-only ES\|QL tools (blocked per callsign, readback outcomes, blocked per minute, auto-resends), `POST /live/ask-audit`, a console box that shows the ES\|QL that answered | Mocked converse API: tolerant parsing, timeouts, limits, route off without Elastic; headless browser check of the box | The real converse response shape (the parser guesses from search summaries; pin it with a test after the first live answer), the agent's answers, ES\|QL syntax and `BUCKET` on the cluster |
+
+`LOOKUP JOIN` is not used: the command reference still labelled it preview, and the four tools need only `STATS`, `BUCKET` and `CASE`.
+
+### 8.2 M-1: Moss live proof (needs MOSS_PROJECT_ID and MOSS_PROJECT_KEY; Rishit's laptop has them)
+
+1. `pip install -r requirements.txt`, check `.env` has the two Moss keys.
+2. `python scripts/moss_live_check.py --dry-run` (no network): the flow must end with `ok`.
+3. `python scripts/moss_live_check.py`. It prints, in order:
+   - part 1, three fragments with score, floor and search ms: choose `UNSTEP_MOSS_MIN_SCORE` between the unrelated fragment's score and the garbled ones;
+   - part 2, the "last minute" and "whole exchange" answers with their ms;
+   - part 3, whether Moss's own `sort_by` is numeric and what `group_by` returns (diagnostics, never failures);
+   - part 4, the test flight log `flightlog-check-<time>`: two flights, one push, then a brand new client and how many docs came back and how fast. That is the restart claim.
+4. The test index is deleted at the end (`--keep` keeps it). It never touches `flightlog-<frequency>` or any `flight-*` index.
+5. Paste the whole output to Rishit's side or the main session. Until the part 4 line shows the docs back after a fresh client, do not say the flight log survives a restart.
+
+### 8.3 E-1: one real Elastic loop (needs the Elastic keys, so Deekshith's machine)
+
+1. `.env`: `ELASTIC_CLOUD_URL`, `ELASTIC_API_KEY`, and `KIBANA_URL` if it can't be derived (the Kibana address replaces ".es." with ".kb."). `python scripts/check_elastic.py` must say Elasticsearch and Kibana both answer. The API key needs Kibana application privileges for Agent Builder and Workflows as well as index privileges.
+2. `python scripts/deploy_elastic.py --dry-run`, read it, then `python scripts/deploy_elastic.py`. Expect `ok` for five indexes, `ok` or `warn` for the three data views, `ok` for seven tools, four agents and the two workflows. Paste any `FAIL` line with its status and body: the first contact with a real cluster is where request shapes get fixed. Re-run with `--replace` to update existing tools and agents.
+3. FAA text: save the chapter pages you need from the FAA's JO 7110.65 page into `data/faa/` as `.html`, then `python scripts/ingest_faa.py --source data/faa --dry-run`, then without `--dry-run`. Check with `curl -s -H "Authorization: ApiKey $ELASTIC_API_KEY" "$ELASTIC_CLOUD_URL/unstep-faa/_count"`. If `semantic_text` is rejected for lack of a default inference endpoint, set `UNSTEP_FAA_INFERENCE_ID` to one that exists and re-run.
+4. Start the hub live: `UNSTEP_ELASTIC_AGENTS=1 UNSTEP_STATS_INCLUDE_SIMULATED=1 python -m unstep.live --host 0.0.0.0 --https`. Open `/live/atc/`, make one stepped-on call. Expected: the safety panel says "Elastic ES|QL", the decision card shows an FAA paragraph (checked against `unstep-faa`), the trace step shows the workflow time. If the workflow does not answer within `UNSTEP_AGENTS_WAIT_S` (6 s) the log says so and the local proposal is used; that is the fallback working, not the loop working.
+5. Ask the audit trail: the box appears under the safety panel when Kibana is configured. Ask "Which plane was blocked most in the last hour?". Then capture the raw response once and paste it back so the parser can be pinned: `curl -s -X POST -H "Authorization: ApiKey $ELASTIC_API_KEY" -H "kbn-xsrf: true" -H "content-type: application/json" "$KIBANA_URL/api/agent_builder/converse" -d '{"input":"Which plane was blocked most in the last hour?","agent_id":"unstep-audit"}'`.
+6. Audit and benchmark in Elastic: `python scripts/simulate_traffic.py --sessions 4 --calls 25 --elastic`, `python scripts/eval_bench.py --live --n 40 --store`. In Kibana, Discover on the `unstep-sim-events` and `unstep-eval` data views; build a dashboard from them by hand (a saved dashboard export was not written because its format could not be checked here). Filter benchmark runs on `kind`, and keep simulated runs separate with `simulated: true`.
+7. What to paste back: every `FAIL` or `warn` line from step 2, the first workflow output (Kibana, Workflows, execution view), the raw converse JSON from step 5, and the safety panel's source line.

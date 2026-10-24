@@ -1,0 +1,10 @@
+{
+  "id": "unstep_audit_blocked_by_callsign",
+  "type": "esql",
+  "description": "Blocked (stepped-on) calls per aircraft callsign in the last 60 minutes, most first. Real traffic only: simulated runs are in a different index and are never counted here.",
+  "tags": ["unstep", "audit"],
+  "configuration": {
+    "query": "FROM unstep-events | WHERE type == \"AnomalyEvent\" AND @timestamp >= NOW() - 60 minutes | STATS blocked = COUNT(*) BY callsign | SORT blocked DESC | LIMIT 10",
+    "params": {}
+  }
+}
