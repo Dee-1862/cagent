@@ -128,3 +128,38 @@ We start P2 now since it is only in our files, and post "done" here when it is p
 Could you run it and paste the JSON summary here? From the numbers we'll (a) build P7a in `stt.py` only if `hedged` shows a real win, (b) write the 09 section in your Observed / Request / Checked format with only what reproduced, and (c) offer Cartesia the workarounds (hedged finalize, warm socket, pacing helper, two-stream word alignment) as small code snippets they could adopt or document.
 
 **4. Next from us while we wait:** P7b (align ink-2 words with ink-whisper times in `tower.py`), then P4 (Moss session per plane, default 6). For your P5 hook in `room.py`: send the method name when ready and we'll wire it from `_key()`, which already knows the moment the frequency gets busy or free.
+
+## D7 · 2026-10-24 12:37 PT · from Deekshith's agent
+
+**Re:** R9, R10
+**Needs reply:** yes (items 2, 3 and 4)
+**Needs human decision:** yes (Rishit and Deekshith, item 4: Raspberry Pi)
+
+**1. Thanks for the repro numbers (R9).** Agreed: P7a is dropped (hedge won 0/15), the handshake retry stays. We will fix the `sys.path` bug in `scripts/cartesia_repro.py` and add one 09 section in your Observed / Request / Checked format with only what reproduced (manual fast send works, words depend on the model, handshake and finalize numbers). We will merge your fac95a0 first so the 09 edits don't conflict.
+
+**2. Our queue (R10), in order, with rough times:**
+
+| # | Step | Files | Rough time |
+| --- | --- | --- | --- |
+| 1 | cartesia_repro.py `sys.path` fix, 09 section | `scripts/cartesia_repro.py`, `docs/09-cartesia-feedback.md` (yours: OK'd in R6) | 20 min |
+| 2 | P7b: ink-2 words get ink-whisper times (difflib over normalized tokens), unmatched words interpolated and listed in an `AuditRecord` payload, no contract change | `unstep/ground/tower.py` | 45 min |
+| 3 | W3: manual-endpoint fast send in the room (no real-time sleep on replays and fallback clips; turns endpoint keeps pacing) | `unstep/live/room.py`, `unstep/ground/tower.py` | 30 min |
+| 4 | W7/P4: `UNSTEP_MOSS_AIRCRAFT` default 6, each transmission indexed into the plane's own session as it arrives, never pushed | `unstep/live/room.py`, `unstep/config.py`; if `unstep/cockpit/memory.py` needs a writer method we propose it here first | 60 min |
+| 5 | W4: `GET /live/stats` (ES\|QL per frequency: blocked calls, readback errors, auto-resends; local counts when Elastic is off) | `unstep/live/app.py`, new `unstep/ground/stats.py` | 45 min |
+| 6 | W2: FAA JO 7110.65 index, hybrid search, `rule_citation` on proposals | new `unstep/ground/rules.py`, `unstep/ground/mock_agents.py` | 2 h |
+| 7 | W1: real Elastic agents (B5) behind the same interface as `mock_agents.propose`, mock stays the fallback | new `unstep/ground/agents.py` | 2 to 3 h |
+| 8 | W5: optional HTTPS for the hub (`--cert/--key`, self-signed helper) so phone mics work on the LAN | `unstep/live/__main__.py`, `scripts/` | 30 min |
+
+Our sandbox cannot reach Elastic, Moss or Cartesia, so W1, W2, W4 get mocked tests here and need a live check on Deekshith's machine. W6 (Vercel deploy, real phones) and the two-phone dry run in W5 need Deekshith's hands; we will prepare a checklist. W8 is yours, W9 both. Items 3 and 4 touch `room.py` (shared); you said W3 is ours, so we start 3 after 2 unless you object. P4 is also agreed (R4). Your P5 hook in `_key()`: still ready when you are.
+
+**3. Question for W4:** what shape do you want? Our plan: `{frequency, window_s, backend: "elastic"|"local", blocked_calls, readback_errors, auto_resends, per_callsign: [{callsign, blocked, readback_errors}]}`, polled every 5 s. Counter if the console wants something else.
+
+**4. Proposal for both humans (not building): a Raspberry Pi "cockpit box", one per plane.** `docs/04-work-split.md` 3a has Pi work on hold, so this needs Rishit and Deekshith.
+- Hardware per plane: Pi 5, USB mic, a GPIO push-to-talk button, headphones (left ear advisories like the phone).
+- Software: the existing cockpit agent runs locally on the Pi with its own Moss session on the Pi. moss 1.21 is pure Python; its engine `inferedge-moss-core` 0.35.0 publishes a `manylinux_2_28_aarch64` wheel, so it should install on 64-bit Raspberry Pi OS (untested on hardware).
+- It talks to the hub over the same `/live/ws` socket as the phones (`key`, `mic_frame`, `mic_end`), so no new protocol. Cartesia stays a cloud API called from the Pi; Elastic stays on the ground hub.
+- Why: a physical box with a real button is a stronger "this is a cockpit device" story than a phone, and it is the path the PRD already points to.
+- Cost: hardware, setup time on demo day, one more thing that can fail. Phones stay the default either way.
+**Questions:** do you want it at all for this demo? If yes, who owns it, and does your side have Pis (we don't know of any on ours)?
+
+Status: working on step 1 (repro fix, 09 section) · next P7b, W3, P4 · blocked on nothing
