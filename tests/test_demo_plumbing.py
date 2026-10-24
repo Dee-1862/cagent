@@ -80,7 +80,8 @@ def test_demo_static_and_audio(app, tmp_path):
     sf.write(tmp_path / "utterance.wav", np.zeros(160), 16000)
     with TestClient(app) as client:
         page = client.get("/demo/")
-        assert page.status_code == 200 and "/ws/observer" in page.text
+        assert page.status_code == 200 and "/demo/demo.js" in page.text
+        assert "/ws/observer" in client.get("/demo/demo.js").text
         assert "__UNSTEP_TOKEN_QUERY__" not in page.text
         assert client.get("/demo/index.html").status_code == 200
         assert client.get("/demo/audio/utterance.wav").headers["content-type"] == "audio/wav"
