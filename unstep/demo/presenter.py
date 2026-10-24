@@ -15,7 +15,8 @@ from pydantic import BaseModel
 from unstep import scenario
 from unstep.clock import now_ms
 from unstep.config import elastic_events_index, elastic_settings
-from unstep.contracts import AuditRecord, TowerTranscript, AnomalyEvent, unwrap, wrap
+from unstep.contracts import (AnomalyEvent, ApprovedDirective, AuditRecord, RejectedDirective,
+                              TowerTranscript, unwrap, wrap)
 from unstep.cockpit.audio import ArraySource, read_wav
 from unstep.cockpit.edge import AudioOut, CockpitEdge, DEMO_READBACKS
 from unstep.cockpit.inference import FakeAnswerer
@@ -124,6 +125,7 @@ class Presenter:
         self.edge = None
         self.tts = None
         self.started = False
+        self.run_started_ms = now_ms()
 
     def state(self, action=None):
         return {"type": "DemoScene", "scene": self.scene, "total": len(SCENES),
@@ -131,6 +133,8 @@ class Presenter:
                 "mode": "LIVE" if self.live else "REPLAY", "status": self.status,
                 "busy": bool(self.task and not self.task.done()), "action": action,
                 "generation": self.generation, "fallbacks": sorted(self.fallbacks),
+                # The controller's "Approve" is a recorded clip (no live mic yet); say so on screen.
+                "controller_recorded": True,
                 "frequency": scenario.FREQUENCY, "callsign": scenario.CALLSIGN,
                 "services": {"Cartesia": "live configured" if self.live else "fake",
                              "Moss": getattr(getattr(self.edge, "memory", None), "backend", "idle"),
@@ -223,8 +227,16 @@ class Presenter:
                 await _answer(loop, loop.start_next(), BrowserVoice(self.tts, self.audio_dir),
                     lambda: self.turns(["controller_approve.wav"], ["Approve"]),
                     self.links["controller_voice"].send_raw)
-                if self.links["cockpit"].queue.empty():
-                    raise RuntimeError("controller did not approve a live proposal")
+                decision = None
+                for raw in list(self.links["cockpit"].queue._queue):
+                    _, msg = unwrap(raw)
+                    if getattr(msg, "event_id", None) == proposal.event_id:
+                        decision = msg
+                if isinstance(decision, RejectedDirective):
+                    await self.edge._on_rejected(decision)
+                    raise RuntimeError("controller rejected the directive; nothing was sent")
+                if not isinstance(decision, ApprovedDirective):
+                    raise RuntimeError("controller did not approve this proposal")
             elif scene == 3:
                 approved = await self.links["cockpit"].receive("ApprovedDirective")
                 await self.edge._on_approved(approved)
@@ -329,6 +341,7 @@ class Presenter:
                 self.gateway.pending.clear()
                 self.gateway.decided.clear()
                 self.scene, self.completed = 1, 0
+                self.run_started_ms = now_ms()
                 self.generation += 1
                 self.audio_mode = True
                 self.fallbacks.clear()
@@ -356,15 +369,17 @@ class Presenter:
             return self.state(action)
 
 
-def stats_query():
+def stats_query(since_ms: int | None = None):
     index = elastic_events_index().replace("`", "``")
-    return (f"FROM `{index}`\n| WHERE type == \"AnomalyEvent\" OR "
+    # Scope to this run, so rehearsals and earlier runs never show up as this run's numbers.
+    scope = f"| WHERE ts >= {int(since_ms)}\n" if since_ms else ""
+    return (f"FROM `{index}`\n{scope}| WHERE type == \"AnomalyEvent\" OR "
             '(type == "ReadbackResult" AND match == false) OR type == "ApprovedDirective"\n'
             '| STATS count = COUNT(*) BY type, approved_via\n| SORT type, approved_via')
 
 
-async def statistics(gateway, *, elastic=True):
-    query = stats_query()
+async def statistics(gateway, *, elastic=True, since_ms=None):
+    query = stats_query(since_ms)
     settings = elastic_settings() if elastic else None
     if settings:
         url, key = settings
@@ -409,7 +424,7 @@ def create_demo_app(*, live=False, audio_dir=DEFAULT_DEMO_AUDIO_DIR, sink=None, 
 
     @router.get("/demo/stats")
     async def stats():
-        return await statistics(app.state.gateway, elastic=live)
+        return await statistics(app.state.gateway, elastic=live, since_ms=presenter.run_started_ms)
 
     @router.websocket("/demo/events")
     async def events(ws: WebSocket):

@@ -178,3 +178,23 @@ def test_elastic_query_uses_promoted_fields_and_does_not_hide_failure(monkeypatc
     with pytest.raises(HTTPException) as error:
         asyncio.run(statistics(Gateway(MemorySink())))
     assert error.value.status_code == 502
+
+
+def test_rejection_is_not_counted_as_an_approved_scene(monkeypatch):
+    import asyncio
+    from unstep.demo.presenter import create_demo_app
+    from unstep.ground import voice_approval
+
+    monkeypatch.setattr(voice_approval.ApprovalLoop, "classify", staticmethod(lambda text: "reject"))
+    app = create_demo_app(live=False)
+    presenter = app.state.presenter
+    presenter.realtime = False
+
+    async def go():
+        await presenter.run_scene(1)
+        await presenter.run_scene(2)
+        await presenter.stop()
+
+    asyncio.run(go())
+    assert presenter.completed == 1
+    assert "rejected" in presenter.status.lower() or "failed" in presenter.status.lower()

@@ -192,12 +192,12 @@ async def answer_query(memory: Memory, flight_index: str, callsign: str, questio
         if intent == "unknown" and answerer is not None:
             answer, source, moss_ms = await asyncio.wait_for(
                 _freeform(memory, flight_index, airport_index, callsign, question, answerer, metrics),
-                timeout=3.0,
+                timeout=5.0,  # a slightly cold Moss Inference needs more than 3 s
             )
         else:
             answer, source, moss_ms = await _answer(memory, flight_index, callsign, intent)
     except Exception:  # Moss offline or session closed: say so rather than crash
-        log.warning("pilot query failed; answering no record")
+        log.warning("pilot query failed; answering no record", exc_info=True)
         answer, source, moss_ms = NO_RECORD, None, None
 
     return PilotQuery(

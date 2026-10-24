@@ -46,6 +46,22 @@ def gateway_url() -> str:
     return env("UNSTEP_GATEWAY_URL", default=DEFAULT_GATEWAY_URL).rstrip("/")
 
 
+def allowed_hosts() -> list[str]:
+    """Host headers the gateway answers to. Local only by default, which blocks DNS
+    rebinding: a web page on another domain can't reach the gateway through the
+    browser. Add LAN names or IPs with UNSTEP_ALLOWED_HOSTS (comma separated); the
+    host of UNSTEP_GATEWAY_URL is always allowed."""
+    from urllib.parse import urlparse
+
+    hosts = ["127.0.0.1", "localhost", "[::1]", "::1"]
+    gw_host = urlparse(gateway_url()).hostname
+    if gw_host:
+        hosts.append(gw_host)
+    extra = env("UNSTEP_ALLOWED_HOSTS") or ""
+    hosts += [h.strip() for h in extra.split(",") if h.strip()]
+    return sorted(set(hosts))
+
+
 def gateway_token() -> str | None:
     """Optional shared secret (FR-13). When set, every client must send it."""
     return env("UNSTEP_GATEWAY_TOKEN")

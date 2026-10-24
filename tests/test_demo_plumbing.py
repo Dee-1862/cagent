@@ -307,3 +307,13 @@ def test_stt_slip_in_tower_transcript_never_reaches_the_pilot():
     assert proposal.instruction_text == "Cessna 1-2-3, hold short Runway 33"
     match, _, _ = check_readback(proposal.slots, "hold short runway 33 Cessna 123.")
     assert match
+
+
+def test_dns_rebinding_host_is_rejected(monkeypatch):
+    from fastapi.testclient import TestClient
+    from unstep.gateway.server import create_app
+    from unstep.gateway.sink import MemorySink
+
+    client = TestClient(create_app(MemorySink()))
+    assert client.get("/", headers={"host": "evil.example:8765"}).status_code == 400
+    assert client.get("/health", headers={"host": "127.0.0.1:8765"}).status_code == 200

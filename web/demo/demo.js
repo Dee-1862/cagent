@@ -589,8 +589,16 @@ function renderProposal(proposal) {
   );
 }
 
+function renderRejection(directive) {
+  setText($('#approval'), `✕ Rejected via ${directive.rejected_via} · directive not sent`);
+  $('#approval').className = 'warn';
+  setText($('#hint-status'), 'Rejected · pilot told to request say again');
+  $('#hint-status').className = 'warn';
+}
+
 function renderApproval(directive) {
-  setText($('#approval'), `✓ Approved via ${directive.approved_via}`);
+  const recorded = session.controllerRecorded ? ' (recorded controller clip)' : '';
+  setText($('#approval'), `✓ Approved via ${directive.approved_via}${recorded}`);
   $('#approval').className = 'good';
   setText($('#hint-status'), '✓ Controller approved');
   $('#hint-status').className = 'good';
@@ -725,6 +733,9 @@ function handleMessage(envelope) {
     case 'ApprovedDirective':
       renderApproval(data);
       break;
+    case 'RejectedDirective':
+      renderRejection(data);
+      break;
     case 'ReadbackResult':
       renderReadback(data);
       break;
@@ -798,6 +809,7 @@ function applyState(data) {
   setText($('#mode'), data.mode);
   setText($('#frequency'), data.frequency);
   setText($('#callsign'), data.callsign);
+  session.controllerRecorded = Boolean(data.controller_recorded);
   const fallbacks = data.fallbacks.length ? ' · ' + data.fallbacks.join('; ') : '';
   setText($('#status'), `${data.title} · ${data.status}${fallbacks}`);
   $('#status').title = $('#status').textContent;

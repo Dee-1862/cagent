@@ -24,10 +24,11 @@ from urllib.parse import quote, urlparse
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import ValidationError
 
 from unstep.clock import now_ms
-from unstep.config import gateway_token, pending_ttl_s
+from unstep.config import allowed_hosts, gateway_token, pending_ttl_s
 from unstep.contracts import (
     ApprovedDirective,
     ProposedDirective,
@@ -196,6 +197,8 @@ def create_app(sink=None, pending_ttl_s: float = PENDING_TTL_S,
             await sink.aclose()  # send what is still queued
 
     app = FastAPI(title="Unstep gateway", lifespan=lifespan)
+    # Host allowlist: blocks DNS rebinding for HTTP and WebSocket requests alike.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts())
     gw = Gateway(sink, pending_ttl_s)
     app.state.gateway = gw
 
