@@ -20,6 +20,13 @@ This is a resume project and we are here to win. Treat every task as the best wo
 - Message format: a one-line title, a blank line, then bullet points describing the change.
 - Log notable changes in `docs/02-changes.md`.
 
+## Talking to the other side (agent mail)
+
+- Read `README.md` on the `agent-mail` branch. Deekshith's agents read `rishit-to-deekshith.md` and reply by appending to `deekshith-to-rishit.md`; Rishit's agents do the opposite. Never edit the other side's file or old messages.
+- Check mail every 30 minutes while working and before touching shared files (`unstep/live/room.py`, `unstep/live/app.py`, `unstep/contracts.py`, `docs/01-prd.md`).
+- Use a separate worktree for `agent-mail`, never switch branches in the main checkout.
+- Ownership right now: Rishit's side builds the ATC console (`web/live/atc/`). Deekshith's side builds the pilot app (`app/`) and the hub backend for joining pilots.
+
 ## Project rules
 
 - Read `docs/01-prd.md` and `docs/04-work-split.md` before changing code. Contracts live in `unstep/contracts.py`; changing them needs both developers to agree and a changes log entry.
