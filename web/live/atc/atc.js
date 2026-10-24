@@ -20,6 +20,7 @@ function send(message) {
 function controls() {
   $("autonomy").disabled = !state.ready;
   $("transmit").disabled = !state.ready;
+  $("reset").disabled = !state.ready;
   document.querySelectorAll("[data-say]").forEach((b) => { b.disabled = !state.ready; });
   updateCountdowns();
 }
@@ -136,6 +137,15 @@ function receive(message) {
     case "flow":
       // Transport flow is evidence of routing, not evidence of delivery or timing.
       $("event-label").textContent = `Latest activity: ${message.label}`;
+      break;
+    case "room_reset":
+      // Presenter reset: walk-up planes are gone; the board starts clean for the next group.
+      state.traces.clear(); state.lanes.clear(); state.reports.clear(); state.pending.clear();
+      state.liveOverlap.clear(); state.keyed = {};
+      setStations(message.stations);
+      renderMap(); renderTraces(); renderRadio(); renderInbox();
+      $("happened").textContent = "Room reset. Scan the QR code to fly a plane.";
+      notice("Room reset. Walk-up planes were freed; the team planes stayed.");
       break;
     case "status": state.pending.clear(); renderInbox(); notice(message.text); break;
   }
@@ -445,6 +455,9 @@ async function play(encoded) {
     source.connect(state.audio.destination); source.start();
   } catch { notice("Audio could not play. The radio text is still available."); }
 }
+$("reset").addEventListener("click", () => {
+  if (confirm("Reset the room? Every walk-up plane is disconnected and the board is cleared.")) send({type: "reset"});
+});
 $("sound").addEventListener("click", async () => {
   try {
     state.audio ||= new AudioContext(); await state.audio.resume();
