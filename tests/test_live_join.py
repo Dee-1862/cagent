@@ -222,3 +222,32 @@ def test_a_set_allowed_origins_adds_to_our_vercel_app_instead_of_replacing_it(mo
     client = TestClient(create_live_app(live=False, sink=MemorySink()))
     newer = "https://cagent-9c1xhv1ks-dee-1862s-projects.vercel.app"
     assert client.get("/live/stations", headers={"origin": newer}).headers.get("access-control-allow-origin") == newer
+
+
+def test_cloud_health_check_passes_with_an_internal_host_header(monkeypatch):
+    monkeypatch.setattr(room_mod, "create_memory", LocalMemory)
+    monkeypatch.setenv("UNSTEP_ALLOWED_HOSTS", "*.onrender.com")
+    client = TestClient(create_live_app(live=False, sink=MemorySink()))
+    assert client.get("/health", headers={"host": "10.214.3.7:10000"}).status_code == 200
+    assert client.get("/live/stations", headers={"host": "10.214.3.7:10000"}).status_code == 400  # rest stays guarded
+
+
+def test_planes_share_one_moss_client(monkeypatch):
+    made = []
+
+    def one_memory():
+        made.append(LocalMemory())
+        return made[-1]
+
+    async def go():
+        monkeypatch.setattr(room_mod, "create_memory", one_memory)
+        monkeypatch.setenv("UNSTEP_MOSS_AIRCRAFT", "6")
+        r = LiveRoom(create_app(MemorySink()).state.gateway, live=True, tts_factory=lambda v: FakeTTS(),
+                     advisory_tts=FakeTTS())
+        await r.start()
+        await r.claim_aircraft(); await r.claim_aircraft(); await r.claim_aircraft()  # a third plane joins
+        assert len(made) == 1 and len(r.edges) == 3
+        assert all(e.memory is made[0] for e in r.edges.values())
+        await r.stop()
+
+    asyncio.run(go())
