@@ -19,7 +19,7 @@ export type Line = {
 };
 export type Lyrics = { lines: Line[] };
 
-export const THROTTLE_MS = 1000;
+export const THROTTLE_MS = 150; // Cartesia sends new words about every 0.5 s: show each as it lands
 export const MAX_LINES = 8;
 export const empty = (): Lyrics => ({ lines: [] });
 

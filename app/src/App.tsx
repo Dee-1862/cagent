@@ -137,7 +137,8 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
   const lastStatus = useRef<Record<string, string>>({});
   const wasOpen = useRef(false);
   const pressAt = useRef(0);
-  const holding = useRef(false); // finger still on the button (the mic prompt can take a moment)
+  const holding = useRef(false);
+  const [hubLive, setHubLive] = useState(true); // finger still on the button (the mic prompt can take a moment)
   const releaseTimer = useRef<number | null>(null);
 
   const me = stations.find((s) => s.id === station);
@@ -160,6 +161,7 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
         case "hello":
           if (!greeted.current) { greeted.current = true; cue("joined"); }
           setStations(m.stations);
+          setHubLive(!!m.live);
           setKeyed(m.keyed || {});
           setTrace([...m.traces].reverse().find((t: Trace) => t.callsign === station) ?? null);
           return;
@@ -334,7 +336,9 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
       </div>
 
       <div className="lyrics" ref={card} aria-live="polite">
-        {lyrics.lines.length === 0 && <p className="line quiet">What anyone says on the radio appears here as they speak.</p>}
+        {lyrics.lines.length === 0 && <p className="line quiet">{hubLive
+          ? "What anyone says on the radio appears here as they speak."
+          : "Live captions need Cartesia. This tower runs offline (fake speech), so spoken words aren't transcribed."}</p>}
         {lyrics.lines.map((l, i) => (
           <p key={l.id} className={`line ${l.kind} ${i === lyrics.lines.length - 1 ? "now" : "past"} ${l.final ? "final" : "interim"}`}>
             {l.kind === "advisory" && <span className="only-you">Only you</span>}

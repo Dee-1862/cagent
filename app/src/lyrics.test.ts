@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { caption, empty, lagLabel, note, tick, MAX_LINES } from "./lyrics";
+import { caption, empty, lagLabel, note, tick, MAX_LINES, THROTTLE_MS } from "./lyrics";
 
 const w = (s: string) => s.split(" ").map((text) => ({ text, kind: null as null }));
 const msg = (text: string, final = false, lag: number | null = 180) => ({ id: "N123AB-1", station: "N123AB", words: w(text), final, lag_ms: lag });
 
 describe("lyrics lines", () => {
-  it("updates a line at most once per second, then the waiting text shows", () => {
+  it("shows new words as soon as they land, coalescing bursts closer than THROTTLE_MS", () => {
     let s = caption(empty(), msg("Tower,"), 0, "You", true);
-    s = caption(s, msg("Tower, Cessna"), 400, "You", true);
+    s = caption(s, msg("Tower, Cessna"), 50, "You", true);
     expect(s.lines[0].words.map((x) => x.text)).toEqual(["Tower,"]);
     expect(s.lines[0].pending?.length).toBe(2);
-    s = tick(s, 900);
+    s = tick(s, THROTTLE_MS - 1);
     expect(s.lines[0].words).toHaveLength(1);
-    s = tick(s, 1000);
+    s = tick(s, THROTTLE_MS);
     expect(s.lines[0].words).toHaveLength(2);
     expect(s.lines[0].pending).toBeNull();
   });
