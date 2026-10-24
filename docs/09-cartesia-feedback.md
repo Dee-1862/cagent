@@ -22,6 +22,10 @@ Issues and friction we hit while building Unstep on Cartesia (Sonic TTS, Ink-2 S
 | CF-6 | TTS | Pronunciation dictionary create endpoint is hard to find from the TTS reference | Docs | Low |
 | CF-7 | TTS | Case-insensitive dictionary matching needs Sonic 3.6, not stated on the TTS reference | Docs | Low |
 | CF-8 | TTS | Latency claim doesn't say what it measures | Docs | Low |
+| CF-9 | STT | `ink-2` returns no word timestamps; `ink-whisper` does but has no key terms | Confirmed | High |
+| CF-10 | STT | Turns endpoint returns empty transcripts, with no error, when audio arrives faster than real time | Confirmed | Medium |
+| CF-11 | Auth | REST uses `Authorization: Bearer` plus `Cartesia-Version`, WebSockets use `X-API-Key` | Docs | Low |
+| CF-12 | STT | Key terms must be `%20`-encoded; standard `+` encoding of spaces is not mentioned as supported | Docs | Low |
 
 ## Details
 
@@ -73,8 +77,42 @@ Issues and friction we hit while building Unstep on Cartesia (Sonic TTS, Ink-2 S
 - **What:** It's not stated whether 90 ms is model-only, server-side, or end to end, or from which region.
 - **Ask:** State the measurement point and region, so builders can quote it correctly.
 
+### CF-9: `ink-2` returns no word timestamps, and `ink-whisper` has no key terms (Confirmed)
+
+- **Where:** `wss://api.cartesia.ai/stt/websocket`, `cartesia_version` 2026-08-14, tested 2026-10-23.
+- **Repro:** Stream a 5.2 s 16 kHz PCM clip, send `finalize`.
+  - `model=ink-2`: `transcript` messages have `text` and `is_final` only. No `words`, also with `timestamp_granularities=word`.
+  - `model=ink-whisper` with `timestamp_granularities=word`: `words` with `start` and `end` are returned (words carry a leading space, e.g. `" Advisory."`).
+- **Why it matters:** The docs list `words` as an optional field on the manual endpoint without saying which models return it. Key terms only work on `ink-2`/`ink-preview`. For ATC we need both: key terms for callsigns and runways, and word timestamps to mark which words were blocked. Today we must pick one or run two streams.
+- **Ask:** Word timestamps on `ink-2`, or key terms on `ink-whisper`, and state model support next to `words` in the docs.
+
+### CF-10: Turns endpoint returns empty transcripts when audio is sent faster than real time (Confirmed)
+
+- **Where:** `wss://api.cartesia.ai/stt/turns/websocket`, `model=ink-2`.
+- **Repro:** Send a whole 5.2 s clip in 100 ms chunks as fast as possible, then `{"type": "close"}`. Events arrive (`turn.start`, `turn.eager_end`, `turn.end`) but every `transcript` is `""`. Sending the same chunks paced at real time gives full, correct `turn.update` and `turn.end` transcripts.
+- **Why it matters:** Pre-recorded audio, tests and replays are common. Empty transcripts with no error or warning are easy to mistake for silence.
+- **Ask:** Either process burst audio correctly, or send an `error` or warning when input runs ahead of real time. Document the pacing requirement.
+
+### CF-11: Different auth for REST and WebSockets
+
+- **What:** REST endpoints (`/voices`, pronunciation dictionaries) use `Authorization: Bearer` plus a `Cartesia-Version` header. WebSockets use `X-API-Key` and a `cartesia_version` query parameter.
+- **Ask:** Accept both forms everywhere, or put the difference in one place in the docs.
+
+### CF-12: Key term encoding
+
+- **What:** The key term docs say to join multi-word phrases with `%20`. Most URL libraries (Python's `urlencode` by default) encode spaces as `+`. Our first client did, and it's not documented whether the server treats `+` as a space.
+- **Ask:** Accept `+` as a space, or call it out explicitly.
+
+## Measured numbers (2026-10-23, from our laptop)
+
+| Measure | Value | Notes |
+| --- | --- | --- |
+| TTS first audio, `sonic-3.6` WebSocket | 214 ms | One 5.2 s advisory, includes network |
+| TTS total generation | 1427 ms | Same sentence |
+| STT `ink-2` key-term transcript | Correct | "likely hold short runway tree tree" came back exactly |
+
 ## To check once we have an API key
 
-- Whether our raw WebSocket clients match the live message shapes (see `scripts/smoke_cartesia.py` once added).
+- ~~Whether our raw WebSocket clients match the live message shapes~~ Checked: TTS and both STT endpoints work with our clients (`scripts/smoke_cartesia.py`).
 - Key term accuracy on ATC phrases ("hold short", "niner", "tree", callsigns).
 - How turn detection handles short radio-style turns with squelch noise.
