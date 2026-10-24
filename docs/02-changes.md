@@ -19,6 +19,17 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Cockpit voices hold while the frequency is busy (P5 hook)
+
+**Type:** Added
+**Area:** Edge device
+
+- Merged Rishit's `CockpitEdge.set_frequency_busy(busy)` (82ee93e): busy cuts the advisory being spoken and holds new ones, free releases them in order.
+- `unstep/live/room.py` `_key()` now calls it on every aircraft's cockpit agent when the first key goes down and when the last key comes up. A plane that joins while someone is talking starts held. Failures are logged, never raised into the key path.
+- Checked: 1 new room test with fake edges, Rishit's 8 `tests/test_edge_busy.py` tests pass here.
+
+**Related:** PRD FR-10, agent mail R11, R12
+
 ## 2026-10-24: Live room sends replays to Cartesia fast, not at real time (W3)
 
 **Type:** Changed

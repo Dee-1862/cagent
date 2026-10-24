@@ -68,3 +68,28 @@ def test_streamed_tower_call_sends_its_alignment_report(make_room):
         await room.stop()
 
     asyncio.run(go())
+
+
+def test_key_tells_every_cockpit_when_the_frequency_is_busy_or_free(make_room):
+    async def go():
+        room, atc, pilot = await make_room()
+        calls = []
+        for cs, edge in room.edges.items():
+            async def busy(b, cs=cs):
+                calls.append((cs, b))
+            edge.set_frequency_busy = busy
+        n = len(room.edges)
+        assert n >= 1
+        room._key("atc", True)
+        room._key("H456", True)  # second key: still busy, no second signal
+        await asyncio.sleep(0.05)
+        assert sorted(calls) == sorted((cs, True) for cs in room.edges)
+        room._key("atc", False)
+        await asyncio.sleep(0.05)
+        assert len(calls) == n  # H456 still keyed
+        room._key("H456", False)
+        await asyncio.sleep(0.05)
+        assert [c for c in calls if c[1] is False] == [(cs, False) for cs in room.edges]
+        await room.stop()
+
+    asyncio.run(go())

@@ -424,6 +424,8 @@ class LiveRoom:
             await edge.start()
         self.edges[s.callsign] = edge
         self.turns[s.callsign] = turns
+        if self.key_since:  # joined while someone is talking: hold its advisories too
+            self._spawn(self._frequency_busy(edge, True))
         node = f"cockpit:{s.callsign}"
         if not any(n["id"] == node for n in self.graph):
             self.graph.append({"id": node, "label": f"Cockpit agent {s.callsign}",
@@ -469,6 +471,13 @@ class LiveRoom:
             await edge.stop()
         for link in self.links.values():
             await link.close()
+
+    async def _frequency_busy(self, edge, busy: bool) -> None:
+        """Tell one cockpit agent the frequency is busy (hold and cut its voice) or free (P5)."""
+        try:
+            await edge.set_frequency_busy(busy)
+        except Exception:
+            log.exception("set_frequency_busy(%s) failed for %s", busy, getattr(edge, "callsign", "?"))
 
     def _spawn(self, coro) -> asyncio.Task:
         task = asyncio.create_task(coro)
@@ -680,6 +689,9 @@ class LiveRoom:
             if self.key_since.pop(station, None) is None:
                 return
             self.keyed.discard(station)
+        if len(self.key_since) == (1 if down else 0):  # the frequency just became busy or free (P5)
+            for edge in list(self.edges.values()):
+                self._spawn(self._frequency_busy(edge, down))
         self._wake.set()
         self.send_to(None, {"type": "keyed", "station": station, "down": down,
                             "keyed": dict(self.key_since), "ts": received})
