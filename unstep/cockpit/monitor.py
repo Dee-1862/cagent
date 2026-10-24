@@ -225,6 +225,9 @@ async def run(url: str) -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    from unstep.config import load_env
+
+    load_env()  # Moss keys come from .env
     p = argparse.ArgumentParser()
     p.add_argument("--url", default="ws://127.0.0.1:8765")
     asyncio.run(run(p.parse_args().url))

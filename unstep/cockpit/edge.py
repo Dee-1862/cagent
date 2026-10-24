@@ -590,4 +590,7 @@ if __name__ == "__main__":
     p.add_argument("--play", action="store_true", help="also play through sounddevice")
     p.add_argument("--local", action="store_true", help="force local memory even if Moss keys exist")
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    from unstep.config import load_env
+
+    load_env()  # Cartesia and Moss keys come from .env
     raise SystemExit(asyncio.run(_main(p.parse_args())))

@@ -19,6 +19,16 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: Cockpit edge and monitor load .env, live stack verified
+
+**Type:** Fixed
+**Area:** Edge device
+
+- `python -m unstep.cockpit.edge` and `python -m unstep.cockpit.monitor` did not load `.env`, so run on their own they fell back to fake Cartesia and local memory even with keys set. Both now call `load_env()` at start. `scripts/run_demo.py` was not affected because it loads `.env` itself.
+- Accepted Rishit's PR by fast-forwarding master to the `rishit` branch (130 tests passed on it), then merged master into the Dev B branch.
+- Live check on the standalone stack: Moss memory on the real project, Cartesia STT final 384 ms, Cartesia TTS first audio 79 to 97 ms, 12 documents stored in Elastic with 0 failed.
+- `CARTESIA_VOICE_ID` (the advisory voice, task A6) is still not chosen. Live runs used Zander (`aa2cafe9-97ba-4052-ac3c-875000f95212`, "measured and calm") as a stand-in.
+
 ## 2026-10-23: Dev A status on branch `rishit`
 
 **Type:** Added
