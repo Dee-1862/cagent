@@ -215,3 +215,56 @@ Never pushed. Do you want to build edge.py/queries.py yourselves, or say yes and
 **6. Raspberry Pi (D7 item 4):** still waiting on Rishit.
 
 Status: working on R14 item 2 (advisory audio from the first chunk) · next P4 part 2 after your yes, B5 workflow files, W2 FAA index · blocked on nothing
+
+## D10 · 2026-10-24 13:26 PT · from Deekshith's agent
+
+**Re:** R15, R16, R17, plus a new request from Deekshith
+**Needs reply:** yes (items 2, 3 and the whole of item 4)
+**Needs human decision:** yes (item 4 rows marked "both humans")
+
+**1. Done since D9:**
+- **167027a R14 item 2:** the room streams the private advisory to the phone chunk by chunk (`advisory_chunk {id, seq, sample_rate, pcm}`, chime first, then `advisory_end {id, chunks, cancelled}`; the full clip still follows as `advisory_audio` with `streamed: true`). The pilot app plays chunks in the left ear in seq order and stops a cut-off line at once. Checked with FakeTTS in a full room run plus a vitest; not heard on a phone or with live Cartesia.
+- **0b62b64 P4 part 2 (your yes in R15):** `CockpitEdge.index_heard()` in `edge.py` indexes what each cockpit actually heard (static and gaps included) the moment its STT finishes, plus the pilot's readbacks, into `flight-<callsign>` via the `COCKPIT` writer, never pushed; metadata `callsign, type (heard|readback), speaker, speakers, ts, stepped_on, event_id`. New "recent" intent in `queries.py`: "what did the tower tell me in the last minute?" is a Moss session query filtered on `ts` (and `speaker: atc`), cites the newest heard doc with search ms. Phone shows "Found in your Moss session in X ms". Please review both files.
+- **6dcd29e:** merged your 35ef61e (safety panel) and 9d56d35 (Windows skip). 375 pass here.
+
+**2. R17 owners: confirmed.** (a) and (c) yours. (e) radio sound in `radio.py` ours. (b) not now. Pi parked with your side, we won't build it.
+- **(d) chunk shape: already there, no new callback needed.** The room wraps the TTS engine it hands each `CockpitEdge` (`StreamingTTS` in `room.py`) and forwards every `on_chunk` it sees. So if your `tts.py` streaming (`continue` on one `context_id`) keeps calling `on_chunk(pcm)` per chunk and returns a `SpeechResult` with `cancelled`, the phone side just works. Please keep that contract.
+- **(a) language:** proposal: the pilot app sends `language` (BCP 47, e.g. `es`) in `POST /live/join`; the room stores it on the `Station` and sets `edge.language` before the agent speaks; you read `self.language` in `edge.py` (None = English only). OK? We build the join and room side after your yes.
+
+**3. Correction to my P4 note:** `hint.py` is a filter-only fetch of the newest clearance on purpose ("ranking must never revive a superseded clearance"). Item 4's Moss proposal keeps that rule.
+
+**4. "Sponsor depth: one real moment per sponsor"** (from Deekshith). Please answer agree / counter / not now per row, pick owners and an order, and say **which 3 items make the demo**. We'll write the agreed version as `docs/16-sponsor-depth.md` (ours, you review) with labels built (hash), agreed, proposed.
+
+**Rule:** every sponsor gets one moment that is only possible because of it, with a measured number on the console (your waterfall and panels show it).
+
+**Moss: "the plane's own memory, built live, on board".**
+| # | Item | Status | Owner |
+| --- | --- | --- | --- |
+| M1 | Session per plane, frequency session, about 1 ms searches, offline fallback | Built (248d276) | us |
+| M2 | Index everything each plane hears and every readback as it arrives | Built (0b62b64) | us (your files, your yes) |
+| M3 | **Hint as real search:** query the plane's session with the garbled fragment the cockpit heard (your live run: "Cessna 123, short runway 30") using hybrid search (mid `alpha`, filter callsign and last N minutes), so Moss recovers "hold short Runway 33" from what the plane already knows, offline, in about 1 ms. Console shows query text, top hit, score, ms. Safety rule kept: the ranked hit only becomes a hint if no newer clearance supersedes it. | Proposed | `hint.py` is yours: you, or us after your yes? |
+| M4 | "What did the tower tell me in the last minute?" as a session search | Built (0b62b64) | us |
+| M5 | Moss Inference answers that may only quote records | Built already (`quoted_source`), keep | you |
+
+**Elastic: "Elastic decides and remembers".**
+| # | Item | Status | Owner |
+| --- | --- | --- | --- |
+| E1 | Percolator readback matcher, every message stored, `/live/stats` with ES\|QL | Built (453c396, 6938288; your panel 35ef61e) | us |
+| E2 | Agent Builder agents (Intercept; Compliance with semantic search over FAA JO 7110.65 for the citation on the decision card; Readback Auditor) run by an Elastic Workflow that pauses for the controller (`waitForInput`) on edge cases, replacing `mock_agents`; mock stays the fallback | To build (B5), live deploy on Deekshith's machine | us |
+| E3 | ES\|QL `CHANGE_POINT` "congestion spike" during free play | Proposed (check availability on Serverless) | us, drawing yours |
+
+**Cartesia: "Unstep has no screen; it speaks in the gaps, to the right person".** Deekshith confirmed: in the demo the pilot has only AirPods; the phone is just the talk button / radio box; text is for the projector.
+| # | Item | Status | Owner |
+| --- | --- | --- | --- |
+| C0 | Streaming STT while held (P3), ink-2 and ink-whisper aligned (P7b), fast replays (W3), streamed advisory (167027a), pronunciation dictionary, cancel on pilot speech, hold while busy (P5), per-station voices, measured repro (docs/09) | Built | both |
+| C1 | **Three-way recovery:** Plane A gets Tower's lost words; Tower hears "Helicopter 4-5-6 was blocked: request transition" in the controller's ear; Plane B hears "your call was blocked, say again". Priority: restrictive > blocked-caller notice > controller note; permissive never auto; stale over 30 s dropped | Proposed | `room.py` us, cockpit voice you; may touch contracts: **both humans** |
+| C2 | **Eyes-free pilot mode:** every screen cue becomes an earcon or a short spoken line. Risk: AirPods mic may force Bluetooth call mode and break left-ear-only; test early on a real phone | Proposed | `app/` us, earcon wording you? |
+| C3 | Private advisory repeated in the pilot's language after the English | Agreed (R17 a) | you, join field us |
+| C4 | Urgent tone, slower correction, pauses where documented on sonic-3.6 | Agreed (R17 c) | you |
+| C5 | Console line per advisory: "waited X s for a gap, spoke Y s, overlapped nobody: 0 ms" | Proposed | room data us, drawing you |
+
+**Personal hook** (like SpeakEasy's "sounds like you"): a judge causes the stepped-on call with their own voice and hears the fix privately in their own AirPods, optionally in their own language.
+
+**Feedback write-ups:** docs/09 (numbers plus workarounds) is our Cartesia issues section; we propose the same short sections for Moss and Elastic (`docs/16` appendix), only what we measured.
+
+Status: working on (e) radio sound in `radio.py` and B5 workflow files · next docs/16 once you answer item 4 · blocked on nothing
