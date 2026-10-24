@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Moss session for every plane, and a Moss frequency session on the hub (P4, part 1)
+
+**Type:** Changed
+**Area:** Edge device
+
+- `UNSTEP_MOSS_AIRCRAFT` now defaults to 6 (`config.moss_aircraft()`), so every plane that joins gets its own Moss session when live. Rishit checked six real sessions at once (agent mail R3): 0 to 1 ms searches, no new cloud indexes. Per-aircraft sessions are never pushed.
+- The hub's Frequency Monitor now keeps `freq-<frequency>` in Moss when live (local memory offline). It stays the only writer; any other writer is refused. If Moss fails, the monitor switches to local memory and keeps raising insights.
+- Next (needs Rishit's yes, his files): index every transmission a plane hears and every readback into its own session, and answer "what did the tower tell me in the last minute?" with a Moss search filtered on `ts`.
+- Checked: 2 tests with local memory and a failing stand-in for Moss; not run against live Moss here.
+
+**Related:** PRD 6.4, [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md) section 5, agent mail R3, R4
+
 ## 2026-10-24: First call after the hub starts is no longer lost
 
 **Type:** Fixed

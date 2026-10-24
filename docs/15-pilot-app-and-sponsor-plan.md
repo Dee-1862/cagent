@@ -76,10 +76,10 @@ From the `moss` 1.21 source: `client.session(name)` is a local in-memory index. 
 
 | Today | Push it to |
 | --- | --- |
-| One aircraft gets Moss, others local memory, out of caution about the plan's index limit | Every plane gets its own Moss session on join (`UNSTEP_MOSS_AIRCRAFT=6`, built, default 1 until checked live). Sessions are local, so the limit should only bite on push |
+| One aircraft gets Moss, others local memory, out of caution about the plan's index limit | Done: every plane gets its own Moss session on join (`UNSTEP_MOSS_AIRCRAFT`, default 6). Rishit ran six real sessions at once: 0 to 1 ms searches, no new cloud indexes. Per-aircraft sessions are never pushed |
 | Seeded clearances, queried for the hint | Index every transmission the moment it is transcribed, per plane and per frequency, with `callsign`, `speaker`, `ts`, `stepped_on` metadata |
 | Hint search | Readback check as a second opinion: the readback queried against that plane's latest instruction, score shown next to the slot check |
-| Ground has no Moss | A frequency session on the hub (`freq-118.700`), written only by the tower transcriber, so "what did tower say to Plane C in the last minute" is a local query in milliseconds |
+| Ground has no Moss | Built: a frequency session on the hub (`freq-<frequency>`), a Moss session when live, written only by the Frequency Monitor from tower transcripts, so "what did tower say to Plane C in the last minute" is a local query in milliseconds |
 | Nothing pushed | At the end of a flight, `push_index()` hands off the plane's session; ground queries it with `query_multi_index` across the airport index and the pushed sessions (check) |
 | Moss Inference for free-form questions | Stream it (`stream=True`) straight into Cartesia TTS, grounded on the plane's own index (`indexes=[...]`) (check that Inference can see a session before push; assume not) |
 | Text only | `$near` geo filter on runway and taxiway records from the plane's position: "you are 40 m from the Runway 33 hold short line" (check) |
@@ -147,4 +147,4 @@ With 100 items a 95 percent interval is about plus or minus 10 points; 500 items
 | Auto-relay on or off by default for the demo, and the README "human approval for every directive" line | Deekshith and Rishit |
 | Allow the network hosts in this sandbox's environment so we can test live (Cartesia, Moss, Elastic) | Deekshith |
 | Vercel project name and the tunnel to use on demo day | Deekshith |
-| Raise `UNSTEP_MOSS_AIRCRAFT` to 6 after a live check | Rishit (asked in D1) |
+| Raise `UNSTEP_MOSS_AIRCRAFT` to 6 after a live check | Done (Rishit checked six sessions, R3) |
