@@ -48,7 +48,7 @@ async def main(push: bool) -> int:
 
     # Demo hint query (same call the cockpit makes on a stepped-on transmission).
     heard = anomaly_event().heard_text
-    hint = await derive_hint(mem, CALLSIGN, heard, f, a)
+    hint = await derive_hint(mem, CALLSIGN, heard, f, a, now=T0)  # seed data is stamped at T0
     print(f"[hint] heard={heard!r} -> kind={hint.kind} text={hint.text!r} "
           f"source={hint.source_doc_id} moss_ms={hint.moss_ms}")
     if hint.kind != "restrictive" or hint.source_doc_id != f"{f}/clr-0007":

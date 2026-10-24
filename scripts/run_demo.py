@@ -37,7 +37,7 @@ import websockets  # noqa: E402
 
 from unstep.cockpit.audio import WavFileSource, read_wav  # noqa: E402
 from unstep.cockpit.edge import AudioOut, CockpitEdge, GatewayLink, Line  # noqa: E402
-from unstep.cockpit.memory import LocalMemory  # noqa: E402
+from unstep.cockpit.memory import LocalMemory, create_memory  # noqa: E402
 from unstep.cockpit.stt import FakeManualSTT, FakeTurnSTT, ReplayTurnSTT  # noqa: E402
 from unstep.cockpit.tts import FakeTTS  # noqa: E402
 from unstep.clock import now_ms  # noqa: E402
@@ -95,7 +95,7 @@ def print_live_table(edge) -> None:
         ("STT manual finalize -> transcript", "stt_final_ms"),
         ("STT turns end of speech -> turn.end", "stt_turn_end_ms"),
         ("TTS first audio", "tts_first_audio_ms"),
-        ("Memory search (local)", "moss_ms"),
+        ("Memory search (Moss or local)", "moss_ms"),
         ("Readback verdict", "readback_verdict_ms"),
         ("Event -> directive round trip", "round_trip_ms"),
     ]
@@ -168,7 +168,7 @@ async def demo(clean: bool, play: bool, live: bool = False) -> int:
     helpers = [asyncio.create_task(mock_agents.run(url)), asyncio.create_task(auto_approver.run(url))]
     if live:
         tts, manual_factory, readbacks, question_stt = live_engines()
-        edge = CockpitEdge(link=GatewayLink(url), memory=LocalMemory(), tts=tts,
+        edge = CockpitEdge(link=GatewayLink(url), memory=create_memory(), tts=tts,  # real Moss when keys are set
                            manual_stt_factory=manual_factory, turn_stt_factory=lambda: readbacks,
                            audio_out=AudioOut(LIVE_WAV_OUT))  # played at the end, not mid-flow
     else:
