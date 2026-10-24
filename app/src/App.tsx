@@ -58,8 +58,17 @@ function Join({ hub, onSeat }: { hub: Hub; onSeat: (s: Seat) => void }) {
 
   useEffect(() => {
     let stop = false;
-    const load = () => fetch(`${hub.http}/live/stations`).then((r) => r.json()).then((d) => !stop && setRoom(d))
-      .catch(() => !stop && setError("Can't reach the tower. Is the hub running and the link right?"));
+    const load = () => fetch(`${hub.http}/live/stations`).then((r) => r.json())
+      .then((d) => { if (!stop) { setRoom(d); setError(null); } })
+      .catch(async () => {
+        if (stop) return;
+        // A CORS refusal and a dead hub look the same to fetch(); an opaque no-cors probe tells them apart.
+        const up = await fetch(`${hub.http}/live/stations`, { mode: "no-cors" }).then(() => true, () => false);
+        if (stop) return;
+        setError(up
+          ? `The tower at ${hub.http} is up but refuses this page. Add ${location.origin} to UNSTEP_ALLOWED_ORIGINS on the hub.`
+          : `Can't reach the tower at ${hub.http}. It may be waking up (free Render takes about a minute) or down. Retrying...`);
+      });
     load();
     const t = setInterval(load, 3000);
     return () => { stop = true; clearInterval(t); };
