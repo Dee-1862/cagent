@@ -3,7 +3,7 @@ const $ = (id) => document.getElementById(id);
 const names = {atc: "Tower"};
 const shortName = (id) => state.stations.get(id)?.name || (id === "atc" ? "Tower" : id || "A plane");
 const state = {ws: null, ready: false, offset: 0, live: false, autonomy: false,
-  stations: new Map(), connected: {}, keyed: {}, liveOverlap: new Map(), traces: new Map(), lanes: new Map(), pending: new Set(), audio: null, password: null, reasons: {}};
+  stations: new Map(), connected: {}, keyed: {}, liveOverlap: new Map(), reports: new Map(), traces: new Map(), lanes: new Map(), pending: new Set(), audio: null, password: null, reasons: {}};
 const now = () => Date.now() + state.offset;
 function el(tag, text, className) {
   const node = document.createElement(tag);
@@ -127,6 +127,11 @@ function receive(message) {
       setTimeout(() => { $("onair").textContent = "Listening on the shared radio"; }, Math.max(0, message.end_ms - now()));
       break;
     case "controller_audio": notice(message.text); play(message.audio); break;
+    case "recovery":
+      // C1: the controller hears who was blocked, in Unstep's voice; text stays if audio is missing.
+      $("happened").textContent = message.text;
+      notice(message.text); play(message.audio); break;
+    case "advisory_report": state.reports.set(message.station, message); renderRadio(); break;
     case "insight": notice(message.insight.text); break;
     case "flow":
       // Transport flow is evidence of routing, not evidence of delivery or timing.
@@ -328,10 +333,21 @@ function renderRadio() {
       const trace = traces.find((t) => t.callsign === id && t.event);
       words.append(el("span", trace ? `Heard at ${new Date(trace.created_ms).toLocaleTimeString()}: “${trace.event.heard_text || "[no words recovered]"}”` : "Heard: no cockpit transcript received yet", "heard"));
     }
+    const report = state.reports.get(id);
+    if (report) words.append(el("span", advisoryLine(report), `heard advisory-line${report.overlapped_ms > 0 ? " overlapped" : ""}`));
     row.append(words);
     if (tx?.blocked || state.liveOverlap.has(id)) row.append(el("span", "TALKED OVER", "talked-over"));
     return row;
   }));
+}
+
+// C5: proof that the private advisory spoke only in a gap.
+function advisoryLine(r) {
+  const s = (ms) => `${(ms / 1000).toFixed(1)} s`;
+  const overlap = r.overlapped_ms > 0
+    ? `overlapped ${r.overlapped_by.map(shortName).join(" and ")}: ${Math.round(r.overlapped_ms)} ms`
+    : "overlapped nobody: 0 ms";
+  return `Private advisory: waited ${s(r.waited_ms)} for a gap, spoke ${s(r.spoke_ms)}, ${overlap}${r.cancelled ? " · cut off by the pilot" : ""}`;
 }
 
 // Each step is a plain sentence, followed by honest attribution and measurements.
