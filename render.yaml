@@ -1,0 +1,28 @@
+# Render blueprint: New > Blueprint, pick this repo and branch. Fill the secret values in the dashboard.
+services:
+  - type: web
+    name: unstep
+    runtime: docker
+    plan: starter            # free also works, but it sleeps when idle and takes about a minute to wake
+    healthCheckPath: /live/stations
+    envVars:
+      - key: UNSTEP_ALLOWED_HOSTS
+        value: "*.onrender.com"
+      - key: UNSTEP_OFFLINE    # delete this to use real Cartesia, Moss and Elastic
+        value: "1"
+      - key: UNSTEP_GATEWAY_TOKEN   # room code: only people with the QR link can join or spend API credits
+        generateValue: true
+      - key: UNSTEP_ATC_PASSWORD
+        sync: false
+      - key: CARTESIA_API_KEY
+        sync: false
+      - key: CARTESIA_VOICE_ID
+        sync: false
+      - key: MOSS_PROJECT_ID
+        sync: false
+      - key: MOSS_PROJECT_KEY
+        sync: false
+      - key: ELASTIC_CLOUD_URL
+        sync: false
+      - key: ELASTIC_API_KEY
+        sync: false

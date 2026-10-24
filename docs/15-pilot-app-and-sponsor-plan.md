@@ -40,6 +40,15 @@ projector (ATC console)           ------------------>  same laptop, /live/atc/
 
 **Fallback with no internet:** phone hotspot, no tunnel. Run `python -m unstep.live --host 0.0.0.0 --https`: the hub makes a self-signed certificate for localhost and the laptop's LAN address (`data/certs/`, gitignored) and serves https and wss. Set `UNSTEP_PUBLIC_URL=https://<laptop IP>:8765` so the QR points there. Each phone opens `https://<laptop IP>:8765/pilot/` once and accepts the certificate warning; after that the mic works. With your own certificate use `--cert` and `--key`. Checked here: https and wss answer with the generated certificate (`tests/test_hub_https.py`); not yet tried on a real iPhone or Android. If a phone refuses the certificate, pilots use the tap-to-say lines over plain http, which still go on air through Cartesia TTS (or fake speech offline). The hosted Vercel app can't use a self-signed hub unless each phone has accepted the hub's certificate first, so the tunnel stays the main path.
 
+**Public link anyone can try (Render):** the hub is a long-running Python server holding WebSockets, the shared room and Moss sessions in memory, so it can't run on Vercel's serverless functions. One Docker container (`Dockerfile`) serves everything: the hub, the ATC console at `/live/atc/` and the pilot app at `/pilot/`. On Render: New, Blueprint, pick this repo and branch (`render.yaml`), then fill the secret values in the dashboard.
+- `UNSTEP_OFFLINE=1` (the default in `render.yaml`) uses fake speech and no API credits. Delete it to run live on Cartesia, Moss and Elastic.
+- `UNSTEP_GATEWAY_TOKEN` is generated: only people with the QR link (it carries the token) can join and spend API credits. Set `UNSTEP_ATC_PASSWORD` for the tower seat.
+- `UNSTEP_ALLOWED_HOSTS=*.onrender.com` and `FORWARDED_ALLOW_IPS=*` make links and QR codes use https behind Render's proxy, so phone mics work.
+- One room for everyone who opens the link. The free plan sleeps when idle and takes about a minute to wake.
+- Checked here by running the container's start command with Render-style host and proxy headers: the pilot link comes out as `https://<service>.onrender.com/pilot/?token=...`, all pages answer, a foreign host is refused. The Docker image itself was not built here (no Docker daemon in this sandbox).
+
+Vercel stays optional: it can host the pilot app only (`app/`), pointed at the Render hub with `UNSTEP_PILOT_APP_URL` and `UNSTEP_ALLOWED_ORIGINS`.
+
 ## 3. Demo Flow for a Crowd
 
 The laptop is the tower. Two judges get pre-joined phones (Plane A and B). The QR stays on screen so anyone can join as Plane C to F.
