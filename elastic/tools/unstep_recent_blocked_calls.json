@@ -10,7 +10,7 @@
     "query": "FROM unstep-events | WHERE type == \"AnomalyEvent\" AND callsign == ?callsign AND @timestamp >= NOW() - 30 minutes | SORT @timestamp DESC | KEEP @timestamp, event_id, callsign, frequency | LIMIT 20",
     "params": {
       "callsign": {
-        "type": "keyword",
+        "type": "string",
         "description": "Aircraft callsign, for example N123AB"
       }
     }
