@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Evaluation script for speech and readback checks
+
+**Type:** Added
+**Area:** Audio
+
+- `scripts/eval_unstep.py` (agreed in R19): a seeded synthetic set of instruction and readback pairs built from the fleet's callsigns and FAA-style phraseology, about 30 percent of readbacks carrying one labelled error (runway digit, callsign, action, missing callsign). No public ATC corpus is bundled.
+- `--dry-run` scores the checkers on the exact words (the baseline: all 1.0); `--live` speaks every line with Cartesia TTS and transcribes it with Cartesia STT (ink-2 with key terms, sent fast), then scores callsign, action and runway accuracy, readback-error precision and recall, and STT finalize p50 and p95; `--sessions` summarises latency per stage and readback outcomes from a live-session event log. Results go to `data/eval/` (gitignored).
+- Rishit's side runs `--live` where Cartesia is reachable; numbers go into docs/09 and the pitch only after that run.
+- Checked: 5 tests with fake speech.
+
+**Related:** [16-sponsor-depth.md](16-sponsor-depth.md) section 8, agent mail R19
+
 ## 2026-10-24: Eyes-free pilot mode: every screen cue also has an earcon (C2, placeholders)
 
 **Type:** Added
