@@ -203,3 +203,80 @@ def heard_text(tower: Transmission, overlaps: list[Overlap]) -> str:
         per_word = (tower.end_ms - tower.start_ms) / 1000 / max(1, len(words))
         kept = words[: max(0, int(cut / per_word))]
     return " ".join(kept + ["[static]"])
+
+
+class LiveMix:
+    """The frequency as it sounds while transmissions are still on air (R27 3a).
+
+    `mix()` needs the whole cluster, so the cockpits used to start transcribing only after the
+    last key came up. LiveMix sums the transmissions as their audio arrives (typed lines all
+    at once, push-to-talk frame by frame) so each cockpit's speech-to-text can be fed while the
+    call is still on the air and finalized when the cluster ends. Where two or more stations
+    are keyed it applies the same receiver model as `mix()` (voices at half gain plus a beat
+    tone), with the tone generated continuously because the overlap's length isn't known yet.
+    """
+
+    def __init__(self, t0: int):
+        self.t0 = t0
+        self.cursor = 0  # samples already pulled
+        self.parts: dict[str, dict] = {}  # key -> {station, start, chunks, n, end_ms}
+        self._phase = 0.0
+        self._rng = np.random.default_rng(t0 % (2**32))
+
+    def add(self, key: str, station: str, start_ms: int, samples: np.ndarray) -> None:
+        start = round((start_ms - self.t0) * SAMPLE_RATE / 1000)
+        part = self.parts.setdefault(key, {"station": station, "start": max(0, start), "skip": max(0, -start),
+                                           "chunks": [], "n": 0, "end": None})
+        samples = np.asarray(samples, dtype=np.float32)
+        if part["skip"]:  # started before the mix did (clock jitter): drop what lies before t0
+            cut = min(part["skip"], len(samples))
+            samples, part["skip"] = samples[cut:], part["skip"] - cut
+        part["chunks"].append(samples)
+        part["n"] += len(samples)
+
+    def close(self, key: str) -> None:
+        part = self.parts.get(key)
+        if part is not None:
+            part["end"] = part["start"] + part["n"]
+
+    def drop(self, key: str) -> None:
+        """A tap, not a call: it never went on air."""
+        self.parts.pop(key, None)
+
+    @property
+    def stations(self) -> set[str]:
+        return {p["station"] for p in self.parts.values()}
+
+    def available(self) -> int:
+        """Samples that can be mixed for sure: open parts limit how far we can go."""
+        ends = [p["start"] + p["n"] for p in self.parts.values() if p["end"] is None]
+        closed = [p["end"] for p in self.parts.values() if p["end"] is not None]
+        return min(ends) if ends else max(closed, default=0)
+
+    def pull(self, until_ms: int | None = None) -> np.ndarray:
+        """Mixed audio from the last pull up to `until_ms` (or as far as is known)."""
+        stop = self.available()
+        if until_ms is not None:
+            stop = min(stop, round((until_ms - self.t0) * SAMPLE_RATE / 1000))
+        if stop <= self.cursor:
+            return np.zeros(0, dtype=np.float32)
+        a, b = self.cursor, stop
+        out = np.zeros(b - a, dtype=np.float32)
+        active = np.zeros(b - a, dtype=np.int8)
+        for p in self.parts.values():
+            data = np.concatenate(p["chunks"]) if len(p["chunks"]) > 1 else (p["chunks"][0] if p["chunks"] else np.zeros(0))
+            p["chunks"] = [data] if len(data) else []
+            lo, hi = max(a, p["start"]), min(b, p["start"] + len(data))
+            if hi > lo:
+                out[lo - a:hi - a] += data[lo - p["start"]:hi - p["start"]]
+                active[lo - a:hi - a] += 1
+        both = active >= 2
+        if both.any():
+            n = int(both.sum())
+            f = BEAT_F0 + (BEAT_F1 - BEAT_F0) * (0.5 + 0.5 * np.sin(np.arange(n) / SAMPLE_RATE * 0.5))
+            phase = self._phase + 2 * np.pi * np.cumsum(f) / SAMPLE_RATE
+            self._phase = float(phase[-1] % (2 * np.pi))
+            tone = np.sin(phase) * BEAT_LEVEL + self._rng.standard_normal(n) * BEAT_LEVEL * 0.15
+            out[both] = out[both] * OVERLAP_VOICE_GAIN + tone.astype(np.float32)
+        self.cursor = b
+        return np.clip(out, -1.0, 1.0)

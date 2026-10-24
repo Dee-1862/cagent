@@ -40,7 +40,8 @@ from unstep.cockpit.stt import CartesiaManualSTT, FakeManualSTT, TurnEvent, buil
 from unstep.cockpit.tts import SAMPLE_RATE as TTS_SAMPLE_RATE, FakeTTS, chime
 from unstep.ground.mock_agents import propose
 from unstep.ground.policy import PolicyAgent
-from unstep.live.radio import KeyedSquelch, Mix, Transmission, clusters, heard_text, mix, radio_voice, to_mono16k
+from unstep.live.radio import (KeyedSquelch, LiveMix, Mix, Transmission, clusters, heard_text, mix, radio_voice,
+                               to_mono16k)
 
 log = logging.getLogger("unstep.live")
 
@@ -408,7 +409,12 @@ class LiveRoom:
         self.advisory_reports: list[dict] = []
         self._cue_cache: dict[tuple[str, str], str] = {}  # (station, phrase) -> WAV base64
         self.languages: dict[str, str | None] = {}  # station -> pilot language for the private repeat
-        self.streamed_advisory: set[str] = set()  # stations whose last advisory was streamed (R14)
+        self.streamed_advisory: set[str] = set()
+        # R27 3a: the frequency as it is on air, fed to each cockpit's STT during the call
+        self.live_mix: LiveMix | None = None
+        self.mix_streams: dict[str, dict] = {}  # callsign -> {queue, task}
+        self.mix_stt_factory: Callable[[str], Any] | None = None  # tests; live uses Cartesia
+        self.mix_final_ms: dict[str, int] = {}  # callsign -> ms from cluster end to its on-air STT final  # stations whose last advisory was streamed (R14)
         self.alignments: dict[str, dict] = {}
         self.stt_final: dict[str, tuple[int, int]] = {}  # transcript_id -> (final at ms, ms it took) (S1)  # transcript_id -> tower word alignment report (P7b)
         # W3: replays to the manual STT endpoint go as fast as possible unless UNSTEP_REALTIME_REPLAY=1
@@ -876,6 +882,7 @@ class LiveRoom:
         if st["bytes"] + len(pcm) > MAX_STREAM_S * SAMPLE_RATE * 2:
             return
         self._send_levels(station, f"{station}-{start_ms}", start_ms + st["bytes"] * 1000 // (SAMPLE_RATE * 2), pcm)
+        self._mix_add(f"{station}-{start_ms}", station, start_ms, to_mono16k(pcm, SAMPLE_RATE))
         st["chunks"].append(pcm)
         st["bytes"] += len(pcm)
         st["queue"].put_nowait(pcm)
@@ -914,6 +921,102 @@ class LiveRoom:
             self._caption(tx.station, tx.tx_id, text, final=k == len(words) - 1, source="tts",
                           at_ms=[t for _, t in words[:k + 1]])
 
+    # ------------------------------------------------------------ transcribe while on air (R27 3a)
+
+    def _mix_enabled(self) -> bool:
+        return self.mix_stt_factory is not None or bool(self.live and env("CARTESIA_API_KEY"))
+
+    def _mix_stt(self, callsign: str):
+        if self.mix_stt_factory is not None:
+            return self.mix_stt_factory(callsign)
+        terms = build_keyterms(callsigns=[callsign, scenario.SPOKEN_CALLSIGN], runways=["33", "28L"])
+        return CartesiaManualSTT(keyterms=terms)
+
+    def _mix_add(self, key: str, station: str, start_ms: int, samples) -> None:
+        """Put audio on the live mix; the first transmission of a cluster opens one STT stream per cockpit."""
+        if not self._mix_enabled():
+            return
+        if self.live_mix is None:
+            self.live_mix = LiveMix(start_ms)
+            for s in self.stations.values():
+                if s.kind == "aircraft" and s.callsign in self.edges:
+                    q: asyncio.Queue = asyncio.Queue()
+                    self.mix_streams[s.callsign] = {"queue": q, "task": self._spawn(self._mix_pump(s.callsign, q))}
+            self._spawn(self._mix_feed(self.live_mix))
+        self.live_mix.add(key, station, start_ms, samples)
+
+    async def _mix_feed(self, mx: LiveMix) -> None:
+        """Every 100 ms, the newly mixed audio (up to 150 ms ago) goes to every cockpit's stream."""
+        while self.live_mix is mx:
+            chunk = mx.pull(now_ms() - 150)
+            if len(chunk):
+                data = pcm16(chunk)
+                for st in self.mix_streams.values():
+                    st["queue"].put_nowait(data)
+            await asyncio.sleep(0.1)
+
+    async def _mix_pump(self, callsign: str, q: asyncio.Queue) -> str | None:
+        try:
+            async with self._mix_stt(callsign) as stt:
+                while (data := await q.get()) is not None:
+                    await stt.send_audio(data)
+                return (await stt.finalize()).text
+        except Exception:
+            log.exception("live-mix STT failed for %s; the cluster will be transcribed after it ends", callsign)
+            return None
+
+    async def _mix_finish(self, cluster: list[Transmission]) -> dict[str, str]:
+        """At cluster end: the rest of the audio goes out, every cockpit's stream finalizes."""
+        mx, streams = self.live_mix, self.mix_streams
+        self.live_mix, self.mix_streams = None, {}
+        if mx is None:
+            return {}
+        keys = {k for t in cluster for k in (t.tx_id, f"{t.station}-{t.start_ms}")}
+        if not set(mx.parts) <= keys:  # the mix also holds a newer call: don't trust it, use the old path
+            for st in streams.values():
+                st["queue"].put_nowait(None)
+                st["task"].cancel()
+            return {}
+        for key in mx.parts:
+            mx.close(key)
+        rest = mx.pull()
+        out: dict[str, str] = {}
+        for callsign, st in streams.items():
+            if len(rest):
+                st["queue"].put_nowait(pcm16(rest))
+            st["queue"].put_nowait(None)
+        asked = now_ms()
+        for callsign, st in streams.items():
+            try:
+                text = await asyncio.wait_for(asyncio.shield(st["task"]), STREAM_FINAL_S)
+            except Exception:
+                text = None
+            if text is not None:
+                out[callsign] = text
+                self.mix_final_ms[callsign] = now_ms() - asked  # shown as cockpit_stt_final on the trace
+        return out
+
+    def _stream_typed_tower(self, tx: Transmission) -> None:
+        """A typed tower line: its audio streams to the tower transcriber at real-time pace from the
+        moment it goes on air, so the transcript is final at its end instead of seconds later."""
+        s = self.stations.get(tx.station)
+        if s is None or s.kind != "atc":
+            return
+        stt = (self.stream_stt_factory or self._stream_stt)(s)
+        if stt is None:
+            return
+        st = {"start_ms": tx.start_ms, "end_ms": tx.end_ms, "queue": asyncio.Queue(), "captions": False}
+        self.stream_results[tx.tx_id] = self._spawn(self._pump(s, stt, st))
+        self._spawn(self._pace(st, pcm16(tx.pcm), tx.start_ms))
+
+    @staticmethod
+    async def _pace(st: dict, data: bytes, start_ms: int) -> None:
+        step = SAMPLE_RATE * 2 // 10  # 100 ms
+        for i in range(0, len(data), step):
+            await asyncio.sleep(max(0.0, (start_ms + i * 1000 // (SAMPLE_RATE * 2) - now_ms()) / 1000))
+            st["queue"].put_nowait(data[i:i + step])
+        st["queue"].put_nowait(None)
+
     async def _pump(self, s: Station, stt, st: dict):
         stream_id = f"{s.id}-{st['start_ms']}"
         st["sent_end_ms"] = st["start_ms"]
@@ -925,7 +1028,7 @@ class LiveRoom:
                 self._caption(s.id, stream_id, so_far, final=False, source="stt",
                               lag_ms=now_ms() - st["sent_end_ms"])
 
-        if hasattr(stt, "on_text"):  # read before the socket opens, so set it before `async with`
+        if hasattr(stt, "on_text") and st.get("captions", True):  # set before `async with`: read when the socket opens
             stt.on_text = on_text
         try:
             async with stt:
@@ -958,10 +1061,15 @@ class LiveRoom:
         if st is None:
             return None
         pcm = b"".join(st["chunks"])
+        key = f"{station}-{st['start_ms']}"
         if len(pcm) < 0.3 * SAMPLE_RATE * 2:  # a tap, not a call
             if st["pump"] is not None:
                 st["pump"].cancel()
+            if self.live_mix is not None:
+                self.live_mix.drop(key)
             return None
+        if self.live_mix is not None:
+            self.live_mix.close(key)
         st["end_ms"] = st["start_ms"] + round(len(pcm) / 2 * 1000 / SAMPLE_RATE)
         st["queue"].put_nowait(None)
         tx = Transmission(station, st["start_ms"], to_mono16k(pcm, SAMPLE_RATE))
@@ -990,6 +1098,11 @@ class LiveRoom:
         self.send_to({tx.station}, {"type": "transmitting", "tx_id": tx.tx_id, "text": tx.text,
                                     "end_ms": tx.end_ms})
         self.flow(tx.station if tx.station == "atc" else f"pilot:{tx.station}", "radio", "voice")
+        if tx.text is not None:  # typed line: its whole audio is known now, so it goes on the live mix at once
+            self._mix_add(tx.tx_id, tx.station, tx.start_ms, tx.pcm)
+            if self.live_mix is not None:
+                self.live_mix.close(tx.tx_id)
+            self._stream_typed_tower(tx)
         if tx.text and tx.words:  # typed line: captions and levels from the TTS audio and word times
             self._send_levels(tx.station, tx.tx_id, tx.start_ms, tx.pcm)
             self._spawn(self._tts_captions(tx))
@@ -1071,11 +1184,12 @@ class LiveRoom:
                    "overlaps": [asdict(o) for o in mx.overlaps]}
         self.radio_log.append(summary)
         self.send_to(None, summary)
+        heard_live = await self._mix_finish(cluster)
         jobs = [self._tower(t) for t in cluster if self.stations[t.station].kind == "atc"]
         towers = [t for t in cluster if self.stations[t.station].kind == "atc"]
         for s in self.stations.values():
             if s.kind == "aircraft" and mx.heard_by(s.id):
-                jobs.append(self._cockpit_hears(s.callsign, mx, towers))
+                jobs.append(self._cockpit_hears(s.callsign, mx, towers, heard_live.get(s.callsign)))
         for t in cluster:
             if self.stations[t.station].kind == "aircraft":
                 jobs.append(self._pilot_spoke(t, clean=not mx.overlaps))
@@ -1185,9 +1299,13 @@ class LiveRoom:
 
             await self.links["tower"].send(alignment_audit(transcript, report))
 
-    async def _cockpit_hears(self, callsign: str, mx: Mix, towers: list[Transmission]) -> None:
+    async def _cockpit_hears(self, callsign: str, mx: Mix, towers: list[Transmission],
+                             heard_live: str | None = None) -> None:
         edge = self.edges[callsign]
-        if self.live and env("CARTESIA_API_KEY"):
+        if heard_live is not None:
+            # R27 3a: this cockpit's STT ran while the call was on air; its text is final now
+            edge.manual_stt_factory = lambda h=heard_live: FakeManualSTT([h])
+        elif self.live and env("CARTESIA_API_KEY"):
             terms = build_keyterms(callsigns=[callsign, scenario.SPOKEN_CALLSIGN], runways=["33", "28L"])
             edge.manual_stt_factory = lambda: CartesiaManualSTT(keyterms=terms)
         else:
@@ -1372,7 +1490,9 @@ class LiveRoom:
             self._time(trace, "readback", env_.ts, by=f"cockpit:{cs}")
         elif isinstance(msg, AuditRecord) and msg.stage == "cockpit_stt":
             # S1: the cockpit's own STT finalize on what it heard (ms from close to final text)
-            self._time(trace, "cockpit_stt_final", env_.ts, ms=msg.latency_ms, by=f"cockpit:{cs}")
+            on_air = self.mix_final_ms.pop(cs, None) if cs else None
+            self._time(trace, "cockpit_stt_final", env_.ts, ms=on_air if on_air is not None else msg.latency_ms,
+                       by=f"cockpit:{cs}" + (" (streamed on air)" if on_air is not None else ""))
         elif isinstance(msg, AuditRecord) and msg.stage == "directive_spoken":
             trace["status"] = "delivered" if trace["status"] in ("approved", "auto_relayed") else trace["status"]
             self._step(trace, f"cockpit:{cs}", "delivered", "Directive spoken in the pilot's left ear",

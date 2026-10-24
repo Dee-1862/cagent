@@ -19,6 +19,19 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Transcribe while the call is on air, not after it (R27 3a)
+
+**Type:** Changed
+**Area:** Audio
+
+- Rishit's live video: the tower transcript was final 2.7 s and the cockpit's 2.9 s after release, and the call end to the pilot hearing the fix took 6.1 s. The audio went to Cartesia only after the transmission, and Cartesia then needs time to work through it before `finalize` can answer.
+- **Tower:** a typed tower line now streams to the tower transcriber at real-time pace from the moment it goes on air (push-to-talk already did, P3), so it is final about 100 ms after it ends.
+- **Cockpits:** new `LiveMix` (`unstep/live/radio.py`) sums the transmissions as their audio arrives (typed lines at once, push-to-talk frame by frame), with the same receiver model as the cluster mix (half-gain voices plus a beat tone where two are keyed). Every cockpit's STT is fed from it during the call and finalized when the cluster ends; the overlap detector still runs on the full cluster mix. If the live mix also holds a newer call, or a stream fails, the old after-the-call path runs (W3 fast send).
+- Offline model (Cartesia working at 1.5 times real time from when audio arrives, finalize 100 ms after catching up), one stepped-on call: tower final 2766 to 141 ms after release, cockpit 4810 to 101 ms, call end to proposal 5135 to 426 ms. The live number needs a run with keys.
+- Checked: 3 new tests (live mix against the cluster mix, before and after on the model, a mix holding a newer call falls back).
+
+**Related:** agent mail R27 item 3a
+
 ## 2026-10-24: Benchmark under radio conditions, with 95% intervals
 
 **Type:** Added
