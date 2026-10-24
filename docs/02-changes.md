@@ -29,7 +29,7 @@ What changed and why, in a few lines.
 | A1 audio input, clips | Done: synthetic clips plus real Cartesia-voiced clips in `assets/clips/real/` |
 | A2 overlap detector | Done, tuned on real speech. Only proven on clips we mixed (RA-4) |
 | A3 cockpit STT | Done: Cartesia `ink-2` manual mode, finalize on squelch close, live tested |
-| A4 Moss hint | Done with local fallback. Real Moss untested (no keys), filters translated to Moss format |
+| A4 Moss hint | Done and verified on real Moss: hint search 0.6 ms, pilot query 1.0 ms, numeric ts filters correct |
 | A5 Frequency Monitor | Done |
 | A6 advisory TTS | Done: `sonic-3.6`, pronunciation dictionary uploaded, chime, left ear, live tested |
 | A7 readback check | Done: live tested on real readback clips |
