@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Eyes-free cues use the agreed wording and never talk over the pilot (C2)
+
+**Type:** Changed
+**Area:** Other
+
+- Earcons now follow Rishit's side's wording (R20): two rising notes to join, a click on air, a low double buzz when busy, two clashing notes when you were talked over, one soft clash for others, a rising note for a correct readback, two falling notes for a wrong one, falling and rising tones for the link, a low note when the mic is off.
+- Short spoken lines ("You are Plane A.", "Frequency busy.", "You were talked over.", "Back online.", "Tap a line to talk.") are spoken by the hub in Unstep's own voice, left ear only (`cue_audio`). The hub only speaks these fixed phrases; readback cues are not spoken because the cockpit already says them.
+- Cues wait while the pilot's own key is down or an advisory is still playing, then play in order.
+- Checked: 5 vitest tests (including the queue rule) and 1 room test (fixed phrases, left ear only); build passes. Not tried on a phone with AirPods yet.
+
+**Related:** agent mail R20
+
 ## 2026-10-24: Evaluation script for speech and readback checks
 
 **Type:** Added

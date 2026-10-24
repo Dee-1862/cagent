@@ -403,6 +403,7 @@ class LiveRoom:
         self.key_log: list[tuple[str, int, int]] = []  # (station, down_ms, up_ms), recent key presses
         self.last_wait: dict[str, float] = {}  # callsign -> ms its last advisory waited for a gap (C5)
         self.advisory_reports: list[dict] = []
+        self._cue_cache: dict[tuple[str, str], str] = {}  # (station, phrase) -> WAV base64
         self.languages: dict[str, str | None] = {}  # station -> pilot language for the private repeat
         self.streamed_advisory: set[str] = set()  # stations whose last advisory was streamed (R14)
         self.alignments: dict[str, dict] = {}  # transcript_id -> tower word alignment report (P7b)
@@ -542,6 +543,34 @@ class LiveRoom:
 
     def stations_info(self) -> list[dict]:
         return [asdict(s) for s in self.stations.values()]
+
+    async def say_cue(self, station: str, name: str) -> dict | None:
+        """C2: a short spoken cue line for an eyes-free pilot, in Unstep's voice, left ear only.
+        Only the agreed phrases (R20) can be spoken; nothing the client sends is read out."""
+        s = self.stations.get(station)
+        if s is None or s.kind != "aircraft":
+            return None
+        phrases = {"joined": f"You are {s.name or s.spoken or s.callsign}.", "busy": "Frequency busy.",
+                   "talked_over": "You were talked over.", "back_online": "Back online.",
+                   "mic_off": "Tap a line to talk."}
+        text = phrases.get(name)
+        if text is None:
+            return None
+        key = (station, text)
+        audio = self._cue_cache.get(key)
+        if audio is None:
+            try:
+                speech = await self._advisory_tts().speak(text)
+            except Exception:
+                log.exception("cue speech failed for %s", station)
+                return None
+            mono = np.frombuffer(speech.pcm, dtype="<i2")
+            stereo = np.zeros((len(mono), 2), dtype=np.int16)
+            stereo[:, 0] = mono  # left ear only, like every Unstep message
+            audio = self._cue_cache[key] = wav_b64(stereo, speech.sample_rate)
+        msg = {"type": "cue_audio", "name": name, "text": text, "audio": audio}
+        self.send_to({station}, msg)
+        return msg
 
     def advisory_report(self, station: str, stream_id: str, started_ms: int, spoke_ms: float,
                         cancelled: bool) -> dict:
@@ -690,6 +719,8 @@ class LiveRoom:
         elif kind == "key":
             at = data.get("at")
             self._key(station, bool(data.get("down")), int(at) if isinstance(at, (int, float)) else None)
+        elif kind == "cue":
+            self._spawn(self.say_cue(station, str(data.get("name", ""))))
         elif kind == "language":
             kept = self.set_language(station, data.get("code"))
             self.send_to({station}, {"type": "language", "code": kept})

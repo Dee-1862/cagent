@@ -62,3 +62,24 @@ def test_blocked_pilot_is_told_to_say_again(make_room):
         await room.stop()
 
     asyncio.run(go())
+
+
+def test_spoken_cues_are_fixed_phrases_in_the_left_ear(make_room):
+    import base64
+    import io
+
+    import soundfile as sf
+
+    async def go():
+        room, atc, pilot = await make_room()
+        msg = await room.say_cue("N123AB", "joined")
+        assert msg["text"] == "You are Plane A." and msg["type"] == "cue_audio"
+        audio, _ = sf.read(io.BytesIO(base64.b64decode(msg["audio"])), dtype="int16")
+        assert audio.shape[1] == 2 and not audio[:, 1].any()  # right channel silent
+        assert await room.say_cue("N123AB", "say something rude") is None  # only agreed phrases
+        assert await room.say_cue("atc", "busy") is None  # pilots only
+        await room.handle("N123AB", {"type": "cue", "name": "busy"})
+        await wait_for(lambda: any(m["type"] == "cue_audio" and m["name"] == "busy" for m in pilot.messages))
+        await room.stop()
+
+    asyncio.run(go())

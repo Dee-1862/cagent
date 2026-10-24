@@ -64,16 +64,17 @@ export function streamChunk(id: string, seq: number, rate: number, b64: string):
   }
 }
 
-/** The line is complete, or was cut off: a cut-off line stops at once. */
-export function streamEnd(id: string, cancelled: boolean): void {
+/** The line is complete, or was cut off: a cut-off line stops at once. Returns the ms still to play. */
+export function streamEnd(id: string, cancelled: boolean): number {
   const s = streams.get(id);
-  if (!s) return;
+  if (!s) return 0;
   if (!cancelled) { // late chunks may still be on their way: keep the stream a while
     setTimeout(() => streams.delete(id), 30_000);
-    return;
+    return ctx ? Math.max(0, (s.at - ctx.currentTime) * 1000) : 0;
   }
   for (const src of s.sources) { try { src.stop(); } catch { /* already done */ } }
   streams.delete(id);
+  return 0;
 }
 
 /** Short press chirp, like a radio key click. */

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { audio, chirp, keepAwake, playWav, streamChunk, streamEnd } from "./audio";
-import { cue, readbackCue } from "./cues";
+import { cue, readbackCue, setAdvisory, setKeyDown, setSpeaker } from "./cues";
 import { Hub, hubFromLocation, join, Live, Msg, parseHub, Seat } from "./hub";
 import { Mic } from "./mic";
 import { ASK_LINES, sayLines } from "./phrases";
@@ -149,8 +149,15 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
           cue(m.stations.includes(station) ? "stepped_on_me" : "stepped_on_others");
           return;
         case "onair": return void playWav(m.audio);
-        case "advisory_chunk": return streamChunk(m.id, m.seq, m.sample_rate, m.pcm);
-        case "advisory_end": return streamEnd(m.id, m.cancelled);
+        case "advisory_chunk":
+          if (m.seq === 0) setAdvisory(true); // eyes-free cues wait until it has played
+          return streamChunk(m.id, m.seq, m.sample_rate, m.pcm);
+        case "advisory_end": {
+          const left = streamEnd(m.id, m.cancelled);
+          setTimeout(() => setAdvisory(false), left);
+          return;
+        }
+        case "cue_audio": return void playWav(m.audio);
         case "advisory_audio":
           earAudio.current = m.audio;
           if (m.streamed) return; // already heard chunk by chunk; kept for "Play again"
@@ -173,9 +180,10 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
       }
     }, setConn);
     live.current = l;
+    setSpeaker((phrase) => l.send({ type: "cue", name: phrase })); // spoken cue lines, in Unstep's voice
     l.open();
     const t = setInterval(() => tick((n) => n + 1), 500);
-    return () => { l.close(); clearInterval(t); };
+    return () => { setSpeaker(null); l.close(); clearInterval(t); };
   }, [hub, station]);
 
   // Eyes-free: say when the radio link drops and comes back.
@@ -200,12 +208,14 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
     // Stream while held, so Cartesia hears the call as it is spoken and finishes at release.
     mic.start((pcm) => live.current?.send({ type: "mic_frame", start_ms: startMs, pcm }));
     setOnAir(true);
+    setKeyDown(true);
   };
   const up = () => {
     if (!onAir || releaseTimer.current) return;
     releaseTimer.current = window.setTimeout(() => {
       releaseTimer.current = null;
       setOnAir(false);
+      setKeyDown(false);
       chirp(900, 30);
       mic.finish();
       live.current!.send({ type: "mic_end" }); // under 0.3 s the hub treats it as a tap, not a call
