@@ -24,9 +24,10 @@ sys.path.insert(0, str(ROOT))
 from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(ROOT / ".env")
+from unstep.config import cartesia_version  # noqa: E402
 
 URL = "https://api.cartesia.ai/pronunciation-dicts/"
-VERSION = "2026-08-14"
+VERSION = cartesia_version()
 DICT_PATH = ROOT / "assets" / "pronunciation" / "atc.json"
 
 

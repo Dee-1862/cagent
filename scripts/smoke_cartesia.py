@@ -30,12 +30,13 @@ sys.path.insert(0, str(ROOT))
 from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(ROOT / ".env")
+from unstep.config import cartesia_version  # noqa: E402
 
 SR = 16_000
 CHUNK_BYTES = SR * 2 // 10  # 100 ms of pcm_s16le, as the STT docs recommend
 OUT = ROOT / "assets" / "clips" / "real" / "smoke_advisory.wav"
 ADVISORY = "Transmission blocked. Likely hold short Runway 33. Awaiting controller."
-REST_VERSION = "2026-08-14"
+REST_VERSION = cartesia_version()
 
 
 def first_voice(api_key: str, gender: str | None = None, skip: int = 0) -> str:

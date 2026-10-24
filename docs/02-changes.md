@@ -19,6 +19,19 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: One config for every connection, gateway token fixed
+
+**Type:** Fixed
+**Area:** Ground agents
+
+- Accepted Rishit's latest commit by fast-forwarding master to `rishit`, then merged master into the Dev B branch (no conflicts).
+- Connection bug: `UNSTEP_GATEWAY_URL` was in `.env.example` but nothing read it, and every client had `ws://127.0.0.1:8765` written in. All clients (edge, monitor, mock cockpit, mock agents, auto approver, demo runner) now take the address from `unstep/config.py`, with `--url` as an override.
+- Token bug: when `UNSTEP_GATEWAY_TOKEN` was set the gateway rejected every client and the dashboard, because none of them sent it. Clients now add it through `ws_url()`, the gateway serves the dashboard page with it, and the gateway reads it on each connection.
+- No more hardcoded Cartesia version, STT model, TTS model or Elastic index: each has a default in `unstep/config.py` and an override in `.env`. Cartesia endpoint URLs stay as constants because they are Cartesia's fixed API addresses.
+- `.env` is now loaded when `unstep.config` is imported, so every entry point sees the keys.
+- Live check on port 8766 with a token: clients without it are rejected, all roles connected from `UNSTEP_GATEWAY_URL` alone, real Moss and Cartesia, 12 documents in Elastic with 0 failed. 145 tests pass.
+- Found, not fixed: the live Moss frequency index is `freq-118.300`, but the code and contracts use `118.700`, so the monitor would create a fourth index on a three-index plan. Needs Rishit's decision.
+
 ## 2026-10-23: Proposed agentic architecture for ground, cockpit and the link
 
 **Type:** Docs

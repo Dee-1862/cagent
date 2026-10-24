@@ -15,7 +15,7 @@ Logic lives in `CockpitEdge`; network IO is `GatewayLink` and audio output is
 `AudioOut`, both swappable for tests. Every stage sends an AuditRecord with its
 measured latency.
 
-Run: python -m unstep.cockpit.edge assets/clips/stepped_on_call.wav [--url ws://127.0.0.1:8765]
+Run: python -m unstep.cockpit.edge assets/clips/stepped_on_call.wav [--url <gateway>]  (default: UNSTEP_GATEWAY_URL)
 """
 
 from __future__ import annotations
@@ -34,6 +34,7 @@ from pydantic import BaseModel
 
 from unstep import scenario
 from unstep.clock import now_ms
+from unstep.config import gateway_url, ws_url
 from unstep.cockpit.audio import AudioSource, WavFileSource
 from unstep.cockpit.hint import advisory_text, derive_hint
 from unstep.cockpit.memory import LocalMemory, Memory, airport_index, create_memory, flight_index
@@ -121,8 +122,8 @@ class AudioOut:
 class GatewayLink:
     """WebSocket to /ws/cockpit. `send` returns False when the gateway is down."""
 
-    def __init__(self, url: str = "ws://127.0.0.1:8765", connect_timeout_s: float = 2.0):
-        self.url = url.rstrip("/")
+    def __init__(self, url: str | None = None, connect_timeout_s: float = 2.0):
+        self.url = (url or gateway_url()).rstrip("/")
         self.connect_timeout_s = connect_timeout_s
         self.ws = None
         self._reader: Optional[asyncio.Task] = None
@@ -136,7 +137,7 @@ class GatewayLink:
         import websockets
 
         try:
-            self.ws = await asyncio.wait_for(websockets.connect(f"{self.url}/ws/cockpit"), self.connect_timeout_s)
+            self.ws = await asyncio.wait_for(websockets.connect(ws_url("cockpit", self.url)), self.connect_timeout_s)
         except Exception as e:
             log.warning("gateway unreachable at %s: %s", self.url, e)
             self.ws = None
@@ -585,12 +586,9 @@ if __name__ == "__main__":
 
     p = argparse.ArgumentParser()
     p.add_argument("wav", nargs="?", default=str(ROOT / "assets" / "clips" / "stepped_on_call.wav"))
-    p.add_argument("--url", default="ws://127.0.0.1:8765")
+    p.add_argument("--url", default=None, help="gateway URL (default: UNSTEP_GATEWAY_URL)")
     p.add_argument("--timeout", type=float, default=60.0)
     p.add_argument("--play", action="store_true", help="also play through sounddevice")
     p.add_argument("--local", action="store_true", help="force local memory even if Moss keys exist")
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    from unstep.config import load_env
-
-    load_env()  # Cartesia and Moss keys come from .env
     raise SystemExit(asyncio.run(_main(p.parse_args())))

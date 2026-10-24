@@ -17,7 +17,9 @@ import httpx
 
 log = logging.getLogger("unstep.sink")
 
-EVENTS_INDEX = "unstep-events"
+from unstep.config import elastic_events_index
+
+EVENTS_INDEX = elastic_events_index()
 
 # Fields promoted from the message so ES|QL can filter and aggregate on them (task B8).
 PROMOTED = ("event_id", "callsign", "frequency", "decision", "approved_via", "rejected_via", "match", "kind", "stage")

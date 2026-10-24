@@ -24,7 +24,9 @@ import numpy as np
 from unstep.cockpit.phraseology import normalize_for_speech
 
 SAMPLE_RATE = 24000
-CARTESIA_VERSION = "2026-08-14"
+from unstep.config import cartesia_tts_model, cartesia_version
+
+CARTESIA_VERSION = cartesia_version()
 TTS_URL = "wss://api.cartesia.ai/tts/websocket"
 PRONUNCIATION_DICT = Path(__file__).resolve().parents[2] / "assets" / "pronunciation" / "atc.json"
 
@@ -155,14 +157,14 @@ class CartesiaTTS:
     """Cartesia Sonic over WebSocket. One connection, one context per message."""
 
     def __init__(self, api_key: Optional[str] = None, voice_id: Optional[str] = None,
-                 model_id: str = "sonic-3.6", sample_rate: int = SAMPLE_RATE,
+                 model_id: Optional[str] = None, sample_rate: int = SAMPLE_RATE,
                  pronunciation_dict_id: Optional[str] = None, speed: float = 1.1,
                  volume: float = 1.2, emotion: str = "calm"):
         self.api_key = api_key or os.environ.get("CARTESIA_API_KEY")
         self.voice_id = voice_id or os.environ.get("CARTESIA_VOICE_ID")
         if not self.api_key or not self.voice_id:
             raise RuntimeError("CARTESIA_API_KEY and CARTESIA_VOICE_ID are required")
-        self.model_id = model_id
+        self.model_id = model_id or cartesia_tts_model()
         self.sample_rate = sample_rate
         self.pronunciation_dict_id = pronunciation_dict_id or os.environ.get("CARTESIA_PRONUNCIATION_DICT_ID")
         self.generation_config = {"speed": speed, "volume": volume, "emotion": emotion}

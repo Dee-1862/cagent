@@ -35,11 +35,12 @@ sys.path.insert(0, str(ROOT))
 from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(ROOT / ".env")
+from unstep.config import cartesia_version  # noqa: E402
 
 SR = 16_000
 OUT = ROOT / "assets" / "clips" / "real"
 OVERLAP_START_S = 1.3
-REST_VERSION = "2026-08-14"
+REST_VERSION = cartesia_version()
 
 TOWER = "Cessna one two three, hold short runway three three."
 HELI = "Helicopter four five six, request transition over the field, northbound, at one thousand five hundred."

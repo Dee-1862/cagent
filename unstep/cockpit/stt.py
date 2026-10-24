@@ -27,7 +27,9 @@ from unstep.contracts import Word
 
 log = logging.getLogger("unstep.stt")
 
-CARTESIA_VERSION = "2026-08-14"
+from unstep.config import cartesia_stt_model, cartesia_version
+
+CARTESIA_VERSION = cartesia_version()
 STT_URL = "wss://api.cartesia.ai/stt/websocket"
 TURNS_URL = "wss://api.cartesia.ai/stt/turns/websocket"
 
@@ -97,12 +99,12 @@ class CartesiaManualSTT:
             transcript = await stt.finalize()
     """
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "ink-2",
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None,
                  sample_rate: int = 16000, keyterms: Iterable[str] = ()):
         self.api_key = api_key or os.environ.get("CARTESIA_API_KEY")
         if not self.api_key:
             raise RuntimeError("CARTESIA_API_KEY is required")
-        params = [("model", model), ("encoding", "pcm_s16le"), ("sample_rate", str(sample_rate)),
+        params = [("model", model or cartesia_stt_model()), ("encoding", "pcm_s16le"), ("sample_rate", str(sample_rate)),
                   ("cartesia_version", CARTESIA_VERSION)]
         params += [("keyterm", k) for k in keyterms]
         self.url = _url(STT_URL, params)
@@ -143,14 +145,14 @@ class CartesiaManualSTT:
 class CartesiaTurnSTT:
     """Turn-based STT. Send audio with `send_audio`, read `events()`."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "ink-2",
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None,
                  sample_rate: int = 16000, keyterms: Iterable[str] = (),
                  turn_end_threshold: float = 0.2, turn_end_timeout_ms: int = 1500):
         self.api_key = api_key or os.environ.get("CARTESIA_API_KEY")
         if not self.api_key:
             raise RuntimeError("CARTESIA_API_KEY is required")
         # Readbacks and queries are short: close turns quickly.
-        params = [("model", model), ("encoding", "pcm_s16le"), ("sample_rate", str(sample_rate)),
+        params = [("model", model or cartesia_stt_model()), ("encoding", "pcm_s16le"), ("sample_rate", str(sample_rate)),
                   ("cartesia_version", CARTESIA_VERSION),
                   ("turn_end_threshold", str(turn_end_threshold)),
                   ("turn_end_timeout_ms", str(turn_end_timeout_ms))]

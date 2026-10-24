@@ -18,14 +18,14 @@ import os
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
 
 from unstep.clock import now_ms
-from unstep.config import load_env
+from unstep.config import gateway_token, pending_ttl_s
 from unstep.contracts import (
     ApprovedDirective,
     ProposedDirective,
@@ -65,9 +65,7 @@ ALLOWED_SENDERS: dict[str, set[str]] = {
 }
 ROLES = set(ALLOWED_SENDERS)
 
-load_env()
-PENDING_TTL_S = float(os.getenv("UNSTEP_PENDING_TTL_S", "60"))
-TOKEN = os.getenv("UNSTEP_GATEWAY_TOKEN")  # optional shared secret, FR-13
+PENDING_TTL_S = pending_ttl_s()
 
 
 class Gateway:
@@ -198,11 +196,15 @@ def create_app(sink=None, pending_ttl_s: float = PENDING_TTL_S) -> FastAPI:
 
     @app.get("/")
     async def dashboard():
-        return FileResponse(ROOT / "web" / "dashboard.html")
+        # The page is only served by this gateway, so it may carry the token (FR-13).
+        token = gateway_token()
+        query = f"?token={quote(token, safe='')}" if token else ""
+        html = (ROOT / "web" / "dashboard.html").read_text(encoding="utf-8")
+        return HTMLResponse(html.replace("__UNSTEP_TOKEN_QUERY__", query))
 
     @app.websocket("/ws/{role}")
     async def ws_endpoint(ws: WebSocket, role: str):
-        if role not in ROLES or not origin_ok(ws) or (TOKEN and ws.query_params.get("token") != TOKEN):
+        if role not in ROLES or not origin_ok(ws) or (gateway_token() and ws.query_params.get("token") != gateway_token()):
             await ws.close(code=4003)
             return
         await ws.accept()
