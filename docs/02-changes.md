@@ -19,6 +19,20 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: Added advice on scope, tracks, Moss and Cartesia
+
+**Type:** Docs
+**Area:** Docs
+
+- Added [08-advice.md](08-advice.md), a proposal to agree on before changing the PRD.
+- Defines the product as "no ATC instruction lost or misheard": blocked transmission recovery plus readback checking, plus a thin monitoring agent for the Moss and Elastic tracks. Rules out collision avoidance and a full agentic ATC.
+- Benchmarks each version of the idea against the Cartesia, Moss and Elastic track criteria and past track winners.
+- Moss: based on its docs, use it as local memory with handoff, one writer per index, and send live messages over WebSocket.
+- Cartesia: manual STT with finalize on PTT release for the tower, turn STT for readbacks, word timestamps to highlight blocked words, key terms, pronunciation dictionary, interruption.
+- Lists eight concerns with PRD v0.2, a cut list and a demo flow.
+
+**Related:** [Advice](08-advice.md), [Sponsor Review](07-sponsor-review.md)
+
 ## 2026-10-23: Folded sponsor review into the plan
 
 **Type:** Changed
