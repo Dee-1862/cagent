@@ -71,12 +71,11 @@ def allowed_origins() -> list[str]:
     separated, `*` wildcards allowed, as in https://*.vercel.app). Pages served by the
     gateway itself are always allowed. The gateway token still applies.
 
-    Unset means our own pilot app on Vercel (every deployment address of the project),
-    so a fresh hub works with it without copying settings; set it to override."""
-    extra = env("UNSTEP_ALLOWED_ORIGINS")
-    if extra is None:
-        extra = ",".join(DEFAULT_PILOT_ORIGINS)
-    return [o.strip().rstrip("/") for o in extra.split(",") if o.strip()]
+    Our own pilot app on Vercel (every deployment address of the project) is always
+    allowed, so a new Vercel deploy never needs a hub setting; the variable only adds more."""
+    extra = env("UNSTEP_ALLOWED_ORIGINS") or ""
+    listed = [o.strip().rstrip("/") for o in extra.split(",") if o.strip()]
+    return [*DEFAULT_PILOT_ORIGINS, *(o for o in listed if o not in DEFAULT_PILOT_ORIGINS)]
 
 
 # The project's Vercel pilot app: production and per-deployment addresses.
