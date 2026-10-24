@@ -406,7 +406,8 @@ class LiveRoom:
         self._cue_cache: dict[tuple[str, str], str] = {}  # (station, phrase) -> WAV base64
         self.languages: dict[str, str | None] = {}  # station -> pilot language for the private repeat
         self.streamed_advisory: set[str] = set()  # stations whose last advisory was streamed (R14)
-        self.alignments: dict[str, dict] = {}  # transcript_id -> tower word alignment report (P7b)
+        self.alignments: dict[str, dict] = {}
+        self.stt_final: dict[str, tuple[int, int]] = {}  # transcript_id -> (final at ms, ms it took) (S1)  # transcript_id -> tower word alignment report (P7b)
         # W3: replays to the manual STT endpoint go as fast as possible unless UNSTEP_REALTIME_REPLAY=1
         self.realtime_replay = realtime_replay()
         self.radio_sound = radio_sound()  # listeners hear VHF-shaped audio; STT gets the clean mix
@@ -811,6 +812,8 @@ class LiveRoom:
                 else:
                     result = (await stt.finalize()).text
                 log.info("streamed STT for %s final %d ms after release", s.id, now_ms() - released)
+                if s.kind == "atc":  # S1: how long after the key came up the tower's words were final
+                    self.stt_final[result.transcript_id] = (now_ms(), now_ms() - released)
                 return result
         except Exception:
             log.exception("streamed STT failed for %s; the clip will be transcribed instead", s.id)
@@ -1028,8 +1031,10 @@ class LiveRoom:
 
             transcriber = self.tower_transcriber or TowerTranscriber(runways=("33", "28L"),
                                                                      realtime=self.realtime_replay)
+            asked = now_ms()
             transcript = await transcriber.transcribe(pcm16(tx.pcm), tx.start_ms, tx.end_ms,
                                                       self.frequency, callsign)
+            self.stt_final[transcript.transcript_id] = (now_ms(), now_ms() - asked)
             if getattr(transcriber, "last_alignment", None):
                 self.alignments[transcript.transcript_id] = transcriber.last_alignment
         else:
@@ -1181,6 +1186,9 @@ class LiveRoom:
             if tower is not None:
                 trace["tower"] = tower.model_dump(mode="json")
                 self._time(trace, "tower_transcript", tower.ptt_end, by="cartesia")
+                final = self.stt_final.get(tower.transcript_id)
+                if final is not None:  # S1: tower STT final, ms after release (stream) or after the clip was sent
+                    self._time(trace, "tower_stt_final", final[0], ms=final[1], by="cartesia")
             self._time(trace, "proposed", env_.ts, by="ground")
             trace["status"] = "proposed"
             self._step(trace, "ground", "proposed",
@@ -1226,6 +1234,9 @@ class LiveRoom:
             self._step(trace, f"cockpit:{cs}", "readback",
                        f"Readback {'correct' if msg.match else 'incorrect'}: \"{msg.readback_text}\"")
             self._time(trace, "readback", env_.ts, by=f"cockpit:{cs}")
+        elif isinstance(msg, AuditRecord) and msg.stage == "cockpit_stt":
+            # S1: the cockpit's own STT finalize on what it heard (ms from close to final text)
+            self._time(trace, "cockpit_stt_final", env_.ts, ms=msg.latency_ms, by=f"cockpit:{cs}")
         elif isinstance(msg, AuditRecord) and msg.stage == "directive_spoken":
             trace["status"] = "delivered" if trace["status"] in ("approved", "auto_relayed") else trace["status"]
             self._step(trace, f"cockpit:{cs}", "delivered", "Directive spoken in the pilot's left ear",

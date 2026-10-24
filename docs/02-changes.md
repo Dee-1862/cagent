@@ -19,6 +19,16 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: STT finalize time per hop on the live trace (S1)
+
+**Type:** Added
+**Area:** Audit
+
+- Two new trace timings so the console waterfall shows where speech-to-text time goes: `cockpit_stt_final` (the cockpit's own finalize on what it heard, from its `cockpit_stt` audit) and `tower_stt_final` (the tower's words final, ms after key release when streamed, or after the clip was sent on the fallback path).
+- Checked: 1 room test covering both.
+
+**Related:** [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md) section 4, agent mail R14, D13
+
 ## 2026-10-24: Loader for FAA JO 7110.65 into Elastic (W2)
 
 **Type:** Added

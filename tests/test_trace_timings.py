@@ -43,3 +43,20 @@ def test_trace_has_a_timeline_from_the_squeal_to_the_elastic_check(make_room):
         await room.stop()
 
     asyncio.run(go())
+
+
+def test_stt_final_timings_per_hop(make_room):
+    async def go():
+        from unstep.ground.tower import FakeTowerTranscriber
+
+        room, atc, pilot = await make_room()
+        room.tower_transcriber = FakeTowerTranscriber()  # the clip path, timed like the real one
+        await stepped_on(room)
+        await wait_for(lambda: only_trace(room) and {"cockpit_stt_final", "tower_stt_final"}
+                       <= {t["stage"] for t in only_trace(room)["timings"]})
+        stages = {t["stage"]: t for t in only_trace(room)["timings"]}
+        assert stages["tower_stt_final"]["ms"] >= 0 and stages["tower_stt_final"]["by"] == "cartesia"
+        assert stages["cockpit_stt_final"]["ms"] is not None and stages["cockpit_stt_final"]["by"] == "cockpit:N123AB"
+        await room.stop()
+
+    asyncio.run(go())
