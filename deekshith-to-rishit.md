@@ -581,3 +581,32 @@ Status: working on recording-session mode · next simulator and docs/18 · block
 **4. Live runs still pending** (keys and network): `eval_unstep.py --live --n 40`, `eval_bench.py --live --n 200 --store`, `record_live_video.py`, a recording session, and `benchmark_report.py` afterwards.
 
 Status: working on nothing new · next your answers · blocked on live checks (keys)
+
+## D23 · 2026-10-24 16:30 PT · from Deekshith's agent
+
+**Re:** new (plan for Moss and Elastic, from Deekshith)
+**Needs reply:** yes (agree or counter per item in section 7 of the plan)
+**Needs human decision:** yes (Deekshith and Rishit)
+
+**Plan only, nothing built from it: docs/19-elastic-moss-plan.md (4635f0f on dev-b).** Deekshith wants an honest account of how we use Moss and Elastic so he can explain to the sponsors why it goes beyond "search" and "logging". It waits for your yes.
+
+**1. How it was checked.** Moss: read in the installed `moss` 1.21.0 and `inferedge-moss-core` 0.35.0 (read, not run). Elastic: search-result summaries only, because elastic.co pages could not be fetched here; marked as such. We did not see the usemoss changelog or anything newer than 1.21.0.
+
+**2. Findings you should see first.**
+- Elastic is our weakest track in evidence: the event store, percolator, ES|QL stats, agents, workflows and FAA loader have only ever run against mocks.
+- Two claims in our drafts are stronger than the code. "Moss recovers the instruction": the hint comes from the newest-clearance rule and the search is evidence (what you approved in R23). "Elastic decides": the percolator is advisory and the agents only cite or lower confidence. The plan has wording that is true.
+- `scripts/smoke_moss.py` pushes the per-aircraft session unless `--no-push` is given. That breaks our own rule; it should default to no push.
+- Good news: the Moss SDK says `session()` auto-loads an existing cloud index of the same name, so the flight log may survive a hub restart (the question in D22). It needs one live check (M-1).
+
+**3. Proposed split (needs both humans).**
+- **Elastic: you own it end to end** (agents, workflows, ES|QL, percolator, dashboards, the `unstep-eval` and `unstep-sim-events` indexes), with us reviewing. Honest dependency: your laptop has no Elastic keys (R27). Definitions, queries, mocks and tests need none; every live deploy and measurement needs Deekshith's machine or keys for you.
+- **Moss stays ours,** with your review, as agreed in R4.
+
+**4. Ranked top 3 and the stage moment each enables.**
+- **Moss:** M-1 live proof script (restart the hub and the flight log is still there, with the flight count and ms); M-2 Moss's own sort, group and score floor (a weak match says nothing, score shown); M-3 let the search decide, in the safe direction only (needs both humans and the false-hint rate first). M-4, a position filter with `$near`, is a half-day spike, not a commitment.
+- **Elastic:** E-1 one real loop on a live cluster (the decision card cites an FAA paragraph; workflow ms shown); E-3 audit and benchmark live in Elastic, with the "Simulated traffic" badge (from `simulated_runs` on `/live/stats`); E-2 "ask the audit trail" (a controller question answered by an Agent Builder agent over ES|QL, the query shown). E-4, percolator disagreement escalating to say again, waits for both humans.
+- **Not now** lists are in the plan with reasons, including CHANGE_POINT (platinum license per the summaries), waitForInput, reranking, and bridging Moss Inference to Elastic's MCP endpoint (it would pass an Elastic API key through Moss's servers).
+
+**5. Please answer per item in section 7:** who owns Elastic and Moss; whether you can get Elastic keys; whether M-3 and E-4 are acceptable at all; and any step you want swapped or dropped. The plan also has a talk track per sponsor with every claim tagged BUILT, TESTED OFFLINE, NEEDS LIVE RUN or PLANNED; tell us if a tag is wrong.
+
+Status: working on nothing new (plan waits for a yes) · next whatever you and Deekshith decide · blocked on your answer
