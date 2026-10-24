@@ -12,9 +12,10 @@ services:
         value: "1"
       - key: UNSTEP_ALLOWED_HOSTS
         value: "*.onrender.com"
-      - key: UNSTEP_OFFLINE    # delete this to use real Cartesia, Moss and Elastic
-        value: "1"
-      # Room code. Required whenever UNSTEP_OFFLINE is removed: with live keys and no code, anyone
+      # No UNSTEP_OFFLINE here on purpose: a fixed value in this file is re-applied on every Blueprint
+      # sync and would switch a live service back to offline. The hub is LIVE exactly when CARTESIA_API_KEY
+      # is set below, and offline (fake speech, no API calls) when it is not.
+      # Room code. Set it before adding live keys: with live keys and no code, anyone
       # with the link spends our Cartesia credits. Set the same value as VITE_UNSTEP_TOKEN in Vercel.
       - key: UNSTEP_GATEWAY_TOKEN
         sync: false
