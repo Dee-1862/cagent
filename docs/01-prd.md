@@ -190,6 +190,7 @@ The local hint is the only thing the pilot hears before a controller approves. T
 - Unstep repeats back what was approved before sending it, the same way ATC readbacks work.
 - If the answer isn't understood, Unstep asks once more. If there is still no clear answer within 10 seconds, nothing is sent and the card stays on screen.
 - The click on the dashboard always works as a fallback.
+- Demo exception: in presenter mode with a live mic (`--mic`), the controller has 45 seconds instead of 10, so the presenter has time to press push-to-talk. Matching, repeat-back and "nothing sent without approval" are unchanged.
 
 ## 8. Functional Requirements
 

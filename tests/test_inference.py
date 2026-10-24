@@ -251,3 +251,16 @@ def test_airport_quote_is_labeled_not_a_clearance():
         assert q.source_doc_id.startswith(airport_index("KUNS"))
 
     asyncio.run(go())
+
+
+def test_empty_question_gets_say_again_and_never_reaches_the_llm():
+    import asyncio
+    from unstep.cockpit.memory import LocalMemory, flight_index
+    from unstep.cockpit.queries import SAY_AGAIN, answer_query
+
+    class Boom:
+        async def answer(self, question, records):
+            raise AssertionError("the LLM must not be asked an empty question")
+
+    q = asyncio.run(answer_query(LocalMemory(), flight_index("N123AB"), "N123AB", "  ", answerer=Boom()))
+    assert q.answer == SAY_AGAIN and q.source_doc_id is None

@@ -47,6 +47,8 @@ HELI = "Helicopter four five six, request transition over the field, northbound,
 WRONG = "Hold short runway two three, Cessna one two three."
 RIGHT = "Hold short runway three three, Cessna one two three."
 QUESTION = "Unstep, what was my last clearance?"
+QUESTION_STOP = "Unstep, what runway was I told to stop at?"
+APPROVE = "Approve."
 
 
 def list_voices(api_key: str, gender: str) -> list[dict]:
@@ -168,5 +170,20 @@ def remix() -> int:
     return 0
 
 
+async def extra() -> int:
+    """Demo clips added later, in the voices already recorded in voices.json."""
+    import soundfile as sf
+
+    d = Path(__file__).resolve().parents[1] / "assets" / "clips" / "real"
+    voices = json.loads((d / "voices.json").read_text())["voices"]
+    for name, who, text in [("controller_approve.wav", "tower", APPROVE),
+                            ("pilot_question_stop.wav", "pilot", QUESTION_STOP)]:
+        sf.write(d / name, await speak(voices[who]["id"], text), SR)
+        print(f"wrote {d / name} ({who}: {text!r})")
+    return 0
+
+
 if __name__ == "__main__":
-    sys.exit(remix() if "--remix" in sys.argv else asyncio.run(main()))
+    if "--remix" in sys.argv:
+        sys.exit(remix())
+    sys.exit(asyncio.run(extra() if "--extra" in sys.argv else main()))

@@ -13,10 +13,13 @@ from contextlib import aclosing
 from pathlib import Path
 from typing import Callable, Literal
 
+import numpy as np
 import websockets
 
+from unstep.demo_audio import DEFAULT_DEMO_AUDIO_DIR, save_audio, speech_payload
+
 from unstep.config import gateway_url, ws_url
-from unstep.cockpit.phraseology import normalize_for_speech
+from unstep.cockpit.phraseology import display_text, normalize_for_speech, spoken_callsign
 from unstep.cockpit.stt import CartesiaTurnSTT, FakeTurnSTT, ReplayTurnSTT, build_keyterms
 from unstep.cockpit.tts import CartesiaTTS, FakeTTS, TTSEngine, chime, pcm_bytes_to_array, to_left_stereo
 from unstep.contracts import ApprovedDirective, AuditRecord, ProposedDirective, RejectedDirective, VoiceApproval, unwrap, wrap
@@ -30,8 +33,11 @@ REJECT = {"reject", "negative", "cancel", "ill reissue"}
 class ApprovalLoop:
     """Pure state machine. Speech completion explicitly gates the decision."""
 
-    def __init__(self, clock: Callable[[], float] = time.monotonic):
+    def __init__(self, clock: Callable[[], float] = time.monotonic, window_s: float = 10.0):
+        # window_s: how long the controller has to answer. Presenter mode with a live mic
+        # widens it so the presenter can find the V key; the timeout rule itself is unchanged.
         self.clock = clock
+        self.window_s = window_s
         self.queue: deque[ProposedDirective] = deque()
         self.seen: set[str] = set()
         self.current: ProposedDirective | None = None
@@ -59,12 +65,20 @@ class ApprovalLoop:
             return None
         self.current = self.queue.popleft()
         self.attempt, self.deadline, self.pending = 1, None, None
-        p = self.current
-        return f"Blocked call to {p.slots.callsign}: {p.instruction_text.rstrip('. ')}. Approve?"
+        return self.prompt(self.current)
+
+    @staticmethod
+    def prompt(proposal: ProposedDirective) -> str:
+        """Short controller prompt built from the slots, for example
+        'Blocked call to Cessna 1-2-3: hold short Runway 33. Approve?'.
+        """
+        slots = proposal.slots
+        what = slots.action + (f" Runway {slots.runway}" if slots.runway else "")
+        return f"Blocked call to {spoken_callsign(slots.callsign)}: {what}. Approve?"
 
     def prompted(self) -> None:
         if self.current is not None and self.deadline is None:
-            self.deadline = self.clock() + 10.0
+            self.deadline = self.clock() + self.window_s
 
     def _finish(self, text: str, decision: Decision) -> VoiceApproval:
         assert self.current is not None
@@ -117,7 +131,8 @@ class ApprovalLoop:
 class ControllerVoice:
     """Cancellable headset playback; fake TTS stays silent and needs no device."""
 
-    def __init__(self, tts: TTSEngine):
+    def __init__(self, tts: TTSEngine, demo_audio_dir: Path | None = None):
+        self.demo_audio_dir = demo_audio_dir
         self.tts = tts
         self.context: str | None = None
 
@@ -133,7 +148,7 @@ class ControllerVoice:
         finally:
             sd.stop()
 
-    async def say(self, text: str) -> None:
+    async def say(self, text: str) -> dict:
         self.context = str(uuid.uuid4())
         try:
             await self._play(chime(self.tts.sample_rate), self.tts.sample_rate)
@@ -141,6 +156,11 @@ class ControllerVoice:
             if result.cancelled:
                 raise RuntimeError("controller speech cancelled")
             await self._play(pcm_bytes_to_array(result.pcm), result.sample_rate)
+            ding = chime(result.sample_rate)
+            audio = to_left_stereo(np.concatenate([ding, pcm_bytes_to_array(result.pcm)]))
+            payload = speech_payload(normalize_for_speech(text), "controller_ear", result, audio,
+                                     self.demo_audio_dir, offset=len(ding) / result.sample_rate)
+            return {**payload, "display_text": display_text(text)}
         except BaseException:
             await self.tts.cancel(self.context)
             raise
@@ -152,14 +172,26 @@ async def _answer(loop: ApprovalLoop, prompt: str, voice: ControllerVoice, stt_f
     assert loop.current is not None
     event_id = loop.current.event_id
     started = time.monotonic()
+    utterances: list[dict] = []
+
+    async def audit_utterance(stage: str, payload: dict) -> None:
+        utterances.append({"stage": stage, **payload})
+        if getattr(voice, "demo_audio_dir", None) is not None:
+            await send(wrap(AuditRecord(event_id=event_id, stage=stage, actor="controller_voice", payload=payload)))
 
     async def emit(message: VoiceApproval) -> None:
         await send(wrap(message))
         await send(wrap(AuditRecord(event_id=event_id, stage="controller_voice", actor="controller_voice",
                                    latency_ms=(time.monotonic() - started) * 1000,
-                                   payload=message.model_dump(mode="json"))))
+                                   payload={**message.model_dump(mode="json"), "party": "controller", "utterances": utterances})))
 
-    await voice.say(prompt)
+    async def say(text: str) -> None:
+        payload = await voice.say(text)
+        await audit_utterance("controller_spoken", payload or {"spoken_text": normalize_for_speech(text),
+                                                               "display_text": display_text(text),
+                                                               "party": "controller_ear"})
+
+    await say(prompt)
     loop.prompted()
     try:
         async with asyncio.timeout(max(0, loop.deadline - loop.clock())):
@@ -170,6 +202,12 @@ async def _answer(loop: ApprovalLoop, prompt: str, voice: ControllerVoice, stt_f
                             raise RuntimeError("controller STT failed")
                         if event.type != "turn.end":
                             continue
+                        payload = {"heard_text": event.transcript, "party": "controller",
+                                   **(getattr(stt, "last_input", None) or {})}
+                        if getattr(stt, "last_pcm", None):
+                            payload.update(save_audio(getattr(voice, "demo_audio_dir", None),
+                                                      np.frombuffer(stt.last_pcm, dtype="<i2"), stt.sample_rate))
+                        await audit_utterance("controller_heard", payload)
                         action = loop.heard(event.raw.get("event_id", event_id), event.transcript)
                         if isinstance(action, VoiceApproval):
                             await emit(action)
@@ -177,7 +215,7 @@ async def _answer(loop: ApprovalLoop, prompt: str, voice: ControllerVoice, stt_f
                         if isinstance(action, str):
                             if loop.pending is not None:
                                 break
-                            await voice.say(action)
+                            await say(action)
                     else:
                         await asyncio.sleep(max(0, loop.deadline - loop.clock()))
                         action = loop.timeout(force=True)
@@ -191,15 +229,15 @@ async def _answer(loop: ApprovalLoop, prompt: str, voice: ControllerVoice, stt_f
             await emit(action)
         return
     # A timely answer may take longer to repeat aloud than the listening window.
-    await voice.say(action)
+    await say(action)
     decision = loop.repeated()
     if decision:
         await emit(decision)
 
 
-async def run(url: str, tts: TTSEngine, stt_factory) -> None:
+async def run(url: str, tts: TTSEngine, stt_factory, demo_audio_dir: Path | None = None) -> None:
     """Listen only to the injected controller-key STT source, never radio audio."""
-    loop, voice, ready = ApprovalLoop(), ControllerVoice(tts), asyncio.Event()
+    loop, voice, ready = ApprovalLoop(), ControllerVoice(tts, demo_audio_dir), asyncio.Event()
     active: asyncio.Task | None = None
     async with websockets.connect(ws_url("controller_voice", url)) as ws:
         async def worker() -> None:
@@ -237,6 +275,7 @@ async def run(url: str, tts: TTSEngine, stt_factory) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default=None, help="gateway URL (default: UNSTEP_GATEWAY_URL)")
+    parser.add_argument("--demo-audio-dir", type=Path, nargs="?", const=DEFAULT_DEMO_AUDIO_DIR)
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--answer-clip", type=Path)
     args = parser.parse_args()
@@ -258,7 +297,7 @@ def main() -> None:
 
     async def go() -> None:
         try:
-            await run(args.url or gateway_url(), tts, factory)
+            await run(args.url or gateway_url(), tts, factory, args.demo_audio_dir)
         finally:
             if isinstance(tts, CartesiaTTS):
                 await tts.close()

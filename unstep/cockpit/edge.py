@@ -32,6 +32,7 @@ import numpy as np
 import soundfile as sf
 from pydantic import BaseModel
 
+from unstep.demo_audio import DEFAULT_DEMO_AUDIO_DIR, save_audio, speech_payload
 from unstep import scenario
 from unstep.clock import now_ms
 from unstep.config import gateway_url, ws_url
@@ -40,6 +41,7 @@ from unstep.cockpit.hint import advisory_text, derive_hint
 from unstep.cockpit.inference import Answerer, create_answerer
 from unstep.cockpit.memory import LocalMemory, Memory, airport_index, create_memory, flight_index
 from unstep.cockpit.overlap import OverlapDetector, OverlapWindow
+from unstep.cockpit.phraseology import display_text
 from unstep.cockpit.queries import answer_query, record
 from unstep.cockpit.readback import ReadbackSession
 from unstep.cockpit.seed import AIRPORT_ICAO, seed
@@ -222,6 +224,14 @@ class Line:
     latency: dict[str, float] = field(default_factory=dict)
 
 
+def readable(text: str) -> str:
+    """On-screen form of an advisory: the same words as spoken, with digits and the prefix."""
+    text = text.strip()
+    if not text.lower().startswith("advisory"):
+        text = f"Advisory. {text}"
+    return display_text(text)
+
+
 def _ms(started: float) -> float:
     return round((time.perf_counter() - started) * 1000, 3)
 
@@ -271,7 +281,9 @@ class CockpitEdge:
         gps: Optional[Gps] = None,
         taxiway_node: Optional[str] = "B4",
         answerer: Optional[Answerer] = None,
+        demo_audio_dir: Path | None = None,
     ):
+        self.demo_audio_dir = demo_audio_dir
         self.callsign = callsign
         self.frequency = frequency
         self.link = link or GatewayLink()
@@ -350,13 +362,16 @@ class CockpitEdge:
         if ms is not None:
             self.latency.setdefault(name, []).append(ms)
 
-    async def speak(self, text: str, **latency: float):
+    async def speak(self, text: str, event_id: str = "", display: str | None = None, **latency: float):
         spoken = await self.voice.say(text)
         first = self.tts.last_first_audio_ms
         self._measure("tts_first_audio_ms", first)
         self.out.add(spoken.stereo, self.voice.sample_rate)
         suffix = " [cut off by pilot]" if spoken.speech.cancelled else ""
         self._note("PILOT EAR", "[chime] " + spoken.text + suffix, tts_first_audio_ms=first, **latency)
+        await self.audit(event_id, "speech", first, display_text=readable(display or text), **speech_payload(
+            spoken.text, "pilot_ear", spoken.speech, spoken.stereo, self.demo_audio_dir,
+            offset=(len(spoken.stereo) - len(spoken.speech.pcm) // 2) / spoken.speech.sample_rate))
         return spoken
 
     async def send(self, msg: BaseModel) -> bool:
@@ -365,6 +380,7 @@ class CockpitEdge:
         return ok
 
     async def audit(self, event_id: str, stage: str, latency_ms: Optional[float] = None, **payload) -> None:
+        payload.setdefault("party", "pilot_ear")
         await self.send(AuditRecord(event_id=event_id, stage=stage, actor="cockpit",
                                     latency_ms=latency_ms, payload=payload))
 
@@ -402,14 +418,25 @@ class CockpitEdge:
         self.detector.reset()
         paced_start = time.perf_counter()
         audio_s = 0.0
+        radio_samples = []
+        clip_audio = (save_audio(self.demo_audio_dir, source.pcm, source.sample_rate)
+                      if hasattr(source, "pcm") else {})
 
         async def close_transmission(close_ts: int):
-            nonlocal stt, windows
+            nonlocal stt, windows, radio_samples
             windows += self.detector.flush()
             if windows:
                 ev = await self._on_blocked(stt, windows, squelch_open_ts, close_ts)
+                heard, radio_id = ev.heard_text, ev.event_id
                 if ev:
                     raised.append(ev)
+            else:
+                heard = (await stt.finalize()).text
+                radio_id = f"radio-{squelch_open_ts}"
+            audio = clip_audio or (save_audio(self.demo_audio_dir, np.concatenate(radio_samples), source.sample_rate)
+                                   if radio_samples else {})
+            await self.audit(radio_id, "radio_received", heard_text=heard, party="radio", **audio)
+            radio_samples = []
             if stt is not None and hasattr(stt, "__aexit__"):
                 await stt.__aexit__(None, None, None)
             stt, windows = None, []
@@ -421,6 +448,8 @@ class CockpitEdge:
                 squelch_open_ts = frame.ts
                 windows = []
             if stt is not None and frame.squelch_open:
+                if self.demo_audio_dir is not None and not clip_audio:
+                    radio_samples.append(frame.samples.copy())
                 await stt.send_audio(_pcm16(frame.samples))
             t = time.perf_counter()
             windows += self.detector.process(frame)
@@ -457,9 +486,6 @@ class CockpitEdge:
         hint = await derive_hint(self.memory, self.callsign, heard, self.flight_idx, self.airport_idx)
         hint_ms = _ms(t)
         self._measure("moss_ms", hint.moss_ms)
-        # Local hint rules: advisory_text only says "Likely" for a restrictive hint with a source.
-        await self.speak(advisory_text(hint), moss_ms=hint.moss_ms)
-        await self._record(f"adv-{event_id}", advisory_text(hint), "advisory")
 
         event = AnomalyEvent(
             event_id=event_id, callsign=self.callsign, frequency=self.frequency,
@@ -470,12 +496,19 @@ class CockpitEdge:
         self.events.append(event)
         self._resolved.setdefault(event_id, asyncio.Event())
         self._sent_at[event_id] = time.perf_counter()
-        if await self.send(event):
-            await self.audit(event_id, "detection", None, windows=[[w.start, w.end] for w in windows])
-            await self.audit(event_id, "cockpit_stt", stt_ms, heard_text=heard)
+        # The event goes to the ground before the hint is spoken, so the controller's side
+        # starts while the pilot is still hearing the hint.
+        online = await self.send(event)
+        if online:
+            await self.audit(event_id, "detection", None, windows=[[w.start, w.end] for w in windows], heard_text=heard, party="radio")
+            await self.audit(event_id, "cockpit_stt", stt_ms, heard_text=heard, party="radio")
             await self.audit(event_id, "local_hint", hint.moss_ms, kind=hint.kind,
-                             source_doc_id=hint.source_doc_id, total_ms=hint_ms)
-        else:
+                             source_doc_id=hint.source_doc_id, total_ms=hint_ms, spoken_text=advisory_text(hint),
+                             display_text=readable(advisory_text(hint)))
+        # Local hint rules: advisory_text only says "Likely" for a restrictive hint with a source.
+        await self.speak(advisory_text(hint), event_id=event_id, moss_ms=hint.moss_ms)
+        await self._record(f"adv-{event_id}", advisory_text(hint), "advisory")
+        if not online:
             await self.offline()
             self._resolve(event_id, "offline")
         return event
@@ -485,6 +518,9 @@ class CockpitEdge:
         if self.offline_alert is not None:
             self.out.add(self.offline_alert.stereo, self.voice.sample_rate)
             self._note("PILOT EAR", "[chime] " + self.offline_alert.text + " [offline alert, gateway unreachable]")
+            spoken = self.offline_alert
+            await self.audit("offline", "speech", display_text=readable(msg_say_again()), **speech_payload(
+                spoken.text, "pilot_ear", spoken.speech, spoken.stereo, self.demo_audio_dir, offset=0.22))
 
     # ------------------------------------------------------------ gateway in
 
@@ -507,15 +543,19 @@ class CockpitEdge:
 
     async def _on_rejected(self, msg: RejectedDirective) -> None:
         rt = self._round_trip(msg.event_id)
-        await self.speak(REQUEST_SAY_AGAIN, round_trip_ms=rt)
-        await self.audit(msg.event_id, "rejected_spoken", rt, rejected_via=msg.rejected_via)
+        spoken = await self.speak(REQUEST_SAY_AGAIN, event_id=msg.event_id, round_trip_ms=rt)
+        await self.audit(msg.event_id, "rejected_spoken", rt, rejected_via=msg.rejected_via, spoken_text=spoken.text,
+                         display_text=readable(REQUEST_SAY_AGAIN))
         self._resolve(msg.event_id, "rejected")
 
     async def _on_approved(self, msg: ApprovedDirective) -> None:
         rt = self._round_trip(msg.event_id)
-        await self.speak(msg_directive(msg.instruction_text), round_trip_ms=rt)
+        display = f"{msg.instruction_text.rstrip('.')}. Read back."
+        spoken = await self.speak(msg_directive(msg.instruction_text), event_id=msg.event_id,
+                                  display=display, round_trip_ms=rt)
         await self.audit(msg.event_id, "directive_spoken", self.tts.last_first_audio_ms,
-                         round_trip_ms=rt, approved_via=msg.approved_via)
+                         round_trip_ms=rt, approved_via=msg.approved_via, spoken_text=spoken.text,
+                         display_text=readable(display))
         await self._record(f"clr-{msg.event_id}", msg.instruction_text, "clearance")
         outcome = await self.readback(msg)
         self._resolve(msg.event_id, outcome)
@@ -545,15 +585,18 @@ class CockpitEdge:
                            verdict_ms=verdict_ms)
                 await self.send(step.result)
                 await self.audit(msg.event_id, "readback", verdict_ms, attempt=step.result.attempt,
-                                 match=step.result.match, reason=step.reason)
-                await self.speak(step.say)
+                                 match=step.result.match, reason=step.reason, heard_text=ev.transcript, party="pilot",
+                                 **(getattr(stt, "last_input", None) or {}),
+                                 **(save_audio(self.demo_audio_dir, np.frombuffer(stt.last_pcm, dtype="<i2"), stt.sample_rate)
+                                    if getattr(stt, "last_pcm", None) else {}))
+                await self.speak(step.say, event_id=msg.event_id)
                 if session.done:
                     return "confirmed" if step.action == "confirmed" else "flagged"
         return "no_readback"
 
     # ------------------------------------------------------------ pilot query
 
-    async def ask(self, question: str):
+    async def ask(self, question: str, audio: bytes | None = None, sample_rate: int = 16000):
         self._note("PILOT", f"asks: {question!r}")
         t = time.perf_counter()
         metrics: dict[str, float] = {}
@@ -562,10 +605,13 @@ class CockpitEdge:
         self._measure("llm_first_token_ms", metrics.get("llm_first_token_ms"))
         answer_ms = _ms(t)
         self._measure("moss_ms", q.moss_ms)
-        await self.speak(q.answer, moss_ms=q.moss_ms)
+        await self.speak(q.answer, event_id=q.query_id, moss_ms=q.moss_ms)
         self._measure("query_to_audio_ms", answer_ms + (self.tts.last_first_audio_ms or 0.0))
         await self.send(q)
-        await self.audit(q.query_id, "pilot_query", q.moss_ms, source_doc_id=q.source_doc_id, **metrics)
+        await self.audit(q.query_id, "pilot_query", q.moss_ms, source_doc_id=q.source_doc_id,
+                         heard_text=question, answer=q.answer, party="pilot", **metrics,
+                         **(save_audio(self.demo_audio_dir, np.frombuffer(audio, dtype="<i2"), sample_rate)
+                            if audio else {}))
         return q
 
     # ------------------------------------------------------------ reporting
@@ -580,9 +626,9 @@ class CockpitEdge:
 
 async def _main(args) -> int:
     edge = CockpitEdge(link=GatewayLink(args.url), audio_out=AudioOut(live=args.play),
-                       memory=LocalMemory() if args.local else None)
+                       memory=LocalMemory() if args.local else None, demo_audio_dir=args.demo_audio_dir)
     await edge.start()
-    events = await edge.run_audio(WavFileSource(args.wav))
+    events = await edge.run_audio(WavFileSource(args.wav), realtime=bool(os.getenv("CARTESIA_API_KEY")))
     for ev in events:
         print(ev.event_id, await edge.wait_resolved(ev.event_id, args.timeout))
     await edge.stop()
@@ -596,6 +642,7 @@ if __name__ == "__main__":
     p.add_argument("wav", nargs="?", default=str(ROOT / "assets" / "clips" / "stepped_on_call.wav"))
     p.add_argument("--url", default=None, help="gateway URL (default: UNSTEP_GATEWAY_URL)")
     p.add_argument("--timeout", type=float, default=60.0)
+    p.add_argument("--demo-audio-dir", type=Path, nargs="?", const=DEFAULT_DEMO_AUDIO_DIR)
     p.add_argument("--play", action="store_true", help="also play through sounddevice")
     p.add_argument("--local", action="store_true", help="force local memory even if Moss keys exist")
     logging.basicConfig(level=logging.INFO, format="%(message)s")

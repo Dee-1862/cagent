@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Unstep · No instruction lost</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230A0E13'/%3E%3Cpath d='M3 8h10' stroke='%2322D3EE' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/demo/demo.css">
+</head>
+<body class="audio-mode">
+  <header>
+    <strong class="brand">UNSTEP</strong>
+    <span>KUNS TWR <b id="frequency">-</b></span>
+    <b id="callsign">-</b>
+    <time id="clock"></time>
+    <div id="services">
+      <span data-service="Cartesia">○ Cartesia</span>
+      <span data-service="Moss">○ Moss</span>
+      <span data-service="Elastic">○ Elastic</span>
+    </div>
+    <span id="counter">0 / 7</span>
+    <b id="mode">REPLAY</b>
+    <button id="help-button" aria-label="Keyboard help">?</button>
+  </header>
+
+  <main id="full-view">
+    <section id="timeline" aria-label="Radio timeline">
+      <div class="section-label">RADIO / FLIGHT SESSION <span id="connection">○ disconnected</span></div>
+      <div class="lane tower" data-lane="TOWER">
+        <h2>TOWER</h2>
+        <div class="transmissions"></div>
+      </div>
+      <div class="lane pilot" data-lane="PILOT">
+        <h2>PILOT</h2>
+        <div class="transmissions"></div>
+      </div>
+      <div class="lane unstep" data-lane="UNSTEP">
+        <h2>UNSTEP <span class="ear" title="Left ear only">L</span></h2>
+        <div class="transmissions"></div>
+      </div>
+      <div class="lane controller" data-lane="CONTROLLER">
+        <h2>CONTROLLER</h2>
+        <div class="transmissions"></div>
+      </div>
+    </section>
+
+    <aside>
+      <article id="hint">
+        <h2>LOCAL HINT / LIKELY</h2>
+        <div id="hint-text" class="value">Awaiting radio</div>
+        <p id="hint-status"></p>
+        <p id="moss-time" class="mono"></p>
+        <p id="hint-source"></p>
+        <small>powered by Moss</small>
+      </article>
+      <article id="readback">
+        <h2>READBACK</h2>
+        <div id="readback-history"></div>
+        <small>powered by Cartesia</small>
+      </article>
+      <article id="ground">
+        <h2>GROUND / ANALYTICS</h2>
+        <div id="proposal">Awaiting event</div>
+        <p id="approval"></p>
+        <div id="analytics" hidden>
+          <div id="stats-rows"></div>
+          <pre id="esql"></pre>
+          <p id="stats-source"></p>
+        </div>
+        <small>powered by Elastic</small>
+      </article>
+    </aside>
+  </main>
+
+  <section id="audio-view" aria-label="Audio playback">
+    <div id="caption-speaker" class="section-label">UNSTEP</div>
+    <div id="caption" aria-live="polite" aria-atomic="true">No instruction lost or misheard.</div>
+    <canvas id="audio-wave" width="1200" height="50" aria-label="Current audio waveform"></canvas>
+    <button id="start">Start / enable audio</button>
+  </section>
+
+  <section id="mic" hidden aria-label="Push to talk" aria-live="polite">
+    <div id="mic-role">HOLD V TO TALK</div>
+    <div id="mic-hint"></div>
+    <div id="mic-meter" aria-hidden="true"><span id="mic-level"></span></div>
+    <div id="mic-status" class="mono"></div>
+  </section>
+
+  <section id="close" hidden>
+    <span class="section-label">UNSTEP</span>
+    <h1>No instruction lost<br>or misheard.</h1>
+    <p>Humans stay in charge.</p>
+  </section>
+
+  <footer id="latencies" aria-label="Measured latencies">
+    <span>Measurements appear as the pipeline runs.</span>
+  </footer>
+
+  <nav aria-label="Presenter controls">
+    <button data-action="prev">← Back</button>
+    <button data-action="next">Next →</button>
+    <button data-action="mode">A · View</button>
+    <button data-action="replay">R · Replay</button>
+    <button data-action="reset">0 · Reset</button>
+    <span id="status" role="status">Space to start. ? for help.</span>
+  </nav>
+
+  <dialog id="help">
+    <h2>Presenter keys</h2>
+    <dl>
+      <dt>Space / →</dt><dd>Next scene</dd>
+      <dt>← / B</dt><dd>Previous view (does not rerun)</dd>
+      <dt>A</dt><dd>Audio / full view</dd>
+      <dt>R</dt><dd>Replay last audio</dd>
+      <dt>0</dt><dd>Reset and run scene 1</dd>
+      <dt>V</dt><dd>Hold to talk (--mic mode, when prompted)</dd>
+      <dt>?</dt><dd>Help</dd>
+    </dl>
+    <p>Recorded inputs, or live speech with --mic. Offline uses labeled fakes and tone TTS.</p>
+    <button id="help-close">Close</button>
+  </dialog>
+
+  <script type="module" src="/demo/demo.js"></script>
+</body>
+</html>

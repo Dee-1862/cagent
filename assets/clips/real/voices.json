@@ -46,6 +46,14 @@
       "role": "pilot",
       "text": "Unstep, what was my last clearance?",
       "seconds": 3.0
+    },
+    "controller_approve.wav": {
+      "voice": "tower",
+      "text": "Approve."
+    },
+    "pilot_question_stop.wav": {
+      "voice": "pilot",
+      "text": "Unstep, what runway was I told to stop at?"
     }
   }
 }

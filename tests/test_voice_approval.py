@@ -296,3 +296,18 @@ def test_failed_repeat_back_never_sends_approval():
         assert not sent
 
     asyncio.run(go())
+
+
+def test_prompt_is_built_from_slots_with_spoken_callsign():
+    from unstep import scenario
+
+    loop = ApprovalLoop()
+    loop.enqueue(scenario.proposed_directive())
+    assert loop.start_next() == "Blocked call to Cessna 1-2-3: hold short Runway 33. Approve?"
+
+
+def test_display_text_reads_digits_back():
+    from unstep.cockpit.phraseology import display_text
+
+    assert display_text("Advisory. Readback incorrect. Runway tree tree.") == "Advisory. Readback incorrect. Runway 33."
+    assert display_text("Advisory. Readback correct.") == "Advisory. Readback correct."

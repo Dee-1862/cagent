@@ -26,6 +26,14 @@ Feedback from building Unstep on Cartesia (Sonic TTS, Ink STT). Everything under
 - **Why it matters:** The reference lists `words` as an optional field without saying which models return it. For our use case we need both key terms (only on `ink-2`) and word timestamps (only on `ink-whisper`), so today we'd run two streams.
 - **Suggestion:** Note model support next to `words`. Longer term, word timestamps on `ink-2` (see request A).
 
+## Observed intermittently (not yet reproducible on demand)
+
+Seen while running our demo repeatedly between about 2 and 3 AM PT on 2026-10-24. We're reporting the numbers, not claiming a cause.
+
+- **STT WebSocket handshakes sometimes hang.** Opening `wss://api.cartesia.ai/stt/websocket` or `/stt/turns/websocket` occasionally timed out during the opening handshake (10 s default timeout). It happened several times in about 30 minutes; an immediate retry always connected.
+- **Manual STT `finalize` latency varied widely** for the same 4 s clip: 76 ms, 91 ms, 143 ms, about 1.3 s, 3.4 s, 6.8 s and 7.4 s across runs within the same hour.
+- **Turns endpoint occasionally returns an empty `turn.end`** for a clear utterance: about 2 in 25 paced runs of the same clip, with or without key terms (8 of 8 succeeded each way in a controlled comparison).
+
 ## Feature requests
 
 - **A. Word timestamps on `ink-2`, and on the turns endpoint.** `turn.update` and `turn.end` only carry text. Word times would let a readback checker point at the exact word that was wrong.

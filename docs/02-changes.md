@@ -19,6 +19,68 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Live microphone for presenter mode
+
+**Type:** Added
+**Area:** Audio | Other
+
+`python -m unstep.demo --live --mic` lets the presenter speak the controller's
+"Approve", the pilot readbacks and the pilot questions live. Hold V in the
+browser: it streams 16 kHz PCM16 over the new local-only `/demo/mic` socket,
+`unstep/demo/mic.py` feeds each utterance to Cartesia ink-2 (manual endpoint,
+finalized on V release) and exposes the result as a turn-STT source the scenes
+use in place of the clips. 30 s of silence falls back to the recorded clip,
+labeled. Audits carry `input` (live mic or recorded clip) and the screen no
+longer says "recorded controller clip" after a live approval. `ApprovalLoop`
+takes an optional `window_s` (default 10 s, 45 s in `--mic` mode); its strict
+matching, repeat-back and retry are unchanged. Without `--mic` nothing changes.
+Tests: `tests/test_demo_mic.py`.
+
+**Related:** [Demo design section 6](11-demo-design.md#6-presenter-mode)
+
+---
+
+## 2026-10-24: Demo screen polish
+
+**Type:** Changed
+**Area:** Audit | Other
+
+Speech audit payloads now carry `display_text` (readable, "Runway 33") next to
+the phonetic `spoken_text`; the screen prefers it and maps word highlights onto
+it by fraction of speech time. The controller prompt is built from the slots
+("Blocked call to Cessna 1-2-3: hold short Runway 33. Approve?"). The demo page
+shows every transmission per lane (older ones compact), the cockpit's received
+text with a BLOCKED band, a per-attempt readback table, per-step latencies only
+(labeled offline fakes in replay) and three analytics counts. `web/demo/` JS and
+CSS rewritten in readable form.
+
+**Related:** [Demo design](11-demo-design.md)
+
+---
+
+## 2026-10-24: Demo observer, speech artifacts and tower recovery
+
+**Type:** Added
+**Area:** Ground agents | Audio | Audit
+
+Added a read-only observer with 200-message replay, `/demo/` static hosting and
+optional `/demo/audio/` WAV artifacts. Speech audits include exact normalized
+spoken text, heard text, party and available word times. Audio export is off
+by default; `--demo-audio-dir` enables it on the edge, controller and demo runner.
+Controller utterances stream individually with demo audio enabled; normal runs
+retain the existing decision-then-audit sequence and include utterances inside
+the final audit payload.
+
+B2 now uses parallel, paced manual streams: ink-2 for keyed text and ink-whisper
+for word offsets. B3 marks words with at least half their duration blocked.
+Mock agents retain the latest tower transcript per frequency and use it when
+PTT overlaps the cockpit event. The demo runner publishes the clean tower
+transcript with the same epoch base as the received cockpit clip.
+
+Added `tests/test_demo_plumbing.py`. Syntax checked without importing project
+modules. Pytest and live vendor calls were not run in this sandbox. Contracts
+are unchanged.
+
 ## 2026-10-24: Grounded pilot questions and persistent airport knowledge
 
 **Type:** Added

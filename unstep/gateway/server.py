@@ -12,20 +12,23 @@ Run: uvicorn unstep.gateway.server:app --port 8765
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
-from collections import defaultdict
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote, urlparse
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import ValidationError
 
 from unstep.clock import now_ms
-from unstep.config import gateway_token, pending_ttl_s
+from unstep.config import allowed_hosts, gateway_token, pending_ttl_s
 from unstep.contracts import (
     ApprovedDirective,
     ProposedDirective,
@@ -54,6 +57,7 @@ ROUTES: dict[str, set[str]] = {
 }
 
 ALLOWED_SENDERS: dict[str, set[str]] = {
+    "observer": set(),
     "cockpit": {"AnomalyEvent", "ReadbackResult", "PilotQuery", "AuditRecord"},
     "tower": {"TowerTranscript", "AuditRecord"},
     "agents": {"ProposedDirective", "AuditRecord"},
@@ -64,6 +68,8 @@ ALLOWED_SENDERS: dict[str, set[str]] = {
     "monitor": {"Insight", "AuditRecord"},
 }
 ROLES = set(ALLOWED_SENDERS)
+# "testclient" is the host Starlette's TestClient reports; no real peer can have it.
+LOOPBACK = {"127.0.0.1", "::1", "localhost", "testclient"}
 
 PENDING_TTL_S = pending_ttl_s()
 
@@ -76,6 +82,8 @@ class Gateway:
         # Proposals waiting for a human decision: event_id -> (proposal, received_ms).
         self.pending: dict[str, tuple[ProposedDirective, int]] = {}
         self.decided: set[str] = set()
+        self.history: deque[str] = deque(maxlen=200)
+        self.observer_lock = asyncio.Lock()
 
     def store(self, record: dict) -> None:
         try:
@@ -84,6 +92,13 @@ class Gateway:
             log.exception("sink write failed")
 
     async def broadcast(self, raw: str, msg_type: str) -> None:
+        async with self.observer_lock:
+            self.history.append(raw)
+            for ws in list(self.clients["observer"]):
+                try:
+                    await ws.send_text(raw)
+                except Exception:
+                    self.clients["observer"].discard(ws)
         for role in ROUTES.get(msg_type, set()):
             for ws in list(self.clients[role]):
                 try:
@@ -171,7 +186,8 @@ def origin_ok(ws: WebSocket) -> bool:
     return urlparse(origin).netloc == ws.headers.get("host")
 
 
-def create_app(sink=None, pending_ttl_s: float = PENDING_TTL_S) -> FastAPI:
+def create_app(sink=None, pending_ttl_s: float = PENDING_TTL_S,
+               demo_audio_dir: Path | None = None) -> FastAPI:
     sink = sink or sink_from_env(ROOT / "data" / "events.jsonl")
 
     @asynccontextmanager
@@ -181,8 +197,34 @@ def create_app(sink=None, pending_ttl_s: float = PENDING_TTL_S) -> FastAPI:
             await sink.aclose()  # send what is still queued
 
     app = FastAPI(title="Unstep gateway", lifespan=lifespan)
+    # Host allowlist: blocks DNS rebinding for HTTP and WebSocket requests alike.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts())
     gw = Gateway(sink, pending_ttl_s)
     app.state.gateway = gw
+
+    @app.get("/demo/index.html")
+    @app.get("/demo/")
+    async def demo():
+        # The demo screen is read-only, so it never carries the token: a visitor to
+        # this page must not gain a role that can approve directives.
+        html = (ROOT / "web" / "demo" / "index.html").read_text(encoding="utf-8")
+        return HTMLResponse(html.replace("__UNSTEP_TOKEN_QUERY__", ""))
+
+    audio_dir = Path(demo_audio_dir) if demo_audio_dir is not None else ROOT / "data" / "demo" / "audio"
+
+    @app.get("/demo/audio/{filename}")
+    async def demo_audio(filename: str):
+        from fastapi import HTTPException
+        from fastapi.responses import FileResponse
+
+        if Path(filename).name != filename or not filename.endswith(".wav"):
+            raise HTTPException(404)
+        path = audio_dir / filename
+        if not path.is_file():
+            raise HTTPException(404)
+        return FileResponse(path, media_type="audio/wav")
+
+    app.mount("/demo", StaticFiles(directory=ROOT / "web" / "demo", html=True), name="demo")
 
     @app.get("/health")
     async def health():
@@ -204,11 +246,20 @@ def create_app(sink=None, pending_ttl_s: float = PENDING_TTL_S) -> FastAPI:
 
     @app.websocket("/ws/{role}")
     async def ws_endpoint(ws: WebSocket, role: str):
-        if role not in ROLES or not origin_ok(ws) or (gateway_token() and ws.query_params.get("token") != gateway_token()):
+        token_ok = not gateway_token() or ws.query_params.get("token") == gateway_token()
+        # The read-only observer may skip the token, but only from this machine.
+        local_observer = role == "observer" and ws.client is not None and ws.client.host in LOOPBACK
+        if role not in ROLES or not origin_ok(ws) or not (token_ok or local_observer):
             await ws.close(code=4003)
             return
         await ws.accept()
-        gw.clients[role].add(ws)
+        if role == "observer":
+            async with gw.observer_lock:
+                for raw in gw.history:
+                    await ws.send_text(raw)
+                gw.clients[role].add(ws)
+        else:
+            gw.clients[role].add(ws)
         log.info("%s connected", role)
         if role in ("dashboard", "controller_voice"):
             # Replay undecided proposals so a reconnect doesn't lose cards.
@@ -216,7 +267,13 @@ def create_app(sink=None, pending_ttl_s: float = PENDING_TTL_S) -> FastAPI:
                 await ws.send_text(wrap(proposal))
         try:
             while True:
-                await gw.handle(role, await ws.receive_text(), ws)
+                if role == "observer":
+                    incoming = await ws.receive()
+                    if incoming["type"] == "websocket.disconnect":
+                        break
+                    await gw.error(ws, "role observer may not send messages")
+                else:
+                    await gw.handle(role, await ws.receive_text(), ws)
         except WebSocketDisconnect:
             pass
         finally:

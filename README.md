@@ -4,6 +4,26 @@
 
 Pilots and controllers share one half-duplex VHF channel, so when two stations transmit at once the call turns into a squeal and is lost. An FAA CAMI study (DOT/FAA/AM-05/19, 2005) found blocked, stepped-on or clipped calls in 1.16% of transmissions sampled at the five busiest US TRACONs, and no alerting system for stepped-on or clipped calls ([source](https://rosap.ntl.bts.gov/view/dot/58248/dot_58248_DS1.pdf)). Today recovery depends on someone noticing and asking "say again", and a misheard readback is only caught if the controller happens to hear it.
 
+![Unstep demo screen, full view, from a live run on Cartesia, Moss and Moss Inference](docs/img/demo-full-view.png)
+
+*Full view after a live run: the tower words lost under the squeal are struck out, Moss found the cockpit's local hint in 2 ms with its source record, the controller approved by voice (a recorded clip, labeled on screen), the wrong readback ("23") was caught and corrected, and Moss Inference answered the free-form question with an exact quote of the approved clearance. Every number in the bottom strip was measured in that run.*
+
+## Presenter mode (the live demo)
+
+```bash
+python -m unstep.demo --live    # real Cartesia, Moss and Moss Inference; warms up for about 30 s
+python -m unstep.demo           # same pipeline offline, with labeled fakes
+python -m unstep.demo --live --mic   # the presenter speaks the controller and pilot lines live
+```
+
+Before presenting, `python scripts/preflight.py` checks keys, clips, Cartesia, Moss and Moss Inference and ends with READY. Opens `http://127.0.0.1:8765/demo/`. **Space** runs the next scene, **A** toggles audio mode and the full view, **?** shows the keys. Every scene runs the real pipeline on recorded clips in `assets/clips/real/`; nothing on screen is canned.
+
+With `--mic` (needs `--live`), scenes 2 to 4 wait for the presenter instead of the clips: the screen shows "HOLD V TO TALK · as CONTROLLER" or "as PILOT" with what to say. Hold **V**, speak, release. The browser streams the microphone (16 kHz PCM16, echo cancellation and noise suppression on) to `/demo/mic`, Cartesia ink-2 transcribes it on the manual endpoint and finalizes on release, and the real pipeline handles whatever was said: the approval still needs a strict "Approve" with repeat-back, a wrong readback is still caught, unclear speech gets "Say again". If nobody speaks within 30 s the recorded clip runs instead, labeled as a mic fallback. Live lines are tagged LIVE MIC on screen and are not played back (R replays them). Design and storyboard: [docs/11-demo-design.md](docs/11-demo-design.md). Pitch script: [docs/12-pitch.md](docs/12-pitch.md).
+
+| Audio mode (the first minute) | Close |
+| --- | --- |
+| ![Audio mode caption](docs/img/demo-audio-mode.png) | ![Close card](docs/img/demo-close.png) |
+
 Full spec: [docs/01-prd.md](docs/01-prd.md). We logged API feedback for Cartesia: [docs/09-cartesia-feedback.md](docs/09-cartesia-feedback.md).
 
 ## Demo
@@ -34,6 +54,42 @@ python -m unstep.cockpit.edge assets/clips/stepped_on_call.wav --play
 ```
 
 Approve by voice with `python -m unstep.ground.voice_approval` (add `--live --answer-clip <wav>` for Cartesia), or click Approve or Reject on the dashboard. `python -m unstep.ground.auto_approver` approves everything instantly for load tests. `python -m unstep.cockpit.mock_cockpit --runs 10` is a lightweight stand-in for the edge.
+
+## Browser demo plumbing
+
+Open `/demo/` on the gateway for a read-only message list. `/ws/observer` receives
+all routed contracts, including audits and gateway decisions, and replays the
+last 200 messages on reconnect. It uses the same token and origin checks as
+other roles and rejects all incoming messages. Part B replaces the placeholder
+page.
+
+Add `--demo-audio-dir` to the edge, controller voice loop or `scripts/run_demo.py`
+to save WAV artifacts under `data/demo/audio/`. An explicit directory is also
+accepted; use the same directory in `create_app(demo_audio_dir=...)` when running
+a custom gateway. The one-command demo passes it through automatically. Audio
+export is off by default. The standalone gateway serves the default directory
+at `/demo/audio/`. Files remain until manually removed.
+
+Speech audits carry `party`, `spoken_text` or `heard_text`, available `words`
+with seconds relative to the WAV (including the chime), and optional `audio_url`.
+Controller utterances stream individually when demo audio is enabled; otherwise
+they are included in the final controller audit's `utterances` list. Text-only
+fake pilot/controller input has no recorded audio to export.
+
+```bash
+python -m unstep.ground.tower --clip assets/clips/real/clean_call.wav --live
+python scripts/run_demo.py --live --demo-audio-dir
+```
+
+`TowerTranscriber.transcribe` accepts 16 kHz mono PCM16 bytes, PTT start/end epoch
+milliseconds, frequency and callsign. It uses keyed ink-2 text and a second
+ink-whisper stream for word timing. Both streams are paced and finalized at the
+end of the PTT duration, using Cartesia's [manual STT endpoint](https://docs.cartesia.ai/api-reference/stt/websocket).
+Without `--live`, the tower client uses the explicit scenario fake. Tower word
+offsets remain seconds from `ptt_start`; pass a shared `--ptt-start` when matching
+independently replayed tower and cockpit recordings. The demo runner supplies a
+shared epoch automatically. The runner retains its scripted controller approval;
+use the standalone voice approval client for recorded controller answers.
 
 ## Setup
 
@@ -77,7 +133,7 @@ Every script prints `skipped: ...` and exits 0 when its keys are missing.
 | Ink-2 STT with key terms (callsigns, runways, "hold short", "niner") | `unstep/cockpit/stt.py` `build_keyterms`, `CartesiaManualSTT` | Correct ATC words. Verified live: "likely hold short runway tree tree" came back exactly |
 | Manual `finalize` on squelch close / PTT release | `CartesiaManualSTT.finalize`, used by `unstep/cockpit/edge.py` when a key is set | Transcript is final the moment the transmission ends |
 | Turns endpoint (`turn.start` / `turn.end`, tuned end threshold) | `CartesiaTurnSTT` | Readbacks and pilot queries. Client works live (`smoke_cartesia.py`); the edge uses a scripted fake by default. Also used for controller voice approval (`unstep/ground/voice_approval.py`, task B10) |
-| `ink-whisper` for word timestamps | Not in code yet | Planned workaround (Cartesia feedback item 2), to get tower word times for blocked-word marking |
+| `ink-whisper` for word timestamps | `unstep/ground/tower.py` | Second paced stream for tower word times and blocked-word marking |
 
 ## Moss and Elastic
 
@@ -120,7 +176,7 @@ Every script prints `skipped: ...` and exits 0 when its keys are missing.
 | `contracts/examples/` | One JSON example per contract (`python scripts/export_contract_examples.py`) | Both |
 | `docs/` | PRD, architecture, research, Cartesia feedback | Both |
 
-Every message is an envelope `{"type": "AnomalyEvent", "ts": 1792800000000, "data": {...}}` on `ws://<gateway>/ws/<role>`, role one of `cockpit`, `tower`, `agents`, `dashboard`, `controller_voice`, `monitor`. Routing is in `unstep/gateway/server.py` (`ROUTES`).
+Every message is an envelope `{"type": "AnomalyEvent", "ts": 1792800000000, "data": {...}}` on `ws://<gateway>/ws/<role>`, role one of `cockpit`, `tower`, `agents`, `dashboard`, `controller_voice`, `monitor`, `observer`. Routing is in `unstep/gateway/server.py` (`ROUTES`).
 
 ## Tests
 
