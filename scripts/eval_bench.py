@@ -77,7 +77,11 @@ class LiveSpeech:
         from unstep.cockpit.tts import CartesiaTTS
         from unstep.live.radio import to_mono16k
 
-        speech = await CartesiaTTS(voice_id=self.voices.get(role)).speak(text)
+        tts = CartesiaTTS(voice_id=self.voices.get(role))
+        try:
+            speech = await tts.speak(text)
+        finally:
+            await tts.close()  # one socket per line; left open they pile up until Cartesia answers 429
         return to_mono16k(speech.pcm, speech.sample_rate)
 
     async def hear(self, pcm: np.ndarray, keyterms: bool, ref: str, condition: str) -> tuple[str, float]:
