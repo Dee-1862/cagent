@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: Proposed agentic architecture for ground, cockpit and the link
+
+**Type:** Docs
+**Area:** Ground agents
+
+- Added [10-agentic-architecture.md](10-agentic-architecture.md), a proposal for Dev A to review.
+- Ground: no LLM supervisor agent. An Elastic Workflow orchestrates narrow Agent Builder agents (`ai.agent` steps) and pauses for the controller (`waitForInput`). The gateway stays the only place a directive is created (FR-6). Step types checked against the Elastic Workflows docs.
+- Cockpit: the edge agent is a state machine with Cartesia and Moss on local compute, plus an optional "Unstep, why?" explanation built from a per-event evidence bundle.
+- Link: radio stays the fallback, a live link carries only ATC-style messages, and Moss carries context handoff after the event. CPDLC (bounded at 120 s at 95%, RA-5) and Moss handoff (push replaces the index, 300 s polling) are both too slow for a live correction.
+- Proposed dropping `gps` from `AnomalyEvent` (contract change, needs both developers).
+- Noted from Rishit's handoff: B10 controller voice approval is being built by Rishit, and the stray Moss index was removed so `freq-118.300` is live.
+
 ## 2026-10-23: Cockpit edge and monitor load .env, live stack verified
 
 **Type:** Fixed
