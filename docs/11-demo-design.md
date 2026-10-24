@@ -98,9 +98,13 @@ Avoid: glow, glassmorphism, fake radar sweeps, looping motion, small grey text.
 | A | Toggle audio mode and full view |
 | R | Replay the last audio |
 | 0 | Reset to scene 1 |
+| V (hold) | Push to talk, `--mic` mode only, when the screen says HOLD V TO TALK |
 
 - `--live` uses real Cartesia, Moss and Moss Inference. Without it, fakes run the same pipeline offline.
 - Scene inputs are the recorded clips in `assets/clips/real/`. The pipeline processes them for real each run.
+- `--live --mic` makes scenes 2 (controller "Approve"), 3 (readbacks) and 4 (pilot questions) wait for the presenter. A panel shows the role ("as CONTROLLER" or "as PILOT"), what to say, a level meter while V is held, and the transcript once finalized. The browser asks for the mic at the first V press, never on page load, and streams 100 ms frames of 16 kHz PCM16 over `/demo/mic` (local and same-origin only, like `/demo/events`). Each utterance goes to Cartesia ink-2 on the manual endpoint with ATC key terms and is finalized when V is released, the same end-of-turn rule as the Unstep key. Frames are dropped unless a scene is waiting for speech.
+- Live speech changes nothing about the safety rules: only the controller's push-to-talk turn can approve, through the same strict `ApprovalLoop` (exact "Approve" or "Reject", repeat-back, one retry, timeout). The controller window is 45 s in `--mic` mode instead of 10 s, so the presenter has time to find the key. Empty or unclear speech gets "Say again".
+- If the presenter says nothing for 30 s, that turn runs the recorded clip and the screen says "Mic fallback". Audit records carry `input: live mic` or `input: recorded clip`, and the approval line only says "recorded controller clip" when it was one.
 - Audio plays in the browser (served from `/demo/audio/`), so it goes wherever the laptop's sound output goes. The directive plays in the left channel only.
 
 ## 7. Storyboard (2:00)

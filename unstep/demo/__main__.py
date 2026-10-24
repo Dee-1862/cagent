@@ -1,4 +1,4 @@
-"""python -m unstep.demo [--live] [--port 8765] [--no-browser]."""
+"""python -m unstep.demo [--live [--mic]] [--port 8765] [--no-browser]."""
 import argparse
 import asyncio
 import socket
@@ -23,14 +23,17 @@ async def serve(args):
         # Check before the live warm-up, which takes about 30 s.
         raise SystemExit(f"Port {args.port} is busy: is presenter mode already running? "
                          f"Open http://127.0.0.1:{args.port}/demo/ or pass --port.")
-    server = uvicorn.Server(uvicorn.Config(create_demo_app(live=args.live),
+    server = uvicorn.Server(uvicorn.Config(create_demo_app(live=args.live, mic=args.mic),
         host="127.0.0.1", port=args.port, log_level="warning"))
     task = asyncio.create_task(server.serve())
     while not server.started and not task.done():
         await asyncio.sleep(.05)
     if server.started:
         url = f"http://127.0.0.1:{args.port}/demo/"
-        print(f"Unstep presenter: {url} ({'LIVE' if args.live else 'REPLAY / fakes'})")
+        mode = "LIVE" if args.live else "REPLAY / fakes"
+        if args.mic:
+            mode += ", live mic: hold V to talk"
+        print(f"Unstep presenter: {url} ({mode})")
         if not args.no_browser:
             webbrowser.open(url)
     await task
@@ -41,7 +44,12 @@ def main():
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--no-browser", action="store_true")
-    asyncio.run(serve(parser.parse_args()))
+    parser.add_argument("--mic", action="store_true",
+                        help="presenter speaks the controller and pilot lines live (hold V); needs --live")
+    args = parser.parse_args()
+    if args.mic and not args.live:
+        parser.error("--mic needs --live: live speech goes to Cartesia STT")
+    asyncio.run(serve(args))
 
 
 if __name__ == "__main__":

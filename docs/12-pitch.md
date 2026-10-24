@@ -61,4 +61,5 @@ The 1.16% figure is from the FAA CAMI study DOT/FAA/AM-05/19 (research RB-1). Sa
 - Run `python scripts/preflight.py` at the table: it checks keys, clips, the port, Cartesia, Moss, Moss Inference and Elastic, and plays a left-channel test tone. It ends with READY or lists what's missing.
 - Run `python -m unstep.demo --live` once at the table to warm up Cartesia and Moss Inference (first calls are slower).
 - Sound check the squeal volume. Say "in the left ear" aloud, since a hall can't hear stereo.
+- If presenting with `--live --mic`: do a mic check at the table (run scenes 1 to 2 once, hold V, say "Approve", confirm the transcript on screen), allow the browser mic permission then, and speak close to the mic. If the hall is loud or the transcript is wrong in the check, present without `--mic`: the recorded clips are the default, and in `--mic` mode a turn falls back to its clip after 30 s of silence anyway.
 - Backup video on the laptop and a phone.

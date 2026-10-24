@@ -61,6 +61,12 @@ const KEY_ACTIONS = {
 const COUNT_MS = 350;
 const TYPE_MS = 400;
 
+// Push to talk (--mic): 16 kHz mono PCM16, sent in 100 ms frames.
+const MIC_KEY = 'v';
+const MIC_RATE = 16000;
+const MIC_FRAME_SAMPLES = 1600;
+const LIVE_MIC = 'live mic';
+
 // ---------------------------------------------------------------- state
 
 const view = {
@@ -96,7 +102,22 @@ const audio = {
   last: null,
 };
 
+const mic = {
+  enabled: false,
+  waiting: false,
+  socket: null,
+  stream: null,
+  source: null,
+  node: null,
+  sink: null,
+  talking: false,
+  carry: [],
+  position: 0,
+  pending: [],
+};
+
 let statsEpoch = 0;
+let lastApproval = null;
 
 // ---------------------------------------------------------------- DOM helpers
 
@@ -258,6 +279,10 @@ function addTransmission(payload, audit) {
   canvas.height = 30;
   const transcript = element('div', null, 'transcript');
   node.append(canvas, transcript);
+  if (payload.input) {
+    const label = payload.mic_fallback ? `RECORDED · MIC FALLBACK` : payload.input.toUpperCase();
+    node.append(element('span', label, `input-tag${payload.input === LIVE_MIC ? ' live' : ''}`));
+  }
   drawWave(canvas, null, LANE_COLORS[lane]);
 
   const text = displayTextOf(payload);
@@ -364,6 +389,17 @@ function queueSpeech(payload, audit) {
   const item = addTransmission(payload, audit);
   if (!payload.audio_url) {
     showCaption(item);
+    return;
+  }
+  if (payload.input === LIVE_MIC) {
+    audio.last = item;
+    showCaption(item);
+    if (audio.context) {
+      decode(item).then(() => {
+        drawWave(item.canvas, item.buffer, LANE_COLORS[item.lane]);
+        drawWave($('#audio-wave'), item.buffer, LANE_COLORS[item.lane]);
+      }).catch(() => {});
+    }
     return;
   }
   audio.queue.push(item);
@@ -600,7 +636,9 @@ function renderRejection(directive) {
 }
 
 function renderApproval(directive) {
-  const recorded = session.controllerRecorded ? ' (recorded controller clip)' : '';
+  lastApproval = directive;
+  const live = session.controllerRecorded ? ' (recorded controller clip)' : ' (live controller voice)';
+  const recorded = session.controllerRecorded || mic.enabled ? live : '';
   setText($('#approval'), `✓ Approved via ${directive.approved_via}${recorded}`);
   $('#approval').className = 'good';
   setText($('#hint-status'), '✓ Controller approved');
@@ -779,6 +817,7 @@ function resetView() {
   setText($('#moss-time'), '');
   setText($('#proposal'), 'Awaiting event');
   setText($('#approval'), '');
+  lastApproval = null;
   $('#analytics').hidden = true;
   $('#ground').classList.remove('analytics');
   $('#hint').classList.remove('ready');
@@ -812,7 +851,13 @@ function applyState(data) {
   setText($('#mode'), data.mode);
   setText($('#frequency'), data.frequency);
   setText($('#callsign'), data.callsign);
-  session.controllerRecorded = Boolean(data.controller_recorded);
+  const recorded = Boolean(data.controller_recorded);
+  if (lastApproval && recorded !== session.controllerRecorded) {
+    session.controllerRecorded = recorded;
+    renderApproval(lastApproval);
+  }
+  session.controllerRecorded = recorded;
+  renderMic(data.mic || { enabled: false });
   const fallbacks = data.fallbacks.length ? ' · ' + data.fallbacks.join('; ') : '';
   setText($('#status'), `${data.title} · ${data.status}${fallbacks}`);
   $('#status').title = $('#status').textContent;
@@ -845,6 +890,182 @@ async function control(action) {
   } catch (error) {
     setText($('#status'), 'Presenter disconnected. Reconnecting…');
   }
+}
+
+// ---------------------------------------------------------------- push to talk (--mic)
+
+// Runs on the audio thread: hands each block of input samples to the page.
+const MIC_WORKLET = `
+class MicTap extends AudioWorkletProcessor {
+  process(inputs) {
+    const channel = inputs[0] && inputs[0][0];
+    if (channel) {
+      this.port.postMessage(channel.slice(0));
+    }
+    return true;
+  }
+}
+registerProcessor('mic-tap', MicTap);
+`;
+
+function renderMic(state) {
+  mic.enabled = Boolean(state.enabled);
+  mic.waiting = Boolean(state.waiting);
+  const panel = $('#mic');
+  const shown = mic.enabled && (mic.waiting || mic.talking || Boolean(state.status));
+  panel.hidden = !shown;
+  if (!mic.enabled) {
+    return;
+  }
+  if (!mic.socket) {
+    connectMic();
+  }
+  panel.classList.toggle('waiting', mic.waiting);
+  const role = (state.role || 'speaker').toUpperCase();
+  setText($('#mic-role'), mic.waiting ? `HOLD V TO TALK · as ${role}` : role);
+  setText($('#mic-hint'), mic.waiting ? state.hint : '');
+  setText($('#mic-status'), state.transcript ? `heard: "${state.transcript}"` : state.status);
+  $('#mic-status').classList.toggle('heard', Boolean(state.transcript));
+  if (!mic.waiting && mic.talking) {
+    stopTalking();
+  }
+}
+
+function connectMic() {
+  const socket = new WebSocket(`${wsBase}/demo/mic`);
+  mic.socket = socket;
+  socket.onclose = () => {
+    mic.socket = null;
+    setTimeout(() => {
+      if (mic.enabled && !mic.socket) {
+        connectMic();
+      }
+    }, 1500);
+  };
+  socket.onerror = () => socket.close();
+}
+
+// Average each run of input samples into one 16 kHz sample; keep the remainder.
+function downsample(input, inputRate) {
+  const ratio = inputRate / MIC_RATE;
+  const samples = mic.carry.length ? Float32Array.from([...mic.carry, ...input]) : input;
+  const out = [];
+  let position = 0;
+  while (position + ratio <= samples.length) {
+    const from = Math.floor(position);
+    const to = Math.floor(position + ratio);
+    let sum = 0;
+    for (let i = from; i < to; i++) {
+      sum += samples[i];
+    }
+    out.push(sum / Math.max(1, to - from));
+    position += ratio;
+  }
+  mic.carry = Array.from(samples.subarray(Math.floor(position)));
+  return out;
+}
+
+function showLevel(samples) {
+  let sum = 0;
+  for (const value of samples) {
+    sum += value * value;
+  }
+  const rms = Math.sqrt(sum / Math.max(1, samples.length));
+  $('#mic-level').style.width = `${Math.min(100, rms * 400)}%`;
+}
+
+function sendFrames(flush) {
+  while (mic.pending.length >= MIC_FRAME_SAMPLES || (flush && mic.pending.length)) {
+    const chunk = mic.pending.splice(0, MIC_FRAME_SAMPLES);
+    const pcm = new Int16Array(chunk.length);
+    chunk.forEach((value, index) => {
+      pcm[index] = Math.max(-1, Math.min(1, value)) * 32767;
+    });
+    if (mic.socket?.readyState === WebSocket.OPEN) {
+      mic.socket.send(pcm.buffer);
+    }
+  }
+}
+
+function onMicSamples(samples) {
+  if (!mic.talking) {
+    return;
+  }
+  showLevel(samples);
+  mic.pending.push(...downsample(samples, audio.context.sampleRate));
+  sendFrames(false);
+}
+
+// Permission is asked at the first V press, never on page load.
+async function openMic() {
+  await unlockAudio();
+  mic.stream ||= await navigator.mediaDevices.getUserMedia({
+    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+  });
+  mic.source = audio.context.createMediaStreamSource(mic.stream);
+  mic.sink = audio.context.createGain();
+  mic.sink.gain.value = 0;
+  if (audio.context.audioWorklet) {
+    if (!mic.workletReady) {
+      const url = URL.createObjectURL(new Blob([MIC_WORKLET], { type: 'text/javascript' }));
+      await audio.context.audioWorklet.addModule(url);
+      mic.workletReady = true;
+    }
+    mic.node = new AudioWorkletNode(audio.context, 'mic-tap');
+    mic.node.port.onmessage = (event) => onMicSamples(event.data);
+  } else {
+    mic.node = audio.context.createScriptProcessor(2048, 1, 1);
+    mic.node.onaudioprocess = (event) => onMicSamples(event.inputBuffer.getChannelData(0));
+  }
+  // A silent sink keeps the tap running; nothing from the mic reaches the speakers.
+  mic.source.connect(mic.node).connect(mic.sink).connect(audio.context.destination);
+}
+
+async function startTalking() {
+  if (!mic.enabled || mic.talking) {
+    return;
+  }
+  if (!mic.waiting) {
+    setText($('#status'), 'Not listening now. V works when the screen says HOLD V TO TALK.');
+    return;
+  }
+  mic.talking = true;
+  mic.carry = [];
+  mic.pending = [];
+  $('#mic').classList.add('talking');
+  setText($('#mic-status'), 'Talking… release V when done');
+  try {
+    await openMic();
+    if (!mic.talking) {
+      closeMicNodes(); // V was released while the permission prompt was open
+    }
+  } catch (error) {
+    mic.talking = false;
+    $('#mic').classList.remove('talking');
+    setText($('#mic-status'), 'Microphone unavailable. The recorded clip plays after 30 s.');
+  }
+}
+
+function closeMicNodes() {
+  mic.source?.disconnect();
+  mic.node?.disconnect();
+  mic.sink?.disconnect();
+  mic.source = mic.node = mic.sink = null;
+}
+
+function stopTalking() {
+  if (!mic.talking) {
+    return;
+  }
+  mic.talking = false;
+  sendFrames(true);
+  if (mic.socket?.readyState === WebSocket.OPEN) {
+    mic.socket.send(JSON.stringify({ type: 'end' }));
+  }
+  closeMicNodes();
+  $('#mic').classList.remove('talking');
+  $('#mic-level').style.width = '0';
+  setText($('#mic-status'), 'Transcribing…');
 }
 
 // ---------------------------------------------------------------- sockets
@@ -899,6 +1120,11 @@ function onKey(event) {
     return;
   }
   const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+  if (key === MIC_KEY && mic.enabled) {
+    event.preventDefault();
+    startTalking();
+    return;
+  }
   const action = KEY_ACTIONS[key];
   if (action) {
     event.preventDefault();
@@ -914,6 +1140,12 @@ function bindControls() {
     button.onclick = () => control(button.dataset.action);
   });
   document.addEventListener('keydown', onKey);
+  document.addEventListener('keyup', (event) => {
+    if (event.key.toLowerCase() === MIC_KEY) {
+      stopTalking();
+    }
+  });
+  window.addEventListener('blur', stopTalking);
 }
 
 function tickClock() {

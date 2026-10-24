@@ -79,6 +79,13 @@
     <button id="start">Start / enable audio</button>
   </section>
 
+  <section id="mic" hidden aria-label="Push to talk" aria-live="polite">
+    <div id="mic-role">HOLD V TO TALK</div>
+    <div id="mic-hint"></div>
+    <div id="mic-meter" aria-hidden="true"><span id="mic-level"></span></div>
+    <div id="mic-status" class="mono"></div>
+  </section>
+
   <section id="close" hidden>
     <span class="section-label">UNSTEP</span>
     <h1>No instruction lost<br>or misheard.</h1>
@@ -106,9 +113,10 @@
       <dt>A</dt><dd>Audio / full view</dd>
       <dt>R</dt><dd>Replay last audio</dd>
       <dt>0</dt><dd>Reset and run scene 1</dd>
+      <dt>V</dt><dd>Hold to talk (--mic mode, when prompted)</dd>
       <dt>?</dt><dd>Help</dd>
     </dl>
-    <p>Recorded inputs. Offline uses labeled fakes and tone TTS.</p>
+    <p>Recorded inputs, or live speech with --mic. Offline uses labeled fakes and tone TTS.</p>
     <button id="help-close">Close</button>
   </dialog>
 

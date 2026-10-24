@@ -19,6 +19,27 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Live microphone for presenter mode
+
+**Type:** Added
+**Area:** Audio | Other
+
+`python -m unstep.demo --live --mic` lets the presenter speak the controller's
+"Approve", the pilot readbacks and the pilot questions live. Hold V in the
+browser: it streams 16 kHz PCM16 over the new local-only `/demo/mic` socket,
+`unstep/demo/mic.py` feeds each utterance to Cartesia ink-2 (manual endpoint,
+finalized on V release) and exposes the result as a turn-STT source the scenes
+use in place of the clips. 30 s of silence falls back to the recorded clip,
+labeled. Audits carry `input` (live mic or recorded clip) and the screen no
+longer says "recorded controller clip" after a live approval. `ApprovalLoop`
+takes an optional `window_s` (default 10 s, 45 s in `--mic` mode); its strict
+matching, repeat-back and retry are unchanged. Without `--mic` nothing changes.
+Tests: `tests/test_demo_mic.py`.
+
+**Related:** [Demo design section 6](11-demo-design.md#6-presenter-mode)
+
+---
+
 ## 2026-10-24: Demo screen polish
 
 **Type:** Changed

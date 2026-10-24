@@ -25,6 +25,7 @@ from unstep.cockpit.monitor import FrequencyMonitor
 from unstep.cockpit.stt import FakeManualSTT, FakeTurnSTT, ReplayTurnSTT
 from unstep.cockpit.tts import FakeTTS
 from unstep.demo_audio import DEFAULT_DEMO_AUDIO_DIR, save_audio
+from unstep.demo.mic import MIC_WAIT_S, MicSource, MicTurns
 from unstep.gateway.server import LOOPBACK, create_app, origin_ok
 from unstep.gateway.sink import MemorySink
 from unstep.ground.mock_agents import propose
@@ -36,6 +37,15 @@ log = logging.getLogger("unstep.demo")
 SCENES = ("Radio", "Controller approval", "Directive and readbacks", "Pilot questions",
           "Full view", "Analytics", "Close")
 QUESTIONS = ("Unstep, what was my last clearance?", "Unstep, what runway was I told to stop at?")
+READBACK_HINT = "read back: hold short runway 33, Cessna 1-2-3"
+# What the presenter is prompted to say in --mic mode, one hint per turn.
+MIC_HINTS = {
+    "controller": ["say: Approve", "say again: Approve"],
+    "readback": [READBACK_HINT + " (demo: say 23 first)", READBACK_HINT],
+    "questions": [f"ask: {q}" for q in QUESTIONS],
+}
+# With --mic the controller gets the mic wait plus time for the clip fallback.
+CONTROLLER_WINDOW_MIC_S = MIC_WAIT_S + 15
 
 
 class RoleLink:
@@ -105,8 +115,14 @@ class BrowserVoice(ControllerVoice):
 
 class Presenter:
     def __init__(self, gateway, *, live=False, audio_dir=DEFAULT_DEMO_AUDIO_DIR,
-                 clips=None, realtime=True):
+                 clips=None, realtime=True, mic=None, mic_wait_s=MIC_WAIT_S):
         self.gateway, self.live = gateway, live
+        # Optional live push-to-talk (--mic). None keeps every scene on recorded clips.
+        self.mic: MicSource | None = mic
+        self.mic_wait_s = mic_wait_s
+        self.controller_live = False
+        if mic is not None:
+            mic.notify = self.broadcast
         self.audio_dir = Path(audio_dir)
         self.clips = Path(clips) if clips else ROOT / "assets" / "clips" / "real"
         self.realtime = realtime
@@ -133,8 +149,9 @@ class Presenter:
                 "mode": "LIVE" if self.live else "REPLAY", "status": self.status,
                 "busy": bool(self.task and not self.task.done()), "action": action,
                 "generation": self.generation, "fallbacks": sorted(self.fallbacks),
-                # The controller's "Approve" is a recorded clip (no live mic yet); say so on screen.
-                "controller_recorded": True,
+                # Without --mic the controller's "Approve" is a recorded clip; say so on screen.
+                "controller_recorded": not self.controller_live,
+                "mic": self.mic.state() if self.mic else {"enabled": False},
                 "frequency": scenario.FREQUENCY, "callsign": scenario.CALLSIGN,
                 "services": {"Cartesia": "live configured" if self.live else "fake",
                              "Moss": getattr(getattr(self.edge, "memory", None), "backend", "idle"),
@@ -172,6 +189,22 @@ class Presenter:
                 callsigns=[scenario.CALLSIGN, scenario.SPOKEN_CALLSIGN], runways=["33", "23"])), pcm)
         return RecordedFakeTurns(texts, pcm)
 
+    def listen(self, role, hints, names, texts, *, say_again=False):
+        """Live mic turns when --mic, else the recorded clips exactly as before."""
+        if self.mic is None:
+            return self.turns(names, texts)
+
+        def on_turn(party, live):
+            if party == "controller":
+                self.controller_live = live
+
+        async def repeat():
+            await self.edge.speak("Say again.")
+
+        return MicTurns(self.mic, role, hints, lambda i: self.turns([names[i]], [texts[i]]),
+                        wait_s=self.mic_wait_s, say_again=repeat if say_again else None,
+                        on_turn=on_turn, on_fallback=self.fallbacks.add)
+
     async def start(self):
         if self.started:
             return
@@ -189,8 +222,9 @@ class Presenter:
             manual = lambda: CartesiaManualSTT(keyterms=build_keyterms(
                 callsigns=[scenario.CALLSIGN, scenario.SPOKEN_CALLSIGN], runways=["33"]))
         self.edge = CockpitEdge(link=self.links["cockpit"], memory=memory, tts=self.tts,
-            manual_stt_factory=manual, turn_stt_factory=lambda: self.turns(
-                ["wrong_readback.wav", "correct_readback.wav"], DEMO_READBACKS),
+            manual_stt_factory=manual, turn_stt_factory=lambda: self.listen(
+                "pilot", MIC_HINTS["readback"], ["wrong_readback.wav", "correct_readback.wav"],
+                DEMO_READBACKS, say_again=True),
             answerer=None if self.live else FakeAnswerer(), audio_out=AudioOut(path=None),
             demo_audio_dir=self.audio_dir)
         await self.edge.start()
@@ -222,10 +256,12 @@ class Presenter:
                 await self.radio()
             elif scene == 2:
                 proposal = await self.links["controller_voice"].receive("ProposedDirective")
-                loop = ApprovalLoop()
+                # Same strict loop either way; --mic only gives the presenter longer to answer.
+                loop = ApprovalLoop(window_s=CONTROLLER_WINDOW_MIC_S if self.mic else 10.0)
                 loop.enqueue(proposal)
                 await _answer(loop, loop.start_next(), BrowserVoice(self.tts, self.audio_dir),
-                    lambda: self.turns(["controller_approve.wav"], ["Approve"]),
+                    lambda: self.listen("controller", MIC_HINTS["controller"],
+                                        ["controller_approve.wav"] * 2, ["Approve"] * 2),
                     self.links["controller_voice"].send_raw)
                 decision = None
                 for raw in list(self.links["cockpit"].queue._queue):
@@ -244,14 +280,16 @@ class Presenter:
                 # Moss Inference goes cold while the presenter talks; re-warm it while the first
                 # question (a fixed intent, no LLM) plays, so the free-form one gets a warm model.
                 rewarm = asyncio.create_task(self.warm_answerer())
-                for name, fallback in zip(["pilot_question.wav", "pilot_question_stop.wav"], QUESTIONS):
-                    stt = self.turns([name], [fallback])
+                for name, fallback, hint in zip(["pilot_question.wav", "pilot_question_stop.wav"],
+                                                QUESTIONS, MIC_HINTS["questions"]):
+                    stt = self.listen("pilot", [hint], [name], [fallback], say_again=True)
                     async with stt:
                         async for event in stt.events():
-                            if event.type == "turn.end":
+                            if event.type == "turn.end" and event.transcript.strip():
                                 # Input first; ask() emits the answer before its final audit.
                                 await self.edge.audit("", "pilot_input", heard_text=event.transcript,
-                                    party="pilot", **save_audio(self.audio_dir,
+                                    party="pilot", **(getattr(stt, "last_input", None) or {}),
+                                    **save_audio(self.audio_dir,
                                         np.frombuffer(stt.last_pcm, dtype="<i2"), 16000))
                                 if fallback == QUESTIONS[1]:
                                     await rewarm
@@ -344,6 +382,9 @@ class Presenter:
                 self.gateway.pending.clear()
                 self.gateway.decided.clear()
                 self.scene, self.completed = 1, 0
+                self.controller_live = False
+                if self.mic:
+                    self.mic.reset()
                 self.run_started_ms = now_ms()
                 self.generation += 1
                 self.audio_mode = True
@@ -412,10 +453,14 @@ class Control(BaseModel):
     action: Literal["next", "prev", "reset", "replay", "mode"]
 
 
-def create_demo_app(*, live=False, audio_dir=DEFAULT_DEMO_AUDIO_DIR, sink=None, **options):
+def create_demo_app(*, live=False, audio_dir=DEFAULT_DEMO_AUDIO_DIR, sink=None, mic=False,
+                    mic_stt_factory=None, **options):
+    """`mic=True` adds live push-to-talk on /demo/mic. `mic_stt_factory` overrides the
+    Cartesia manual STT (tests pass a fake)."""
     app = create_app(sink=sink if sink is not None else (None if live else MemorySink()),
                      demo_audio_dir=audio_dir)
-    presenter = Presenter(app.state.gateway, live=live, audio_dir=audio_dir, **options)
+    source = (MicSource(mic_stt_factory) if mic_stt_factory else MicSource()) if mic else None
+    presenter = Presenter(app.state.gateway, live=live, audio_dir=audio_dir, mic=source, **options)
     app.state.presenter = presenter
     router = APIRouter()
 
@@ -444,6 +489,32 @@ def create_demo_app(*, live=False, audio_dir=DEFAULT_DEMO_AUDIO_DIR, sink=None, 
             pass
         finally:
             presenter.peers.discard(ws)
+
+    @router.websocket("/demo/mic")
+    async def mic_audio(ws: WebSocket):
+        # Same local-only rules as /demo/events (the Host header is checked by middleware).
+        if presenter.mic is None or ws.client.host not in LOOPBACK or not origin_ok(ws):
+            await ws.close(code=4003)
+            return
+        await ws.accept()
+        try:
+            while True:
+                message = await ws.receive()
+                if message["type"] == "websocket.disconnect":
+                    break
+                if message.get("bytes"):
+                    presenter.mic.feed(message["bytes"])
+                elif message.get("text"):
+                    try:
+                        kind = json.loads(message["text"]).get("type")
+                    except (ValueError, AttributeError):
+                        continue
+                    if kind == "end":
+                        presenter.mic.end()
+        except WebSocketDisconnect:
+            pass
+        finally:
+            presenter.mic.end()  # a dropped socket mid-utterance ends that utterance
 
     # Insert before the gateway's /demo static mount, which otherwise shadows APIs.
     app.router.routes[0:0] = router.routes

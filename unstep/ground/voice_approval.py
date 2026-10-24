@@ -33,8 +33,11 @@ REJECT = {"reject", "negative", "cancel", "ill reissue"}
 class ApprovalLoop:
     """Pure state machine. Speech completion explicitly gates the decision."""
 
-    def __init__(self, clock: Callable[[], float] = time.monotonic):
+    def __init__(self, clock: Callable[[], float] = time.monotonic, window_s: float = 10.0):
+        # window_s: how long the controller has to answer. Presenter mode with a live mic
+        # widens it so the presenter can find the V key; the timeout rule itself is unchanged.
         self.clock = clock
+        self.window_s = window_s
         self.queue: deque[ProposedDirective] = deque()
         self.seen: set[str] = set()
         self.current: ProposedDirective | None = None
@@ -75,7 +78,7 @@ class ApprovalLoop:
 
     def prompted(self) -> None:
         if self.current is not None and self.deadline is None:
-            self.deadline = self.clock() + 10.0
+            self.deadline = self.clock() + self.window_s
 
     def _finish(self, text: str, decision: Decision) -> VoiceApproval:
         assert self.current is not None
@@ -199,7 +202,8 @@ async def _answer(loop: ApprovalLoop, prompt: str, voice: ControllerVoice, stt_f
                             raise RuntimeError("controller STT failed")
                         if event.type != "turn.end":
                             continue
-                        payload = {"heard_text": event.transcript, "party": "controller"}
+                        payload = {"heard_text": event.transcript, "party": "controller",
+                                   **(getattr(stt, "last_input", None) or {})}
                         if getattr(stt, "last_pcm", None):
                             payload.update(save_audio(getattr(voice, "demo_audio_dir", None),
                                                       np.frombuffer(stt.last_pcm, dtype="<i2"), stt.sample_rate))

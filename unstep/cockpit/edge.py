@@ -586,6 +586,7 @@ class CockpitEdge:
                 await self.send(step.result)
                 await self.audit(msg.event_id, "readback", verdict_ms, attempt=step.result.attempt,
                                  match=step.result.match, reason=step.reason, heard_text=ev.transcript, party="pilot",
+                                 **(getattr(stt, "last_input", None) or {}),
                                  **(save_audio(self.demo_audio_dir, np.frombuffer(stt.last_pcm, dtype="<i2"), stt.sample_rate)
                                     if getattr(stt, "last_pcm", None) else {}))
                 await self.speak(step.say, event_id=msg.event_id)

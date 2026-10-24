@@ -501,6 +501,87 @@ nav button {
   text-overflow: ellipsis;
 }
 
+/* ---------------------------------------------------------------- push to talk (--mic) */
+
+/* Floats above the footer in both views; cyan is Unstep's own advisory color. */
+#mic {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--footer-h) + var(--nav-h) + 16px);
+  transform: translateX(-50%);
+  width: min(900px, calc(100vw - 32px));
+  padding: 14px 22px;
+  background: var(--panel);
+  border: 2px solid var(--grid);
+  border-radius: 6px;
+  text-align: center;
+  z-index: 5;
+}
+
+#mic[hidden] {
+  display: none;
+}
+
+#mic.waiting {
+  border-color: var(--cyan);
+}
+
+#mic.talking {
+  border-color: var(--cyan);
+  border-width: 4px;
+}
+
+#mic-role {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--cyan);
+}
+
+#mic-hint {
+  font-family: var(--mono-font);
+  font-size: 24px;
+  margin: 8px 0;
+}
+
+#mic-meter {
+  height: 10px;
+  background: var(--bg);
+  border: 1px solid var(--grid);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+#mic-level {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--cyan);
+}
+
+#mic-status {
+  margin-top: 8px;
+  font-size: 18px;
+  color: var(--muted);
+}
+
+#mic-status.heard {
+  color: var(--text);
+}
+
+.input-tag {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.input-tag.live {
+  color: var(--cyan);
+}
+
 /* ---------------------------------------------------------------- audio mode */
 
 #audio-view {

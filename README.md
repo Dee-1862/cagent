@@ -13,9 +13,12 @@ Pilots and controllers share one half-duplex VHF channel, so when two stations t
 ```bash
 python -m unstep.demo --live    # real Cartesia, Moss and Moss Inference; warms up for about 30 s
 python -m unstep.demo           # same pipeline offline, with labeled fakes
+python -m unstep.demo --live --mic   # the presenter speaks the controller and pilot lines live
 ```
 
-Before presenting, `python scripts/preflight.py` checks keys, clips, Cartesia, Moss and Moss Inference and ends with READY. Opens `http://127.0.0.1:8765/demo/`. **Space** runs the next scene, **A** toggles audio mode and the full view, **?** shows the keys. Every scene runs the real pipeline on recorded clips in `assets/clips/real/`; nothing on screen is canned. Design and storyboard: [docs/11-demo-design.md](docs/11-demo-design.md). Pitch script: [docs/12-pitch.md](docs/12-pitch.md).
+Before presenting, `python scripts/preflight.py` checks keys, clips, Cartesia, Moss and Moss Inference and ends with READY. Opens `http://127.0.0.1:8765/demo/`. **Space** runs the next scene, **A** toggles audio mode and the full view, **?** shows the keys. Every scene runs the real pipeline on recorded clips in `assets/clips/real/`; nothing on screen is canned.
+
+With `--mic` (needs `--live`), scenes 2 to 4 wait for the presenter instead of the clips: the screen shows "HOLD V TO TALK · as CONTROLLER" or "as PILOT" with what to say. Hold **V**, speak, release. The browser streams the microphone (16 kHz PCM16, echo cancellation and noise suppression on) to `/demo/mic`, Cartesia ink-2 transcribes it on the manual endpoint and finalizes on release, and the real pipeline handles whatever was said: the approval still needs a strict "Approve" with repeat-back, a wrong readback is still caught, unclear speech gets "Say again". If nobody speaks within 30 s the recorded clip runs instead, labeled as a mic fallback. Live lines are tagged LIVE MIC on screen and are not played back (R replays them). Design and storyboard: [docs/11-demo-design.md](docs/11-demo-design.md). Pitch script: [docs/12-pitch.md](docs/12-pitch.md).
 
 | Audio mode (the first minute) | Close |
 | --- | --- |
