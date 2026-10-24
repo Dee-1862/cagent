@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Plan for how Elastic and Moss are used, and who owns what (proposal)
+
+**Type:** Docs
+**Area:** Docs
+
+- [19-elastic-moss-plan.md](19-elastic-moss-plan.md): an honest inventory of what we use from each sponsor against what each offers, with evidence grades. Moss claims were read in the installed `moss` 1.21.0 and `inferedge-moss-core` 0.35.0 (read, not run); Elastic claims come from search result summaries because elastic.co pages could not be fetched, so they are marked as such.
+- Per sponsor: ranked top 3 steps with owner, files, offline test plan, live needs, effort, risk and the stage moment with its number; a "not now" list; and a talk track where every claim is tagged BUILT, TESTED OFFLINE, NEEDS LIVE RUN or PLANNED.
+- Findings worth acting on, all docs-only or tiny: our "Moss recovers the instruction" wording is stronger than the code (the hint comes from the newest-clearance rule; the search is evidence); "Elastic decides" is stronger than the code (the percolator is advisory); `scripts/smoke_moss.py` pushes a per-aircraft session by default; and the Moss SDK says `session()` auto-loads an existing cloud index, which may mean the flight log survives a restart (needs one live check).
+- Proposes that Rishit's side owns the Elastic track end to end and ours keeps Moss. Nothing is built from the plan; it waits for a yes from both humans.
+
+**Related:** agent mail D23
+
 ## 2026-10-24: Plane memory saved to Moss Cloud through one flight log
 
 **Type:** Added
