@@ -50,7 +50,7 @@ The 1.16% figure is from the FAA CAMI study DOT/FAA/AM-05/19 (research RB-1). Sa
 ## 3. Thirty-second versions
 
 **Cartesia (lead with voice):**
-"Listen." *(squeal)* "That instruction was lost. Unstep caught it, and now Cartesia speaks the fix in the pilot's left ear, then checks the readback." *(23 caught, corrected)* "Voice in and voice out for every person in the loop: Ink with ATC key terms, Sonic with our pronunciation dictionary for 'niner' and 'tree', barge-in with context cancel. First audio in about a hundred milliseconds, measured right here."
+"Listen." *(squeal)* "That instruction was lost. Unstep caught it, and now Cartesia speaks the fix in the pilot's left ear, then checks the readback." *(23 caught, corrected)* "Voice in and voice out for every person in the loop: Ink with ATC key terms, Sonic with our pronunciation dictionary for 'tree' and 'fife', barge-in with context cancel. First audio in about a hundred milliseconds, measured right here."
 
 **Moss (lead with speed and memory):**
 "Listen." *(squeal)* "The cockpit only heard noise. Moss searched the aircraft's own clearance history locally, under a millisecond, and found the likely instruction, with its source record on screen. Then the pilot asks 'what runway was I told to stop at?' and Moss plus Moss Inference answer with an exact quote of the approved clearance. Nothing it says can be invented: every answer must quote a real record."
