@@ -45,7 +45,7 @@ Unstep does not avoid aircraft collisions. It prevents the **communication failu
 | Aspect | Today |
 | --- | --- |
 | Channel | Shared half-duplex VHF, one speaker at a time |
-| Failure 1 | Simultaneous transmissions produce a heterodyne squeal or static |
+| Failure 1 | Simultaneous transmissions produce a heterodyne squeal or static. An FAA CAMI study found blocked, stepped-on or clipped calls in 1.16% of transmissions sampled at the five busiest US TRACONs, and no alerting system for them (RB-1, RA-4) |
 | Failure 2 | Readback errors are only caught if the controller notices |
 | Detection | Neither side reliably knows a message was lost or misheard |
 | Recovery | Depends on someone asking "say again" |
@@ -65,7 +65,7 @@ Unstep does not avoid aircraft collisions. It prevents the **communication failu
 
 ### Goals
 
-- Detect stepped-on transmissions on the cockpit side as they happen.
+- Detect stepped-on transmissions as they happen: a fast audio signal on the cockpit side, confirmed by comparing tower and cockpit transcripts. We don't claim audio-only detection is reliable (RA-4).
 - Show exactly which words were blocked, using tower and cockpit transcripts.
 - Recover the instruction from the controller's own transmission and get human approval.
 - Deliver it to the pilot's headset in a voice that can't be mistaken for ATC.
@@ -108,7 +108,7 @@ Full diagrams are in [Architecture](05-architecture.md). Detailed sponsor usage 
 
 | Part | What it does |
 | --- | --- |
-| Overlap detector | Finds the squeal or heterodyne signature and the time window it covers |
+| Overlap detector | Finds the squeal or heterodyne signature and the time window it covers. A fast first signal only: research shows audio-only detection is unproven and a full overlap (one signal completely covering the other) can't be detected this way (RA-4). The reliable signal is the tower and cockpit transcript comparison |
 | Cockpit transcript | Cartesia STT on the received audio, finalized when the squelch closes (the cockpit can't see the tower's PTT) |
 | Local hint (Moss) | Searches the flight session and airport index with the fragment that was heard. Gives a "Likely" hint in a few milliseconds, with the search time and the source record on screen. Restrictive instructions only |
 | Advisory voice (Cartesia TTS) | Chime, then directives in the left ear only, calm advisory voice, ATC numbers |
