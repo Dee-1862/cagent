@@ -80,7 +80,7 @@ function receive(message) {
       state.traces = new Map(message.traces.map((trace) => [trace.event_id, trace]));
       state.lanes.clear();
       $("frequency").textContent = message.frequency;
-      $("connection").textContent = "LIVE";
+      $("connection").textContent = message.live ? "LIVE" : "OFFLINE · fake speech";
       $("connection").className = "connection online";
       $("mode").textContent = message.live ? "Live room · speech services configured for live mode" : "Offline demo · fake speech";
       $("autonomy").checked = state.autonomy;
@@ -148,7 +148,14 @@ function renderTraces() {
     const plane = $(`plane-${id}`);
     // Do not restart warning flashes for unrelated updates.
     if (plane.getAttribute("class") !== `plane ${view.kind}`) plane.setAttribute("class", `plane ${view.kind}`);
-    $(`state-${id}`).textContent = view.label;
+    const label = $(`state-${id}`);
+    label.textContent = view.label;
+    label.removeAttribute("textLength");
+    const maxWidth = id === "N123AB" ? 285 : 320;
+    if (label.getComputedTextLength() > maxWidth) {
+      label.setAttribute("textLength", maxWidth);
+      label.setAttribute("lengthAdjust", "spacingAndGlyphs");
+    }
     if (id === "N123AB") $("stop-sign").setAttribute("visibility", trace?.status === "confirmed" && /hold short/i.test(trace.decision?.instruction_text || trace.proposal?.instruction_text || "") ? "visible" : "hidden");
   }
   renderInbox();
@@ -169,6 +176,9 @@ function reason(trace) {
   const check = failed.find((c) => c.name === "restrictive") || failed[0];
   return state.reasons[check?.name] || "The automatic safety checks did not all pass, so a human must review this instruction.";
 }
+function spokenWords(text) {
+  return text.replace(/\b(N123AB|H456)\b/g, (id) => names[id].split(" · ")[1]);
+}
 function towerWords(trace) {
   const paragraph = el("p", undefined, "words");
   const tower = trace.tower;
@@ -176,14 +186,14 @@ function towerWords(trace) {
   if (tower?.words?.length && event) {
     for (const word of tower.words) {
       const lost = tower.ptt_start + word.start * 1000 < event.overlap_end && tower.ptt_start + word.end * 1000 > event.overlap_start;
-      paragraph.append(el(lost ? "mark" : "span", `${word.word} `));
+      paragraph.append(el(lost ? "mark" : "span", `${spokenWords(word.word)} `));
     }
   } else {
     const text = tower?.text || trace.proposal?.instruction_text || "Original words unavailable";
     const normalize = (word) => word.toLowerCase().replace(/[^a-z0-9]/g, "");
     const lost = new Set((trace.proposal?.blocked_words || []).flatMap((word) => word.split(/\s+/)).map(normalize));
     for (const word of text.split(/(\s+)/)) {
-      paragraph.append(el(normalize(word) && lost.has(normalize(word)) ? "mark" : "span", word));
+      paragraph.append(el(normalize(word) && lost.has(normalize(word)) ? "mark" : "span", spokenWords(word)));
     }
   }
   return paragraph;
@@ -198,7 +208,7 @@ function renderInbox() {
   }
   $("inbox").replaceChildren(...waiting.map((trace) => {
     const card = el("article", undefined, "decision");
-    card.append(el("h3", names[trace.callsign] || trace.callsign), el("small", "MISSED · the tower’s words; highlighted words were talked over"), towerWords(trace));
+    card.append(el("h3", names[trace.callsign] || trace.callsign), el("small", trace.callsign, "registration"), el("small", "MISSED · the tower’s words; highlighted words were talked over"), towerWords(trace));
     const why = el("p", undefined, "reason"); why.append(el("small", "Why you’re seeing this"), document.createTextNode(reason(trace))); card.append(why);
     const failed = (trace.policy?.checks || []).filter((c) => !c.ok);
     if (failed.length > 1) {
@@ -315,14 +325,27 @@ $("autonomy").addEventListener("change", () => {
   $("autonomy").checked = state.autonomy;
   send({type:"autonomy",on});
 });
+// Enter and the Transmit button share one path; requestSubmit() can be blocked by form state.
+function transmitSay() {
+  const text = $("say").value.trim();
+  if (text && send({type:"say",text})) $("say").value = "";
+}
 $("say-form").addEventListener("submit", (event) => {
   event.preventDefault();
-  if ($("say").value.trim() && send({type:"say",text:$("say").value.trim()})) $("say").value = "";
+  transmitSay();
+});
+$("say").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.isComposing) {
+    event.preventDefault();
+    transmitSay();
+  }
 });
 document.querySelectorAll("[data-say]").forEach((button) => button.addEventListener("click", () => send({type:"say",text:button.dataset.say})));
 $("join-url").textContent = `${location.host}/live/`;
 $("join-url").href = `${location.origin}/live/`;
-if (["localhost","127.0.0.1","[::1]"].includes(location.hostname)) $("join-url").title = "Phones need the server’s LAN or HTTPS tunnel address, not localhost.";
+$("join-qr").href = $("join-url").href;
+$("qr").src = `/live/qr.svg?u=${encodeURIComponent($("join-url").href)}`;
+$("phone-hint").hidden = !["localhost","127.0.0.1","[::1]"].includes(location.hostname);
 try { state.reasons = await (await fetch("/live/static/atc/reasons.json")).json(); }
 catch { notice("Detailed policy wording unavailable; failed checks still require a human decision."); }
 renderRadio(); controls(); connect();

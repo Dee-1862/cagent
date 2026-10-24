@@ -44,6 +44,32 @@ def test_atc_page_and_local_assets_are_served(console, monkeypatch):
     assert 'id="projector-seat"' in client.get("/live/").text
 
 
+def test_join_qr_is_served(console):
+    from xml.etree import ElementTree
+    from qrcode.image.svg import SvgPathImage
+    import qrcode
+
+    client, _ = console
+    url = "http://testserver/live/?token=a%26b"
+    response = client.get("/live/qr.svg", params={"u": url})
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/svg+xml"
+    svg = ElementTree.fromstring(response.content)
+    assert svg.tag == "{http://www.w3.org/2000/svg}svg"
+    assert svg.find("{http://www.w3.org/2000/svg}path") is not None
+    assert response.content == qrcode.make(url, image_factory=SvgPathImage).to_string()
+
+
+@pytest.mark.parametrize("url", [
+    "https://example.com/live/", "http://testserver.example.com/live/",
+    "http://testserver@example.com/live/", "//testserver/live/",
+    "javascript:alert(1)", "http://[broken/live/", "/live/",
+])
+def test_join_qr_rejects_foreign_or_invalid_urls(console, url):
+    client, _ = console
+    assert client.get("/live/qr.svg", params={"u": url}).status_code == 400
+
+
 @pytest.mark.parametrize("frame", [
     {"type": "auth", "password": "wrong"},
     {"type": "decide", "event_id": "never", "approve": True},

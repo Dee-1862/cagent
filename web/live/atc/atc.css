@@ -26,3 +26,5 @@ header{display:flex;align-items:center;gap:26px;min-height:91px;padding:14px 30p
   .explanation li{font-size:16px;padding:5px 0}
   .explanation .step-meta{font-size:12px}
 }
+
+#join-qr{flex-shrink:0;line-height:0}#qr{display:block;background:white}.join{max-width:310px}.registration{display:block;margin-bottom:6px}

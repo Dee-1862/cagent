@@ -3,6 +3,7 @@ uvicorn[standard]>=0.30
 pydantic>=2.7
 websockets>=13
 python-dotenv>=1.0
+qrcode>=7
 
 # tests
 pytest>=8
