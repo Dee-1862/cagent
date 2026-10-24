@@ -204,6 +204,17 @@ class CartesiaTTS:
         return req
 
     async def speak(self, text, context_id=None, on_chunk=None) -> SpeechResult:
+        """Retry once on a fresh connection: Cartesia closes the WebSocket after it sits
+        idle (for example while a presenter pauses between scenes)."""
+        from websockets.exceptions import ConnectionClosed
+
+        try:
+            return await self._speak_once(text, context_id, on_chunk)
+        except (ConnectionClosed, OSError):
+            self._ws = None
+            return await self._speak_once(text, context_id, on_chunk)
+
+    async def _speak_once(self, text, context_id=None, on_chunk=None) -> SpeechResult:
         ws = await self.connect()
         context_id = context_id or str(uuid.uuid4())
         started = time.perf_counter()

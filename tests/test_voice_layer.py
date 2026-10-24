@@ -336,3 +336,23 @@ def test_replay_turn_stt_one_turn_per_clip_and_merges_early_turn_end():
     assert ends == ["Hold short runway tree tree Cessna one two three",
                     "Hold short runway three three, Cessna one two three"]
     assert len(stt.turn_end_ms) == 2
+
+
+def test_cartesia_tts_reconnects_once_after_idle_close(monkeypatch):
+    import asyncio
+    from websockets.exceptions import ConnectionClosedError
+    from unstep.cockpit.tts import CartesiaTTS, SpeechResult
+
+    monkeypatch.setenv("CARTESIA_API_KEY", "test")
+    tts = CartesiaTTS()
+    calls = []
+
+    async def flaky(text, context_id=None, on_chunk=None):
+        calls.append(text)
+        if len(calls) == 1:
+            raise ConnectionClosedError(None, None)
+        return SpeechResult(pcm=b"\x00\x00", sample_rate=24000, first_audio_ms=None)
+
+    monkeypatch.setattr(tts, "_speak_once", flaky)
+    result = asyncio.run(tts.speak("Advisory. Readback correct."))
+    assert len(calls) == 2 and result.pcm

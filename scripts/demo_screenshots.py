@@ -67,7 +67,7 @@ def main() -> int:
                 # Like a presenter: wait until the scene reports Ready, then let audio finish.
                 page.wait_for_timeout(1000)
                 for _ in range(120):
-                    if "Ready" in page.locator("#status").inner_text():
+                    if "Ready for next scene" in page.locator("#status").inner_text():
                         break
                     page.wait_for_timeout(500)
                 page.wait_for_timeout(int(SCENE_WAIT_S.get(scene, 2) * 1000))
