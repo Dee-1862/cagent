@@ -157,6 +157,7 @@ Research is time-boxed and never blocks the build.
 ## 8. Working Rules
 
 - Commit and push after each task, with a one-line title and bullet-point description.
+- No `Co-Authored-By` or AI attribution lines in commits or PRs. AI agents follow [CLAUDE.md](../CLAUDE.md).
 - Log notable changes in [02-changes.md](02-changes.md) and mistakes in [03-mistakes-and-lessons.md](03-mistakes-and-lessons.md).
 - Any contract change needs both of us to agree, and gets a changes log entry.
 - If you're blocked on the other half, extend your mock instead of waiting.
