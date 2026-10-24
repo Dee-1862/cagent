@@ -1088,6 +1088,15 @@ class LiveRoom:
                        f"the stored directive ({msg.actor}, {msg.latency_ms} ms): "
                        f"{'agrees with' if agrees else 'disagrees with'} the slot check", **msg.payload)
             self._time(trace, "elastic_check", env_.ts, ms=msg.latency_ms, by=msg.actor)
+        elif isinstance(msg, AuditRecord) and msg.stage == "hint_search":
+            p = msg.payload
+            found = (f"top hit \"{p.get('top_hit_text')}\" (score {p.get('score')})" if p.get("top_hit_text")
+                     else "no matching clearance")
+            agree = {True: ", the newest clearance", False: ", older than the newest clearance"}.get(p.get("agrees"), "")
+            self._step(trace, f"cockpit:{cs}", "moss_search",
+                       f"Moss searched this plane's session for \"{p.get('query')}\": {found}{agree}, "
+                       f"in {p.get('search_ms')} ms", **p)
+            self._time(trace, "moss_search", env_.ts, ms=p.get("search_ms"), by="moss")
         elif isinstance(msg, AuditRecord) and msg.stage == "ground_agents":
             self.flow("ground", "elastic", "audit", event_id)
         else:

@@ -631,7 +631,9 @@ class CockpitEdge:
                             f"{windows[-1].end - open_ts} ms into the call)", stt_final_ms=stt_ms)
 
         t = time.perf_counter()
-        hint = await derive_hint(self.memory, self.callsign, heard, self.flight_idx, self.airport_idx)
+        search: dict = {}
+        hint = await derive_hint(self.memory, self.callsign, heard, self.flight_idx, self.airport_idx,
+                                 evidence=search)
         hint_ms = _ms(t)
         self._measure("moss_ms", hint.moss_ms)
 
@@ -650,6 +652,8 @@ class CockpitEdge:
         if online:
             await self.audit(event_id, "detection", None, windows=[[w.start, w.end] for w in windows], heard_text=heard, party="radio")
             await self.audit(event_id, "cockpit_stt", stt_ms, heard_text=heard, party="radio")
+            if search.get("query"):  # M3: what Moss found for the garbled fragment, for the console
+                await self.audit(event_id, "hint_search", search.get("search_ms"), **search)
             await self.audit(event_id, "local_hint", hint.moss_ms, kind=hint.kind,
                              source_doc_id=hint.source_doc_id, total_ms=hint_ms, spoken_text=advisory_text(hint),
                              display_text=readable(advisory_text(hint)))

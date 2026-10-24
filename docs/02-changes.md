@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Moss searches the plane's memory with what the cockpit heard (M3)
+
+**Type:** Added
+**Area:** Edge device
+
+- The garbled fragment the cockpit heard (Rishit's live run: "Cessna 123, short runway 30") now runs as a hybrid Moss search (`alpha` 0.5) over this plane's own clearances, offline, in the same call that builds the hint (`unstep/cockpit/hint.py`).
+- The safety rule is unchanged (agreed in R18): the hint still comes from the newest clearance, so a better-ranked older clearance can never revive. The search is evidence: query, top hit, score, search ms and whether it agrees with the newest clearance.
+- The cockpit sends it as an `AuditRecord` (stage `hint_search`); the live trace shows "Moss searched this plane's session for ...: top hit ... (score ...), in ... ms" and a `moss_search` timing for the console.
+- Checked: 4 tests (garbled fragment finds the taxi clearance, an older better match never wins, failures keep the hint path safe, full room run shows the step). Local memory only; not run against live Moss.
+
+**Related:** [16-sponsor-depth.md](16-sponsor-depth.md) M3, agent mail R18
+
 ## 2026-10-24: Sponsor depth plan agreed
 
 **Type:** Docs
