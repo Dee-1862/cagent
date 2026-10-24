@@ -1,0 +1,19 @@
+{
+  "event_id": "evt-0001",
+  "transcript_id": "tt-0001",
+  "blocked_words": [
+    "hold",
+    "short",
+    "Runway",
+    "33"
+  ],
+  "instruction_text": "Cessna 1-2-3, hold short Runway 33",
+  "slots": {
+    "callsign": "N123AB",
+    "action": "hold_short",
+    "runway": "33"
+  },
+  "confidence": 0.92,
+  "confidence_method": "transcript_match x rule_match (to be finalized, M-008)",
+  "rule_citation": "FAA JO 7110.65, paragraph TBD"
+}

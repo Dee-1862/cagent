@@ -1,0 +1,10 @@
+{
+  "event_id": "evt-0001",
+  "stage": "approval",
+  "actor": "gateway",
+  "ts": 1792771340120,
+  "latency_ms": 20.0,
+  "payload": {
+    "approved_via": "voice"
+  }
+}

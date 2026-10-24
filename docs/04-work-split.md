@@ -49,7 +49,9 @@ We agree on these before splitting up. They live in `contracts/` once code exist
 | `AnomalyEvent` | Cockpit (A) | `event_id`, `callsign`, `frequency`, `squelch_open`, `squelch_close`, `overlap_start`, `overlap_end`, `heard_text`, `local_hint` (`text`, `kind` restrictive or none, `source_doc_id`, `source_text`, `moss_ms`), `gps`, `taxiway_node` |
 | `ProposedDirective` | Compliance Agent (B) | `event_id`, `transcript_id`, `blocked_words`, `instruction_text`, `slots` (`callsign`, `action`, `runway`), `confidence`, `confidence_method`, `rule_citation` |
 | `VoiceApproval` | Controller voice loop (B) | `event_id`, `heard_text`, `decision` (approve, reject, unclear), `attempt`, `ts` |
+| `ClickApproval` (proposed by B) | Dashboard (B) | `event_id`, `decision` (approve or reject), `approved_by`, `ts`. The click fallback for `VoiceApproval` |
 | `ApprovedDirective` | Gateway (B) | `event_id`, `instruction_text`, `slots`, `approved_by`, `approved_via` (voice or click), `approved_at` |
+| `DirectiveRejected` (proposed by B) | Gateway (B) | `event_id`, `rejected_by`, `rejected_via` (voice or click), `rejected_at`. Tells the cockpit to say "request say again" |
 | `ReadbackResult` | Cockpit (A) | `event_id`, `readback_text`, `slots`, `match`, `attempt` |
 | `PilotQuery` | Cockpit (A) | `query_id`, `callsign`, `question`, `answer`, `source_doc_id`, `moss_ms`, `ts` |
 | `Insight` | Frequency Monitor (A) | `insight_id`, `frequency`, `callsign`, `kind`, `text`, `ts` |
@@ -58,6 +60,8 @@ We agree on these before splitting up. They live in `contracts/` once code exist
 | Clock | Both | Every `ts`, `*_start`, `*_end` and `*_at` field is epoch milliseconds from one clock (the gateway's). Only `TowerTranscript.words` uses seconds from `ptt_start` |
 
 **Done when:** the schemas are written as JSON examples and both of us have signed off.
+
+**Status:** Dev B drafted all contracts as pydantic models in `contracts/models.py` with one example each in `contracts/examples/`. Unknown fields are rejected. `ClickApproval` and `DirectiveRejected` are new and need Dev A's sign-off. Waiting on Dev A to sign off M0.
 
 ## 3a. On Hold: Raspberry Pi Integration
 
