@@ -37,7 +37,7 @@ from unstep.cockpit.memory import LocalMemory, create_memory
 from unstep.cockpit.monitor import FrequencyMonitor
 from unstep.cockpit.phraseology import parse_callsign
 from unstep.cockpit.stt import CartesiaManualSTT, FakeManualSTT, TurnEvent, build_keyterms
-from unstep.cockpit.tts import FakeTTS
+from unstep.cockpit.tts import SAMPLE_RATE as TTS_SAMPLE_RATE, FakeTTS, chime
 from unstep.ground.mock_agents import propose
 from unstep.ground.policy import PolicyAgent
 from unstep.live.radio import KeyedSquelch, Mix, Transmission, clusters, heard_text, mix, to_mono16k
@@ -231,6 +231,52 @@ class SerialTTS:
         return getattr(self.engine, name)
 
 
+class StreamingTTS(SerialTTS):
+    """SerialTTS that also streams each advisory to the pilot's phone as Cartesia sends it.
+
+    Without this the phone got the advisory only after the whole line was synthesized
+    (R14: about 1.5 s from approval to sound while first audio was 131 ms). Messages:
+    `advisory_chunk {id, seq, sample_rate, pcm}` (mono pcm_s16le, base64; the first chunk
+    starts with the advisory chime) and `advisory_end {id, cancelled}`. The full clip still
+    follows as `advisory_audio` with `streamed: true`, for "play again" and older pages.
+    """
+
+    def __init__(self, engine, room: "LiveRoom", station: str):
+        super().__init__(engine)
+        self.room, self.station = room, station
+
+    async def speak(self, text, context_id=None, on_chunk=None):
+        async with self._lock:
+            sample_rate = getattr(self.engine, "sample_rate", TTS_SAMPLE_RATE)
+            stream_id = context_id or uuid.uuid4().hex
+            seq = 0
+
+            def chunk(pcm: bytes) -> None:
+                nonlocal seq
+                if on_chunk:
+                    on_chunk(pcm)
+                if not pcm:
+                    return
+                if seq == 0:
+                    pcm = chime(sample_rate).tobytes() + pcm
+                self.room.send_to({self.station}, {"type": "advisory_chunk", "id": stream_id, "seq": seq,
+                                                   "sample_rate": sample_rate,
+                                                   "pcm": base64.b64encode(pcm).decode()})
+                seq += 1
+
+            cancelled = True
+            try:
+                result = await self.engine.speak(text, context_id=context_id, on_chunk=chunk)
+                cancelled = bool(getattr(result, "cancelled", False))
+                return result
+            finally:
+                if seq:
+                    self.room.send_to({self.station}, {"type": "advisory_end", "id": stream_id,
+                                                       "chunks": seq, "cancelled": cancelled})
+                    if not cancelled:
+                        self.room.streamed_advisory.add(self.station)
+
+
 class BrowserAudioOut(AudioOut):
     """Sends what the cockpit agent speaks to that pilot's browser (left ear already)."""
 
@@ -239,7 +285,10 @@ class BrowserAudioOut(AudioOut):
         self.room, self.station = room, station
 
     def add(self, stereo: np.ndarray, sample_rate: int) -> None:
-        self.room.send_to({self.station}, {"type": "advisory_audio", "audio": wav_b64(stereo, sample_rate)})
+        streamed = self.station in self.room.streamed_advisory  # already heard chunk by chunk
+        self.room.streamed_advisory.discard(self.station)
+        self.room.send_to({self.station}, {"type": "advisory_audio", "audio": wav_b64(stereo, sample_rate),
+                                           "streamed": streamed})
 
 
 class LiveEdge(CockpitEdge):
@@ -318,6 +367,7 @@ class LiveRoom:
         self.stream_stt_factory = stream_stt_factory
         self.streams: dict[str, dict] = {}  # station -> push-to-talk stream in progress (P3)
         self.stream_results: dict[str, asyncio.Task] = {}  # tx_id -> streamed transcript
+        self.streamed_advisory: set[str] = set()  # stations whose last advisory was streamed (R14)
         self.alignments: dict[str, dict] = {}  # transcript_id -> tower word alignment report (P7b)
         # W3: replays to the manual STT endpoint go as fast as possible unless UNSTEP_REALTIME_REPLAY=1
         self.realtime_replay = realtime_replay()
@@ -419,7 +469,7 @@ class LiveRoom:
         def build(mem):
             e = LiveEdge(callsign=s.callsign, frequency=self.frequency,
                          link=InProcLink(self.gateway, "cockpit"), memory=mem,
-                         tts=SerialTTS(self._advisory_tts()), turn_stt_factory=turns.factory,
+                         tts=StreamingTTS(self._advisory_tts(), self, s.id), turn_stt_factory=turns.factory,
                          audio_out=BrowserAudioOut(self, s.id))
             e.room = self
             return e

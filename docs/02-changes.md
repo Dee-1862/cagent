@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Private advisory streams to the pilot's phone as Cartesia speaks it
+
+**Type:** Changed
+**Area:** Audio
+
+- Rishit's live run showed about 1.5 s from approval to sound while Cartesia's first audio was 131 ms (R14): the phone got the advisory only after the whole line was synthesized.
+- `unstep/live/room.py` `StreamingTTS`: each TTS chunk goes to the pilot's phone at once as `advisory_chunk {id, seq, sample_rate, pcm}` (the first chunk starts with the advisory chime), then `advisory_end {id, chunks, cancelled}`. The full clip still follows as `advisory_audio` with `streamed: true`, for "Play again" and older pages.
+- Pilot app (`app/src/audio.ts`): plays chunks back to back in the left ear, in `seq` order; a cut-off line (pilot keys, frequency busy) stops at once.
+- Checked: 4 Python tests (chunk order, chime first, cut-off, full room run) and a vitest for PCM decoding; `npm run build` passes. Not heard on a real phone or with live Cartesia yet.
+
+**Related:** PRD section 9, agent mail R14 item 2
+
 ## 2026-10-24: Moss session for every plane, and a Moss frequency session on the hub (P4, part 1)
 
 **Type:** Changed

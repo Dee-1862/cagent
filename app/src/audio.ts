@@ -23,6 +23,59 @@ export async function playWav(b64: string | null | undefined): Promise<void> {
   }
 }
 
+// Streamed advisories (R14): mono pcm_s16le chunks, played back to back in the left ear
+// as they arrive, so the pilot hears Unstep about one network hop after Cartesia's first audio.
+
+type Stream = { next: number; at: number; pending: Map<number, Float32Array>; rate: number; sources: AudioBufferSourceNode[] };
+const streams = new Map<string, Stream>();
+
+export function pcm16ToFloat(b64: string): Float32Array {
+  const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
+  const view = new DataView(bytes.buffer);
+  const out = new Float32Array(bytes.length >> 1);
+  for (let i = 0; i < out.length; i++) out[i] = view.getInt16(i * 2, true) / 32768;
+  return out;
+}
+
+/** Queue one chunk; chunks play in `seq` order even if they arrive out of order. */
+export function streamChunk(id: string, seq: number, rate: number, b64: string): void {
+  try {
+    const c = audio();
+    let s = streams.get(id);
+    if (!s) streams.set(id, (s = { next: 0, at: 0, pending: new Map(), rate, sources: [] }));
+    s.pending.set(seq, pcm16ToFloat(b64));
+    while (s.pending.has(s.next)) {
+      const samples = s.pending.get(s.next)!;
+      s.pending.delete(s.next);
+      s.next += 1;
+      if (!samples.length) continue;
+      const buf = c.createBuffer(2, samples.length, s.rate);
+      buf.copyToChannel(samples, 0); // left ear only; the right channel stays silent
+      const src = c.createBufferSource();
+      src.buffer = buf;
+      src.connect(c.destination);
+      s.at = Math.max(s.at, c.currentTime + 0.02);
+      src.start(s.at);
+      s.at += buf.duration;
+      s.sources.push(src);
+    }
+  } catch (e) {
+    console.warn("audio stream", e);
+  }
+}
+
+/** The line is complete, or was cut off: a cut-off line stops at once. */
+export function streamEnd(id: string, cancelled: boolean): void {
+  const s = streams.get(id);
+  if (!s) return;
+  if (!cancelled) { // late chunks may still be on their way: keep the stream a while
+    setTimeout(() => streams.delete(id), 30_000);
+    return;
+  }
+  for (const src of s.sources) { try { src.stop(); } catch { /* already done */ } }
+  streams.delete(id);
+}
+
 /** Short press chirp, like a radio key click. */
 export function chirp(freq = 1200, ms = 40): void {
   try {
@@ -46,6 +99,8 @@ export async function keepAwake(): Promise<void> {
   } catch { /* not supported or not https */ }
 }
 
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && wake) void keepAwake();
-});
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && wake) void keepAwake();
+  });
+}
