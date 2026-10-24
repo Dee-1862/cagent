@@ -138,11 +138,27 @@ function receive(message) {
 
 function setStations(stations) {
   state.stations = new Map(stations.map((s) => [s.id, s]));
-  for (const s of stations) names[s.id] = s.kind === "aircraft" ? `${s.name || s.id} \u00b7 ${s.spoken || s.callsign || s.id}` : "Tower";
+  for (const s of stations) names[s.id] = isAircraft(s) ? `${s.name || s.id} \u00b7 ${s.spoken || s.callsign || s.id}` : "Tower";
   renderMap();
 }
+function isHelicopter(station) {
+  return /helicopter|rotorcraft/i.test(station.kind || "") || /^H/i.test(station.callsign || station.id);
+}
+function isAircraft(station) {
+  return station.kind === "aircraft" || isHelicopter(station);
+}
+// Fixed SVG slots reserve separate rectangles for labels and radio badges.
+const groundSlots = [
+  {x:565, y:190, lx:-205, ly:-65, width:240},
+  {x:285, y:190, lx:-205, ly:-65, width:240},
+  {x:85, y:300, lx:-65, ly:46, width:145},
+  {x:240, y:300, lx:-65, ly:46, width:145},
+  {x:395, y:300, lx:-65, ly:46, width:145},
+  {x:550, y:300, lx:-65, ly:46, width:145},
+];
+const hoverSlots = Array.from({length:6}, (_, i) => ({x:750, y:30 + i * 56, lx:30, ly:-5, width:210}));
 function visibleAircraft() {
-  return [...state.stations.values()].filter((s) => s.kind === "aircraft" && (state.connected[s.id] > 0 || s.id in state.keyed));
+  return [...state.stations.values()].filter((s) => isAircraft(s) && (state.connected[s.id] > 0 || s.id in state.keyed));
 }
 function svgNode(tag, attrs, text) {
   const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
@@ -151,27 +167,34 @@ function svgNode(tag, attrs, text) {
   return node;
 }
 function renderMap() {
-  const aircraft = visibleAircraft();
+  const aircraft = visibleAircraft().sort((a, b) =>
+    Number(b.id === "N123AB" || b.callsign === "N123AB") - Number(a.id === "N123AB" || a.callsign === "N123AB") ||
+    (a.name || a.id).localeCompare(b.name || b.id, undefined, {numeric:true}));
+  let groundIndex = 0, hoverIndex = 0;
   $("tower-on-air").textContent = "atc" in state.keyed ? "ON AIR" : "";
-  const count = [...state.stations.values()].filter((s) => s.kind === "aircraft" && state.connected[s.id] > 0).length;
+  const count = [...state.stations.values()].filter((s) => isAircraft(s) && state.connected[s.id] > 0).length;
   $("planes").textContent = `${count} ${count === 1 ? "plane" : "planes"} connected`;
   $("map-title").textContent = `${count} connected aircraft at Unstep airport`;
-  $("map-planes").replaceChildren(...aircraft.map((station, index) => {
+  $("map-planes").replaceChildren(...aircraft.map((station) => {
+    const helicopter = isHelicopter(station);
+    const slot = helicopter ? hoverSlots[hoverIndex++] : groundSlots[groundIndex++];
+    if (!slot) return svgNode("g", {});
     const id = station.id;
     const trace = tracesNewestFirst().find((t) => t.callsign === id);
     const view = trace ? presentation(trace) : {kind:"neutral", label:"Waiting for radio activity"};
-    const group = svgNode("g", {id:`plane-${id}`, class:`plane ${view.kind}${id in state.keyed ? " transmitting" : ""}`, transform:`translate(${index < 3 ? 32 : 494} ${65 + (index % 3) * 100})`});
-    group.append(svgNode("circle", {class:"ring", r:22}), svgNode("path", {class:"aircraft", d:"M-16-3L-4-6L-8-18H-2L7-6L18-2V2L7 6L-2 18H-8L-4 6L-16 3Z"}));
-    const label = svgNode("text", {x:32, y:-9, class:"plane-name"}, names[id]);
-    const status = svgNode("text", {x:32, y:14, class:"state-label"}, view.label);
+    const group = svgNode("g", {id:`plane-${id}`, class:`plane ${view.kind}${id in state.keyed ? " transmitting" : ""}`, transform:`translate(${slot.x} ${slot.y})`});
+    group.append(svgNode("circle", {class:"ring", r:22}), svgNode("path", {class:helicopter ? "aircraft helicopter" : "aircraft", d:helicopter ? "M-5-7Q5-12 12-3V5Q5 12-5 7ZM-5 0H-19M-19-6V6M2-7V-15M-17-15H21M-8 14H15M-4 7V14M10 7V14" : "M-16-3L-4-6L-8-18H-2L7-6L18-2V2L7 6L-2 18H-8L-4 6L-16 3Z"}));
+    const label = svgNode("text", {x:slot.lx, y:slot.ly, "data-width":slot.width, class:"plane-name"}, names[id]);
+    const status = svgNode("text", {x:slot.lx, y:slot.ly + 24, "data-width":slot.width, class:"state-label"}, view.label);
     group.append(label, status);
-    if (id in state.keyed) group.append(svgNode("text", {x:32,y:36,class:"map-on-air"}, "ON AIR"));
+    if (id in state.keyed) group.append(svgNode("text", {x:slot.lx,y:slot.ly + 44,class:"map-on-air"}, "ON AIR"));
     return group;
   }));
-  // Keep every label within its reserved column, including long recovered instructions.
+  // Keep every label within its reserved slot, including long recovered instructions.
   $("map-planes").querySelectorAll(".plane-name, .state-label").forEach((label) => {
-    if (label.getComputedTextLength() > 265) {
-      label.setAttribute("textLength", 265); label.setAttribute("lengthAdjust", "spacingAndGlyphs");
+    const width = Number(label.dataset.width);
+    if (label.getComputedTextLength() > width) {
+      label.setAttribute("textLength", width); label.setAttribute("lengthAdjust", "spacingAndGlyphs");
     }
   });
 }
