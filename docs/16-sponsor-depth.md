@@ -60,7 +60,33 @@ A judge causes the stepped-on call with their own voice and hears the fix privat
 
 ## 7. Feedback Write-ups
 
-[09-cartesia-feedback.md](09-cartesia-feedback.md) with measured numbers and workarounds is our Cartesia issues section. We will add the same short sections for Moss and Elastic here, only with what we measured on the live services.
+[09-cartesia-feedback.md](09-cartesia-feedback.md) with measured numbers and workarounds is our Cartesia issues section. The same short sections for Moss and Elastic follow, only with what was measured on the live services.
+
+### 7.1 Cartesia: our own evaluation (R21)
+
+`scripts/eval_unstep.py --live --n 40` on Rishit's laptop with real Cartesia: 40 synthetic instruction and readback pairs (80 lines), Sonic TTS in, ink-2 with key terms out, audio sent fast.
+
+| Metric | Value |
+| --- | --- |
+| Callsign accuracy | 0.95 |
+| Action accuracy | 1.0 |
+| Runway accuracy | 0.852 |
+| Readback-error precision / recall | 0.882 / 1.0 (tp 15, fp 2, fn 0, tn 23) |
+| STT finalize p50 / p95 | 598.5 ms / 1514 ms |
+
+No wrong readback was missed; two correct readbacks were flagged (the safe direction: an extra correction). Finalize is longer than the repro script's 162 ms p50 because these lines are longer; the script now records each line's length and every miss (`rows`) so runway misses can become key terms or pronunciation fixes.
+
+### 7.2 Moss (Rishit's runs)
+
+| Observed | Value |
+| --- | --- |
+| Local session search, six plane sessions at once | 0 to 1 ms |
+| Cloud indexes created by sessions | none (only `push_index()` writes one; we never push plane sessions) |
+| Moss Inference first token, warm (translation) | about 165 ms |
+
+### 7.3 Elastic
+
+Not measured yet: the agents, workflows and FAA index need the live deploy on Deekshith's machine (`scripts/deploy_elastic.py`, `scripts/ingest_faa.py`). Offline checks only so far.
 
 ## 8. Decided in R19
 
@@ -70,4 +96,6 @@ A judge causes the stepped-on call with their own voice and hears the fix privat
 | Replaying the controller's own clean words cut by word times | Not now (choppy audio, new safety logic). Next | |
 | `turn.eager_end` / `turn.resume` to pre-render the advisory and cancel on a key-up (check on sonic-3.6 first) | Agreed | Rishit's side |
 | Volume control, Infill, Voice Changer evaluation set | Not now | |
-| Evaluation: our synthetic set and live sessions only (public datasets only if the licence clearly allows a public repo); callsign and runway accuracy, readback-error precision and recall, latency p50 and p95 | Agreed, small | Deekshith's side writes the script (`--dry-run`), Rishit's side runs it live |
+| Evaluation: our synthetic set and live sessions only (public datasets only if the licence clearly allows a public repo); callsign and runway accuracy, readback-error precision and recall, latency p50 and p95 | Built (559f45a), run live by Rishit's side (section 7.1) | Deekshith's side writes the script, Rishit's side runs it live |
+| Per-hop STT finalize time on the trace (S1) | Built (7342002) | Deekshith's side |
+| Readback check on `turn.eager_end` (S3) | Not now: a partial transcript could flag a pilot who hasn't finished | |

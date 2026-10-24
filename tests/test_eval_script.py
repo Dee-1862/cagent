@@ -32,15 +32,21 @@ def test_text_only_is_a_perfect_baseline_and_mishearing_costs_accuracy():
     assert perfect["callsign_accuracy"] == 1.0 and perfect["readback_error_recall"] == 1.0
     garbled = ev.score(items, ["static" for _ in items], [i.instruction for i in items])
     assert garbled["callsign_accuracy"] == 0 and garbled["readback_error_recall"] == 0.0
+    row = garbled["rows"][0]
+    assert set(row) >= {"text", "heard", "callsign_ok", "runway_ok", "action_ok", "flagged", "labelled"}
+    assert row["heard"] == "static" and row["callsign_ok"] is False
 
 
 def test_live_path_with_fake_speech():
     items = ev.build_items(3, seed=2)
     heard = [t for i in items for t in (i.instruction, i.readback)]
     queue = list(heard)
-    hi, hr, ms = asyncio.run(ev.transcribe_live(items, tts_factory=FakeTTS,
-                                                stt_factory=lambda: FakeManualSTT([queue.pop(0)])))
+    hi, hr, ms, lengths = asyncio.run(ev.transcribe_live(items, tts_factory=FakeTTS,
+                                                         stt_factory=lambda: FakeManualSTT([queue.pop(0)])))
     assert hi == [i.instruction for i in items] and hr == [i.readback for i in items] and len(ms) == 6
+    assert len(lengths) == 3 and all(a > 0 and b > 0 for a, b in lengths)
+    rows = ev.score(items, hi, hr, lengths)["rows"]
+    assert rows[0]["audio_ms"] == lengths[0][0] and rows[0]["text"] == items[0].instruction
 
 
 def test_sessions_summary(tmp_path):

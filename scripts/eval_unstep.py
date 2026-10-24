@@ -100,22 +100,37 @@ def build_items(n: int, seed: int = 7, error_rate: float = 0.3) -> list[Item]:
     return items
 
 
-def score(items: list[Item], heard_instructions: list[str], heard_readbacks: list[str]) -> dict:
+def score(items: list[Item], heard_instructions: list[str], heard_readbacks: list[str],
+          audio_ms: list[tuple[float, float]] | None = None) -> dict:
+    """Accuracy and readback precision/recall, plus one row per line so misses can be read."""
     cs_ok = rwy_ok = act_ok = rwy_n = 0
     tp = fp = fn = tn = 0
-    for item, heard, rb in zip(items, heard_instructions, heard_readbacks):
+    rows = []
+    for k, (item, heard, rb) in enumerate(zip(items, heard_instructions, heard_readbacks)):
         slots = parse_instruction(heard)
+        c_ok = a_ok = False
+        r_ok = None
         if slots is not None:
-            cs_ok += bool(slots.callsign) and callsign_digits(slots.callsign) == callsign_digits(item.spoken_callsign)
-            act_ok += slots.action == item.action
+            c_ok = bool(slots.callsign) and callsign_digits(slots.callsign) == callsign_digits(item.spoken_callsign)
+            a_ok = slots.action == item.action
             if item.runway:
-                rwy_n += 1
-                rwy_ok += (slots.runway or "").upper() == item.runway.upper()
+                r_ok = (slots.runway or "").upper() == item.runway.upper()
         elif item.runway:
+            r_ok = False
+        cs_ok += c_ok
+        act_ok += a_ok
+        if r_ok is not None:
             rwy_n += 1
+            rwy_ok += r_ok
         directive = Slots(callsign=item.spoken_callsign, action=item.action, runway=item.runway)
-        match, _, _ = check_readback(directive, rb)
+        match, _, reason = check_readback(directive, rb)
         flagged = not match
+        row = {"id": item.id, "text": item.instruction, "heard": heard, "callsign_ok": c_ok, "action_ok": a_ok,
+               "runway_ok": r_ok, "readback": item.readback, "heard_readback": rb, "flagged": flagged,
+               "labelled": item.readback_wrong, "error": item.error, "reason": reason or None}
+        if audio_ms is not None and k < len(audio_ms):
+            row["audio_ms"], row["readback_audio_ms"] = audio_ms[k]
+        rows.append(row)
         if flagged and item.readback_wrong:
             tp += 1
         elif flagged:
@@ -133,6 +148,7 @@ def score(items: list[Item], heard_instructions: list[str], heard_readbacks: lis
         "readback_error_precision": round(tp / (tp + fp), 3) if tp + fp else None,
         "readback_error_recall": round(tp / (tp + fn), 3) if tp + fn else None,
         "confusion": {"tp": tp, "fp": fp, "fn": fn, "tn": tn},
+        "rows": rows,
     }
 
 
@@ -143,7 +159,8 @@ def pct(values: list[float], q: float) -> float | None:
     return round(s[min(len(s) - 1, int(round(q * (len(s) - 1))))], 1)
 
 
-async def transcribe_live(items: list[Item], tts_factory=None, stt_factory=None) -> tuple[list[str], list[str], list[float]]:
+async def transcribe_live(items: list[Item], tts_factory=None, stt_factory=None):
+    """Returns (heard instructions, heard readbacks, finalize ms per line, (instruction, readback) audio ms per item)."""
     """Speak each line with Cartesia TTS and transcribe it with Cartesia STT, sent fast (W3)."""
     from unstep.cockpit.audio import SAMPLE_RATE
     from unstep.cockpit.stt import CartesiaManualSTT, build_keyterms
@@ -156,18 +173,21 @@ async def transcribe_live(items: list[Item], tts_factory=None, stt_factory=None)
     terms = build_keyterms(callsigns=[s for _, s, *_ in scenario.FLEET], runways=RUNWAYS)
     stt_factory = stt_factory or (lambda: CartesiaManualSTT(keyterms=terms))
     tts = tts_factory()
-    heard_i, heard_r, final_ms = [], [], []
+    heard_i, heard_r, final_ms, audio_ms = [], [], [], []
     for item in items:
+        lengths = []
         for text, out in ((item.instruction, heard_i), (item.readback, heard_r)):
             speech = await tts.speak(text)
             pcm = (to_mono16k(speech.pcm, speech.sample_rate) * 32767).astype("<i2").tobytes()
+            lengths.append(round(len(pcm) / 2 / SAMPLE_RATE * 1000, 1))
             async with stt_factory() as stt:
                 for i in range(0, len(pcm), SAMPLE_RATE // 5):
                     await stt.send_audio(pcm[i:i + SAMPLE_RATE // 5])
                 t = time.perf_counter()
                 out.append((await stt.finalize()).text)
                 final_ms.append((time.perf_counter() - t) * 1000)
-    return heard_i, heard_r, final_ms
+        audio_ms.append(tuple(lengths))
+    return heard_i, heard_r, final_ms, audio_ms
 
 
 def sessions_summary(path: Path) -> dict:
@@ -205,11 +225,11 @@ def main(argv=None) -> int:
                     "errors": {e: sum(i.error == e for i in items) for e in ERRORS}}
     result["text_only"] = score(items, [i.instruction for i in items], [i.readback for i in items])
     if args.live and not args.dry_run:
-        heard_i, heard_r, final_ms = asyncio.run(transcribe_live(items))
-        result["live"] = {**score(items, heard_i, heard_r),
+        heard_i, heard_r, final_ms, audio_ms = asyncio.run(transcribe_live(items))
+        lengths = [ms for pair in audio_ms for ms in pair]
+        result["live"] = {**score(items, heard_i, heard_r, audio_ms),
                           "stt_finalize_ms": {"p50": pct(final_ms, 0.5), "p95": pct(final_ms, 0.95)},
-                          "samples": [{"id": it.id, "said": it.instruction, "heard": h}
-                                      for it, h in list(zip(items, heard_i))[:10]]}
+                          "audio_ms": {"p50": pct(lengths, 0.5), "p95": pct(lengths, 0.95)}}
     if args.sessions:
         result["sessions"] = sessions_summary(args.sessions)
     if args.dry_run:
@@ -220,7 +240,15 @@ def main(argv=None) -> int:
             print(f"{name:10} n={r['n']} callsign={r['callsign_accuracy']} action={r['action_accuracy']} "
                   f"runway={r['runway_accuracy']} readback P={r['readback_error_precision']} "
                   f"R={r['readback_error_recall']}" + (f" finalize p50={r['stt_finalize_ms']['p50']} "
-                                                       f"p95={r['stt_finalize_ms']['p95']} ms" if name == "live" else ""))
+                                                       f"p95={r['stt_finalize_ms']['p95']} ms"
+                                                       f" (lines p50 {r['audio_ms']['p50']} ms long)"
+                                                       if name == "live" else ""))
+            for row in r["rows"]:
+                if not (row["callsign_ok"] and row["action_ok"] and row["runway_ok"] is not False) \
+                        or row["flagged"] != row["labelled"]:
+                    print(f"  miss {row['id']}: said {row['text']!r} heard {row['heard']!r}"
+                          + (f" | readback {row['heard_readback']!r} flagged={row['flagged']} "
+                             f"labelled={row['labelled']}" if row["flagged"] != row["labelled"] else ""))
     if "sessions" in result:
         print("sessions  ", json.dumps(result["sessions"])[:400])
     if not args.dry_run:

@@ -19,6 +19,16 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: First live evaluation numbers, and per-line rows in the eval output
+
+**Type:** Docs
+**Area:** Audio
+
+- Rishit ran `scripts/eval_unstep.py --live --n 40` on real Cartesia (R21): callsign 0.95, action 1.0, runway 0.852, readback-error precision 0.882 and recall 1.0, finalize p50 598.5 ms and p95 1514 ms. Recorded in [16-sponsor-depth.md](16-sponsor-depth.md) section 7 with Rishit's Moss numbers (0 to 1 ms over six sessions, no cloud indexes, Inference first token about 165 ms warm).
+- The script now writes one row per line (`text, heard, callsign_ok, runway_ok, action_ok, flagged, labelled, reason`, plus audio length in live runs) and prints every miss, so runway misses can be turned into key terms or pronunciation fixes.
+
+**Related:** agent mail R21
+
 ## 2026-10-24: STT finalize time per hop on the live trace (S1)
 
 **Type:** Added
