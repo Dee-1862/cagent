@@ -20,7 +20,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import AsyncIterator, Iterable, Optional
+from typing import Any, AsyncIterator, Callable, Iterable, Optional
 from urllib.parse import quote, urlencode
 
 from unstep.contracts import Word
@@ -120,10 +120,17 @@ class CartesiaManualSTT:
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None,
                  sample_rate: int = 16000, keyterms: Iterable[str] = (),
-                 timestamp_granularities: Iterable[str] = ()):
+                 timestamp_granularities: Iterable[str] = (),
+                 on_text: Optional[Callable[[str, str], Any]] = None):
+        """`on_text(delta, so_far)` is called as ink-2 streams final text while audio is still
+        arriving (live captions). Deltas can split a word: "Cess", "na one two three"."""
         self.api_key = api_key or os.environ.get("CARTESIA_API_KEY")
         if not self.api_key:
             raise RuntimeError("CARTESIA_API_KEY is required")
+        self.on_text = on_text
+        self._text, self._words = "", []
+        self._flushed: Optional[asyncio.Future] = None
+        self._reader: Optional[asyncio.Task] = None
         params = [("model", model or cartesia_stt_model()), ("encoding", "pcm_s16le"), ("sample_rate", str(sample_rate)),
                   ("cartesia_version", CARTESIA_VERSION)]
         params += [("keyterm", k) for k in keyterms]
@@ -135,9 +142,49 @@ class CartesiaManualSTT:
         import websockets
 
         self._ws = await _connect(self.url, self.api_key)
+        if self.on_text is not None:
+            self._flushed = asyncio.get_running_loop().create_future()
+            self._reader = asyncio.create_task(self._read_stream())
         return self
 
+    async def _read_stream(self) -> None:
+        """With `on_text`: read while audio streams, so text arrives as it is recognised."""
+        try:
+            while True:
+                if self._take(json.loads(await self._ws.recv())):
+                    done, self._flushed = self._flushed, asyncio.get_running_loop().create_future()
+                    done.set_result(self._collect())
+        except Exception as exc:
+            if not self._flushed.done():
+                self._flushed.set_exception(exc)
+
+    def _take(self, msg: dict) -> bool:
+        """Collect one message; True at the end of a finalize."""
+        kind = msg.get("type")
+        if kind == "transcript" and msg.get("is_final"):
+            delta = msg.get("text", "")
+            self._text += delta  # deltas: don't strip or add spaces
+            self._words += [Word(word=w["word"], start=w["start"], end=w["end"]) for w in msg.get("words") or []]
+            if self.on_text is not None and delta:
+                try:
+                    self.on_text(delta, self._text.strip())
+                except Exception:
+                    log.exception("on_text callback failed")
+        elif kind in ("flush_done", "done"):
+            return True
+        elif kind == "error":
+            raise RuntimeError(f"Cartesia STT error: {msg.get('title')}: {msg.get('message')}")
+        return False
+
+    def _collect(self) -> Transcript:
+        """The text since the last finalize; the next utterance starts empty."""
+        transcript = Transcript(self._text.strip(), self._words)
+        self._text, self._words = "", []
+        return transcript
+
     async def __aexit__(self, *exc):
+        if self._reader is not None:
+            self._reader.cancel()
         if self._ws is not None:
             try:
                 await self._ws.send("close")
@@ -149,18 +196,13 @@ class CartesiaManualSTT:
 
     async def finalize(self, timeout_s: float = 10.0) -> Transcript:
         """Send `finalize` and collect final transcript chunks until `flush_done`."""
+        flushed = self._flushed  # taken before sending: the reader swaps it at flush_done
         await self._ws.send("finalize")
-        text, words = "", []
+        if flushed is not None:
+            return await asyncio.wait_for(asyncio.shield(flushed), timeout=timeout_s)
         while True:
-            msg = json.loads(await asyncio.wait_for(self._ws.recv(), timeout=timeout_s))
-            kind = msg.get("type")
-            if kind == "transcript" and msg.get("is_final"):
-                text += msg.get("text", "")  # deltas: don't strip or add spaces
-                words += [Word(word=w["word"], start=w["start"], end=w["end"]) for w in msg.get("words") or []]
-            elif kind in ("flush_done", "done"):
-                return Transcript(text.strip(), words)
-            elif kind == "error":
-                raise RuntimeError(f"Cartesia STT error: {msg.get('title')}: {msg.get('message')}")
+            if self._take(json.loads(await asyncio.wait_for(self._ws.recv(), timeout=timeout_s))):
+                return self._collect()
 
 
 class CartesiaTurnSTT:
