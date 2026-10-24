@@ -59,10 +59,15 @@ class Memory(Protocol):
         top_k: int = 3,
         alpha: float = 0.8,
         filter: Optional[dict] = None,
+        min_score: Optional[float] = None,
     ) -> QueryResult: ...
 
-    async def fetch(self, index: str, filter: Optional[dict] = None) -> QueryResult:
-        """Every doc matching `filter`, unranked (no query text). Use for "latest by ts"."""
+    async def fetch(self, index: str, filter: Optional[dict] = None, sort_by: Optional[str] = None,
+                    ascending: bool = True, limit: Optional[int] = None,
+                    group_by: Optional[tuple[str, str]] = None) -> QueryResult:
+        """Docs matching `filter`, unranked (no query text), optionally ordered by a metadata field
+        (numbers as numbers), cut to `limit`, or grouped `(parent_field, order_field)` into one doc per
+        unit. Ordering and grouping are done here, not trusted to the backend (see `order_docs`)."""
         ...
 
     async def has_doc(self, index: str, doc_id: str) -> bool: ...
@@ -144,6 +149,47 @@ def matches(metadata: dict, flt: Optional[dict]) -> bool:
     return True
 
 
+def order_docs(docs: list[Doc], sort_by: Optional[str], ascending: bool = True,
+               limit: Optional[int] = None) -> list[Doc]:
+    """Order by a metadata field, numbers before text and numerically (Moss stores metadata as strings, so
+    "ts" values must be compared as numbers). Docs without the field go last. Applies `limit` after sorting.
+    Moss's own `sort_by` is passed along as a hint but its behaviour on string metadata is unverified, so this
+    function is the authority."""
+    if sort_by:
+        def key(d: Doc):
+            v = _num(d.metadata.get(sort_by))
+            return (0, v, "") if isinstance(v, float) else (1, 0.0, str(v)) if v is not None else (2, 0.0, "")
+
+        present = [d for d in docs if d.metadata.get(sort_by) is not None]
+        absent = [d for d in docs if d.metadata.get(sort_by) is None]
+        docs = sorted(present, key=key, reverse=not ascending) + absent
+    return docs[:limit] if limit is not None else docs
+
+
+def group_docs(docs: list[Doc], parent_field: str, order_field: str) -> list[Doc]:
+    """One doc per `parent_field` value (a transmission, an exchange): the members' texts in `order_field`
+    order, joined with " | ", with the newest member's metadata plus `members`. Docs without the parent field
+    stay as they are. Ordered newest unit first by `order_field`."""
+    units: dict[str, list[Doc]] = {}
+    single: list[Doc] = []
+    for d in docs:
+        parent = d.metadata.get(parent_field)
+        (units.setdefault(str(parent), []) if parent not in (None, "") else single).append(d)
+    out = []
+    for parent, members in units.items():
+        members = order_docs(members, order_field, ascending=True)
+        newest = members[-1]
+        out.append(Doc(id=f"{parent_field}:{parent}", text=" | ".join(m.text for m in members),
+                       metadata={**newest.metadata, "members": [m.id for m in members]}))
+    return order_docs(out + single, order_field, ascending=False)
+
+
+def above_floor(docs: list[Doc], min_score: Optional[float]) -> list[Doc]:
+    """Our own score floor. Moss documents `min_score` for loaded indexes, not for session queries, so the
+    floor is applied here, to the scores the backend returns, for every backend."""
+    return docs if not min_score else [d for d in docs if d.score >= min_score]
+
+
 class LocalMemory(_OwnedIndexes):
     """Pure-Python stand-in for Moss, for offline runs and tests.
 
@@ -160,13 +206,25 @@ class LocalMemory(_OwnedIndexes):
     async def open(self, *indexes: str) -> None:
         """Nothing to open locally; here so callers can treat both backends the same."""
 
+    async def push(self, index: str, writer: str):
+        """Offline stand-in for Moss Cloud: remembers what was pushed (tests check nothing else is)."""
+        self._check_writer(index, writer)
+        self.pushed = [*getattr(self, "pushed", []), index]
+        return {"job": f"local-{len(self.pushed)}", "index": index}
+
+    def drop(self, index: str) -> None:
+        self.indexes.pop(index, None)
+        self.owners.pop(index, None)
+
     async def has_doc(self, index: str, doc_id: str) -> bool:
         return doc_id in self.indexes.get(index, {})
 
-    async def fetch(self, index, filter=None) -> QueryResult:
+    async def fetch(self, index, filter=None, sort_by=None, ascending=True, limit=None, group_by=None) -> QueryResult:
         started = time.perf_counter()
         docs = [Doc(id=d.id, text=d.text, metadata=dict(d.metadata))
                 for d in self.indexes.get(index, {}).values() if matches(d.metadata, filter)]
+        docs = group_docs(docs, *group_by) if group_by else docs
+        docs = order_docs(docs, sort_by, ascending, limit)
         return QueryResult(docs=docs, time_taken_ms=(time.perf_counter() - started) * 1000, backend=self.backend)
 
     async def add_docs(self, index: str, docs: list[Doc], writer: str) -> int:
@@ -176,7 +234,7 @@ class LocalMemory(_OwnedIndexes):
             store[d.id] = Doc(id=d.id, text=d.text, metadata=dict(d.metadata))
         return len(docs)
 
-    async def query(self, index, text, top_k=3, alpha=0.8, filter=None) -> QueryResult:
+    async def query(self, index, text, top_k=3, alpha=0.8, filter=None, min_score=None) -> QueryResult:
         started = time.perf_counter()
         docs = [d for d in self.indexes.get(index, {}).values() if matches(d.metadata, filter)]
         q = tokenize(text)
@@ -205,7 +263,7 @@ class LocalMemory(_OwnedIndexes):
                     scored.append(Doc(id=d.id, text=d.text, metadata=dict(d.metadata), score=round(score, 4)))
         scored.sort(key=lambda d: d.score, reverse=True)
         ms = (time.perf_counter() - started) * 1000
-        return QueryResult(docs=scored[:top_k], time_taken_ms=ms, backend=self.backend)
+        return QueryResult(docs=above_floor(scored, min_score)[:top_k], time_taken_ms=ms, backend=self.backend)
 
 
 # ---------------------------------------------------------------------------
@@ -306,18 +364,27 @@ class MossMemory(_OwnedIndexes):
         session = await self._session(index)
         return bool(await session.get_docs(GetDocumentsOptions(doc_ids=[doc_id])))
 
-    async def fetch(self, index, filter=None) -> QueryResult:
+    async def fetch(self, index, filter=None, sort_by=None, ascending=True, limit=None, group_by=None) -> QueryResult:
         from moss import GetDocumentsOptions
 
         session = await self._session(index)
         started = time.perf_counter()
-        infos = await session.get_docs(GetDocumentsOptions(filter=to_moss_filter(filter)))
+        flt = to_moss_filter(filter)
+        try:  # ask Moss to sort too (documented in the signature); its result is not trusted, see order_docs
+            infos = await session.get_docs(GetDocumentsOptions(filter=flt, sort_by=sort_by, ascending=ascending)
+                                           if sort_by else GetDocumentsOptions(filter=flt))
+        except Exception:
+            log.warning("Moss get_docs with sort_by failed; fetching unsorted", exc_info=True)
+            infos = await session.get_docs(GetDocumentsOptions(filter=flt))
         docs = [Doc(id=d.id, text=d.text, metadata=dict(d.metadata or {})) for d in infos]
         # Belt and braces: re-check locally so a filter the SDK ignores can't widen results.
         docs = [d for d in docs if matches(d.metadata, filter)]
+        # Grouping is done here too: the shape of Moss's own ParentGrouping result is unverified.
+        docs = group_docs(docs, *group_by) if group_by else docs
+        docs = order_docs(docs, sort_by, ascending, limit)
         return QueryResult(docs=docs, time_taken_ms=(time.perf_counter() - started) * 1000, backend=self.backend)
 
-    async def query(self, index, text, top_k=3, alpha=0.8, filter=None) -> QueryResult:
+    async def query(self, index, text, top_k=3, alpha=0.8, filter=None, min_score=None) -> QueryResult:
         from moss import QueryOptions
 
         started = time.perf_counter()
@@ -330,16 +397,23 @@ class MossMemory(_OwnedIndexes):
             result = await session.query(text, options)
         wall_ms = (time.perf_counter() - started) * 1000
         docs = [Doc(id=d.id, text=d.text, metadata=dict(d.metadata or {}), score=d.score) for d in result.docs]
+        docs = above_floor(docs, min_score)  # our floor: session queries don't document min_score
         return QueryResult(
             docs=docs,
             time_taken_ms=result.time_taken_ms if result.time_taken_ms is not None else wall_ms,
             backend=self.backend,
         )
 
-    async def push(self, index: str, writer: str) -> None:
-        """Hand off a session to Moss Cloud (end of event or flight). Owner only."""
+    async def push(self, index: str, writer: str):
+        """Hand off a session to Moss Cloud (end of event or flight). Owner only. Returns what the SDK returns
+        (the push job, if any), so callers can log it."""
         self._check_writer(index, writer)
-        await (await self._session(index)).push_index()
+        return await (await self._session(index)).push_index()
+
+    def drop(self, index: str) -> None:
+        """Forget a session in this client (its memory is freed); the owner can register it again later."""
+        self.sessions.pop(index, None)
+        self.owners.pop(index, None)
 
 
 def create_memory() -> Memory:

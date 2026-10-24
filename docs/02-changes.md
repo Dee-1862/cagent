@@ -19,6 +19,68 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: M-2: the memory layer orders, groups and floors results itself
+
+**Type:** Changed
+**Area:** Edge device
+
+- **Ordering:** `memory.fetch(..., sort_by, ascending, limit)` orders by a metadata field with numbers as numbers (Moss stores metadata as strings, so "ts" would sort as text otherwise). The Moss backend also asks Moss to sort, falling back if it refuses, but our ordering is the authority because Moss's behaviour on string metadata is unverified. "Newest clearance" and the hint now fetch newest first through this.
+- **Grouping:** `fetch(..., group_by=(parent_field, order_field))` returns one doc per unit in order. Done in our code too, because the shape of Moss's own `ParentGrouping` result is unverified. First use: a new pilot question, "what was the whole exchange?", answered as one ordered unit (what the plane heard, what Unstep said, what was approved, what the pilot read back) for the newest blocked call. Clearances, advisories, heard calls and readbacks now carry an `exchange` field (the blocked call's event id).
+- **Score floor:** Moss documents `min_score` for loaded indexes, not for session queries, so the floor is ours (`UNSTEP_MOSS_MIN_SCORE`, default 0.25, a placeholder to tune on real Moss). It gates only the hint's search evidence: when the best match is below the floor the trace says "best match 0.31 is below the 0.25 floor, so no hit is shown". The hint rule is unchanged (newest clearance; Moss search is evidence), so this adds no new spoken hint.
+- Checked: 7 tests (numeric ordering, grouping, floor, evidence below the floor, the exchange answer, a room run, and a fake Moss session that refuses `sort_by`). Live: the floor value and whether Moss's own sort and grouping behave need a run on real Moss (steps in [19-elastic-moss-plan.md](19-elastic-moss-plan.md)).
+
+**Related:** [19-elastic-moss-plan.md](19-elastic-moss-plan.md) M-2, agent mail R29
+
+## 2026-10-24: Claim wording made truthful, live latency numbers recorded, smoke test no longer pushes
+
+**Type:** Docs
+**Area:** Docs
+
+- Applied the wording agreed with Rishit's side (R29) in docs/12, 15, 16 and 17 and the social post: "Moss searches the plane's own memory; the newest clearance gives the hint" (the search is evidence beside the hint, as approved in R23), and "Elastic checks and remembers" (the percolator is advisory; the gateway and the human decide). No remaining "Moss recovers" or "Elastic decides" in the docs outside the plan that explains the change.
+- Rishit's live numbers (R28) are now recorded as measured live in docs/17 and docs/18: tower transcript final 155 ms after release (was 2702 ms), cockpit 172 ms (was 2875 ms), call end to the pilot hearing the fix 2.9 s including the human approval (was 6.1 s), first audio 201 ms. Still slow: about 1.0 s from call end to the cockpit flagging the lost call. docs/18 comes from `scripts/benchmark_report.py`, so the table is edited there.
+- `scripts/smoke_moss.py` pushes nothing by default (it used to push the per-aircraft `flight-N123AB` session, breaking the agreed rule). Pass `--push` to push once on purpose.
+
+**Related:** [19-elastic-moss-plan.md](19-elastic-moss-plan.md) section 2, agent mail R28, R29
+
+## 2026-10-24: Faster-feeling live captions, a Cartesia probe, and a leak fix
+
+**Type:** Changed
+**Area:** Audio
+
+- Pilot app: new words of each Cartesia update fade in one after another (a whole burst within 240 ms), a caret follows the word being spoken, holding the button on a live hub shows "Listening..." at once, waiting text shows within 50 ms (was up to 250), and microphone audio goes to the hub every 50 ms from 1024-sample buffers (was 100 ms from 2048). Words are only ever shown after Cartesia returns them.
+- `scripts/caption_probe.py`: streams a clip to Cartesia's manual and turns endpoints at real-time pace and reports updates while speaking, time to first text and the gap between updates. Needs a run where Cartesia is reachable; it decides whether the next item helps.
+- `UNSTEP_CAPTION_SOURCE=turns` (default `manual`): also streams the audio to the turns endpoint and shows its `turn.update` text as captions, display only; the final text still comes from the manual stream. Tested with fakes only; not measured against Cartesia yet.
+- Fix: the hub opened a new, never-closed Cartesia speech connection for every typed line and every controller prompt, which ends in HTTP 429 with several walk-up planes (Rishit's benchmark hit it). Typed lines now share one connection per voice, the controller prompts share one, and all close when the hub stops.
+- Tests no longer read real Elastic or Moss keys from the shell or `.env` (set `UNSTEP_LIVE_ELASTIC=1` for the opt-in live test).
+
+**Related:** [Live Demo](11-live-demo.md), [Sponsor Depth](16-sponsor-depth.md)
+
+## 2026-10-24: Plan for how Elastic and Moss are used, and who owns what (proposal)
+
+**Type:** Docs
+**Area:** Docs
+
+- [19-elastic-moss-plan.md](19-elastic-moss-plan.md): an honest inventory of what we use from each sponsor against what each offers, with evidence grades. Moss claims were read in the installed `moss` 1.21.0 and `inferedge-moss-core` 0.35.0 (read, not run); Elastic claims come from search result summaries because elastic.co pages could not be fetched, so they are marked as such.
+- Per sponsor: ranked top 3 steps with owner, files, offline test plan, live needs, effort, risk and the stage moment with its number; a "not now" list; and a talk track where every claim is tagged BUILT, TESTED OFFLINE, NEEDS LIVE RUN or PLANNED.
+- Findings worth acting on, all docs-only or tiny: our "Moss recovers the instruction" wording is stronger than the code (the hint comes from the newest-clearance rule; the search is evidence); "Elastic decides" is stronger than the code (the percolator is advisory); `scripts/smoke_moss.py` pushes a per-aircraft session by default; and the Moss SDK says `session()` auto-loads an existing cloud index, which may mean the flight log survives a restart (needs one live check).
+- Proposes that Rishit's side owns the Elastic track end to end and ours keeps Moss. Nothing is built from the plan; it waits for a yes from both humans.
+
+**Related:** agent mail D23
+
+## 2026-10-24: Plane memory saved to Moss Cloud through one flight log
+
+**Type:** Added
+**Area:** Edge device
+
+- When a flight ends (a walk-up seat is freed, the presenter resets the room, or the hub stops), the plane's session docs are copied into one shared session, `flightlog-<frequency>` (writer "archive"). Each doc carries `callsign`, `flight_id`, `ended_at` and `kind`. The flight log is then pushed to Moss Cloud once, in the background (one push per end event, never on the radio path).
+- **Failures and memory:** a failed push stays local and is retried at the next end. The plane's session is dropped from the shared client, so its memory is freed (`drop()` added to both memory backends, and `MossMemory.push` now returns the SDK's push result for the log).
+- **The agreed rule still holds:** per-aircraft sessions are never pushed; the flight log is the only session we push besides the airport index.
+- **Limitation:** a push replaces the cloud index, and the session holds the flights since the hub started, so a hub restart starts a new log. Loading the old index back first depends on the Moss SDK (check).
+- **Search:** `GET /live/flightlog?q=&callsign=&since_ms=` searches past flights and returns the status ("Flight log: N flights saved to Moss Cloud"), which also goes to every seat as a `flightlog` message.
+- Checked: 4 tests with a fake shared client (copy on end, a single push, session dropped, no per-aircraft push, retry after a failed push, the route). The live push needs Moss keys.
+
+**Related:** [16-sponsor-depth.md](16-sponsor-depth.md) M6, agent mail R3, R4
+
 ## 2026-10-24: Benchmark report against the status quo and published work
 
 **Type:** Docs

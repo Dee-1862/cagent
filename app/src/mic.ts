@@ -1,5 +1,9 @@
 // Push-to-talk microphone: records while the button is held, sends one 16 kHz PCM clip.
 
+/** How often captured audio goes to the hub while the key is held. 50 ms halves the time a word waits
+ * on the phone before Cartesia can start hearing it; the hub accepts any frame length. */
+export const FRAME_MS = 50;
+
 export class Mic {
   private stream: MediaStream | null = null;
   private ctx: AudioContext | null = null;
@@ -21,7 +25,7 @@ export class Mic {
       });
       this.ctx = new AudioContext();
       const src = this.ctx.createMediaStreamSource(this.stream);
-      const node = this.ctx.createScriptProcessor(2048, 1, 1);
+      const node = this.ctx.createScriptProcessor(1024, 1, 1);
       node.onaudioprocess = (e) => {
         const data = e.inputBuffer.getChannelData(0);
         let peak = 0;
@@ -39,7 +43,7 @@ export class Mic {
 
   get ready(): boolean { return !!this.stream; }
 
-  /** Starts recording. With onFrame, sends about 100 ms of 16 kHz PCM at a time while held (P3). */
+  /** Starts recording. With onFrame, sends FRAME_MS of 16 kHz PCM at a time while held (P3). */
   start(onFrame?: (b64: string) => void): void {
     if (this.ctx?.state === "suspended") void this.ctx.resume();
     this.chunks = [];
@@ -47,7 +51,7 @@ export class Mic {
     this.carry = new Float32Array(0);
     this.on = true;
     this.onFrame = onFrame ?? null;
-    if (onFrame) this.timer = window.setInterval(() => this.flush(), 100);
+    if (onFrame) this.timer = window.setInterval(() => this.flush(), FRAME_MS);
   }
 
   /** Stops a streamed recording: sends what is left. The hub then gets mic_end. */

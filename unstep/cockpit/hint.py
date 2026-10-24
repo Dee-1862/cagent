@@ -16,6 +16,7 @@ import re
 from typing import Literal, Optional
 
 from unstep.clock import now_ms
+from unstep.config import moss_min_score
 from unstep.cockpit.memory import Doc, Memory
 from unstep.cockpit.phraseology import callsigns_match, parse_callsign
 from unstep.contracts import LocalHint
@@ -152,11 +153,17 @@ async def _search(memory, flight_index, flt, heard_text, callsign, evidence: dic
         return None
     res = await memory.query(flight_index, query, top_k=5, alpha=SEARCH_ALPHA, filter=flt)
     evidence.update({"search_ms": round(res.time_taken_ms, 3), "backend": getattr(memory, "backend", "?")})
-    for d in res.docs:
-        if _is_movement_clearance(d.text) and not names_other_aircraft(d.text, callsign):
-            evidence.update({"top_hit_id": f"{flight_index}/{d.id}", "top_hit_text": d.text,
-                             "score": round(float(d.score), 4)})
-            return d
+    floor = moss_min_score()
+    evidence["floor"] = floor
+    candidates = [d for d in res.docs if _is_movement_clearance(d.text) and not names_other_aircraft(d.text, callsign)]
+    if candidates and candidates[0].score < floor:
+        # The best match is too weak to show as a hit. Only the evidence says so; the hint rule is unchanged.
+        evidence.update({"best_score": round(float(candidates[0].score), 4), "below_floor": True})
+        return None
+    for d in candidates:
+        evidence.update({"top_hit_id": f"{flight_index}/{d.id}", "top_hit_text": d.text,
+                         "score": round(float(d.score), 4)})
+        return d
     return None
 
 
@@ -170,7 +177,7 @@ async def _derive_hint(memory, callsign, heard_text, flight_index, airport_index
         flt["$and"].append({"ts": {"$gte": since_ts}})
 
     # Filter-only fetch, newest by ts: ranking must never revive a superseded clearance.
-    res = await memory.fetch(flight_index, filter=flt)
+    res = await memory.fetch(flight_index, filter=flt, sort_by="ts", ascending=False)
     moss_ms = res.time_taken_ms
     candidates = [d for d in res.docs
                   if _is_movement_clearance(d.text) and not names_other_aircraft(d.text, callsign)]

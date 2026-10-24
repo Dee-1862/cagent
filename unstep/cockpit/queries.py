@@ -26,13 +26,16 @@ from unstep.contracts import PilotQuery
 
 log = logging.getLogger("unstep.queries")
 
-Intent = Literal["recent", "last_clearance", "say_again", "taxi_route", "unknown"]
+Intent = Literal["recent", "exchange", "last_clearance", "say_again", "taxi_route", "unknown"]
 
 NO_RECORD = "Advisory. No record found. Ask the controller."
 SAY_AGAIN = "Advisory. Say again."
 
 # Order matters: "repeat the last clearance" is a last-clearance question, not a say again.
 _INTENTS: list[tuple[Intent, re.Pattern]] = [
+    # "What was the whole exchange?" The newest blocked call with everything said about it, as one unit.
+    ("exchange", re.compile(r"\b(whole|full|entire|complete) (exchange|conversation|story)\b"
+                            r"|\beverything (about|on|from) (that|the|my) (call|exchange|last call)\b")),
     # "What did the tower tell me in the last minute?", "what did I miss?" (P4: Moss session search)
     ("recent", re.compile(r"\b(last|past) (minute|\d+ (seconds?|minutes?)|few minutes)\b"
                           r"|\bwhat did (the )?tower (say|tell)|\bwhat did i miss\b")),
@@ -64,7 +67,8 @@ def _hhmm(ts_ms: float) -> str:
 
 
 async def record(memory: Memory, flight_index: str, callsign: str, doc_id: str, text: str,
-                 kind: Literal["clearance", "advisory"], ts: Optional[int] = None) -> str:
+                 kind: Literal["clearance", "advisory"], ts: Optional[int] = None,
+                 exchange: Optional[str] = None) -> str:
     """Add an approved directive (clearance) or a spoken advisory to the flight session.
 
     Never overwrites: if `doc_id` already exists the record gets a versioned id
@@ -81,7 +85,8 @@ async def record(memory: Memory, flight_index: str, callsign: str, doc_id: str, 
             log.warning("record %s already exists in %s; writing %s instead", doc_id, flight_index, new_id)
     await memory.add_docs(
         flight_index,
-        [Doc(id=new_id, text=text, metadata={"callsign": callsign, "type": kind, "ts": ts or now_ms()})],
+        [Doc(id=new_id, text=text, metadata={"callsign": callsign, "type": kind, "ts": ts or now_ms(),
+                                             **({"exchange": exchange} if exchange else {})})],
         writer=COCKPIT,
     )
     return new_id
@@ -92,6 +97,7 @@ async def _all(memory: Memory, flight_index: str, callsign: str, kind: str) -> t
     res = await memory.fetch(
         flight_index,
         filter={"$and": [{"callsign": {"$eq": callsign}}, {"type": {"$eq": kind}}]},
+        sort_by="ts", ascending=False,
     )
     docs = [d for d in res.docs if not names_other_aircraft(d.text, callsign)]
     return sorted(docs, key=_ts, reverse=True), res.time_taken_ms
@@ -146,10 +152,35 @@ def _clearance_answer(doc: Doc) -> str:
     return f"Advisory. Last clearance: {doc.text}, issued {_hhmm(_ts(doc))}."
 
 
+EXCHANGE_LABELS = {"heard": "heard", "readback": "pilot read back", "clearance": "approved", "advisory": "Unstep said"}
+
+
+async def _exchange(memory: Memory, flight_index: str, callsign: str) -> tuple[str, Optional[Doc], float]:
+    """The newest exchange (everything this plane's memory holds about one blocked call, in time order) as
+    one unit: Moss-style parent grouping on `exchange`, ordered by `ts`."""
+    newest = await memory.fetch(flight_index, filter={"callsign": {"$eq": callsign}}, sort_by="ts", ascending=False)
+    moss_ms = newest.time_taken_ms
+    # A missing field can't be filtered reliably (the backends differ), so pick the newest doc that has one.
+    exchange = next((d.metadata["exchange"] for d in newest.docs if d.metadata.get("exchange")), None)
+    if exchange is None:
+        return NO_RECORD, None, moss_ms
+    unit = await memory.fetch(
+        flight_index, filter={"$and": [{"callsign": {"$eq": callsign}}, {"exchange": {"$eq": exchange}}]},
+        sort_by="ts", ascending=True)
+    moss_ms += unit.time_taken_ms
+    parts = [f"{EXCHANGE_LABELS.get(str(d.metadata.get('type')), 'said')}: \"{_LIKELY.sub('', d.text).strip()}\""
+             for d in unit.docs if not names_other_aircraft(d.text, callsign)]
+    if not parts:
+        return NO_RECORD, None, moss_ms
+    return "Advisory. The whole exchange, in order. " + "; ".join(parts) + ".", unit.docs[-1], moss_ms
+
+
 async def _answer(memory: Memory, flight_index: str, callsign: str, intent: Intent, question: str = ""):
     answer, source, moss_ms = NO_RECORD, None, None
 
-    if intent == "recent":
+    if intent == "exchange":
+        answer, source, moss_ms = await _exchange(memory, flight_index, callsign)
+    elif intent == "recent":
         answer, source, moss_ms = await _recent(memory, flight_index, callsign, question)
     elif intent == "last_clearance":
         docs, moss_ms = await _all(memory, flight_index, callsign, "clearance")

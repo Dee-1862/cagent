@@ -40,7 +40,7 @@ The demo: the laptop is the control tower on the projector, and phones are the p
 
 **Cartesia: the voice of everyone in the loop**
 - **Ink-2 streaming speech-to-text** while the key is held, with ATC key terms (callsigns, runways, "hold short"). Streamed text drives the live captions.
-- **Transcribing while the call is still on air:** the tower's and every cockpit's speech-to-text are fed during the transmission (each cockpit hears a live mix of the frequency) and finalized when it ends. In an offline timing model this cut the time from call end to the recovered proposal from about 5.1 s to 0.4 s. **[confirm live: measured on the console waterfall in a run with keys]**
+- **Transcribing while the call is still on air:** the tower's and every cockpit's speech-to-text are fed during the transmission (each cockpit hears a live mix of the frequency) and finalized when it ends. **Measured live on Rishit's laptop (R28):** the tower transcript is final 155 ms after release (was 2702 ms) and the cockpit's 172 ms after (was 2875 ms). From the call ending to the pilot hearing the fix: 2.9 s including the human approval (was 6.1 s). First audio 201 ms.
 - **Tower and cockpit words aligned:** ink-2's words (with key terms) get ink-whisper's word times, so the console strikes exactly the words lost in the overlap.
 - **Sonic-3.6** for the private advisory, streamed to the phone from the first chunk:
   - first audio in roughly 100 ms (measured 85–131 ms in our live runs);
@@ -54,11 +54,11 @@ The demo: the laptop is the control tower on the projector, and phones are the p
 **Moss: the plane's own memory, on board**
 - **One local Moss session per plane:** every clearance it hears is indexed live, with no cloud index.
   - Search over 6 plane sessions measured at 0–1 ms.
-  - The garbled fragment the cockpit heard ("Cessna 123, short runway 30") is run as a hybrid search to find the instruction ("hold short Runway 33"), with the source record and search time shown on the console.
+  - The garbled fragment the cockpit heard ("Cessna 123, short runway 30") is run as a hybrid search over the plane's own memory, and the result, with its source record and search time, is shown on the console beside the hint. **The newest clearance gives the hint ("hold short Runway 33"); Moss's search is the evidence.**
   - **Safety rule:** a hint only ever says stop or wait, and an older clearance can never come back ahead of a newer one.
 - **Moss Inference** translates the private advisory, about 165 ms to first token warm. A translation is used only if every digit survives; otherwise the pilot gets English only.
 
-**Elastic: decides and remembers**
+**Elastic: checks and remembers**
 - **Every message is stored**, and readbacks are matched with a percolator: each directive is stored as a query.
 - **Live safety analytics** on the console via ES|QL: blocked calls, readback errors caught, auto-resent calls.
 - **Agent Builder agents and Workflows:**
@@ -115,7 +115,7 @@ cartesia, sonic, ink, moss, elastic, elasticsearch, es-ql, agent-builder, python
 
 > We gave every airplane its own memory. ✈️
 >
-> At #CalHacks we built Unstep. When two radio calls step on each other and a pilot only hears a squeal, the plane's own @Moss session searches what it was told and finds "hold short Runway 33" from the garbled fragment, in under a millisecond, locally, no cloud.
+> At #CalHacks we built Unstep. When two radio calls step on each other and a pilot only hears a squeal, the plane's own @Moss session searches what it was told, using the garbled fragment it heard, in under a millisecond, locally, no cloud. The newest clearance gives the hint; Moss's search is the evidence on screen.
 >
 > A human controller approves, and @Cartesia speaks it privately into the pilot's left ear.
 >

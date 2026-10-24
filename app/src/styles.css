@@ -136,6 +136,17 @@ input {
 .lyrics .line.past { opacity: 0.45; }
 .lyrics .line.interim.now { opacity: 0.92; }
 .lyrics .line.quiet { font-size: 20px; font-weight: 600; opacity: 0.7; }
+.lyrics .w.enter { animation: word-in 190ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes word-in { from { opacity: 0; transform: translateY(0.32em); } to { opacity: 1; transform: none; } }
+.lyrics .caret { display: inline-block; width: 4px; height: 0.9em; margin-left: 2px; border-radius: 2px; background: #fff;
+  vertical-align: -0.1em; animation: caret 0.9s steps(2, start) infinite; }
+@keyframes caret { to { visibility: hidden; } }
+.lyrics .line.listening { font-size: 24px; font-weight: 700; opacity: 0.85; }
+.lyrics .dots i { display: inline-block; width: 7px; height: 7px; margin-left: 5px; border-radius: 50%; background: #fff;
+  animation: dot 1s ease-in-out infinite; }
+.lyrics .dots i:nth-child(2) { animation-delay: 0.15s; }
+.lyrics .dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes dot { 0%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-4px); } }
 .lyrics .who { font-weight: 700; opacity: 0.75; margin-right: 8px; }
 .lyrics .kw { text-decoration: underline; text-decoration-thickness: 3px; text-underline-offset: 5px; font-weight: 900; }
 .lyrics .line.advisory { color: #2b1d05; background: rgba(255, 255, 255, 0.82); border-radius: 14px; padding: 8px 12px; font-size: 21px; font-weight: 700; }
@@ -150,7 +161,7 @@ input {
 .waveform figcaption { color: var(--muted); font-size: 12px; padding: 4px 2px 0; }
 
 @media (prefers-reduced-motion: reduce) {
-  .stage .ptt, .lyrics .line, .memo { transition: none; animation: none; }
+  .stage .ptt, .lyrics .line, .memo, .lyrics .w.enter, .lyrics .caret, .lyrics .dots i { transition: none; animation: none; }
   .lyrics { scroll-behavior: auto; }
 }
 

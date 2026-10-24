@@ -139,6 +139,22 @@ def radio_sound() -> bool:
     return env("UNSTEP_RADIO_SOUND", default="1").lower() not in ("0", "false", "no", "off")
 
 
+DEFAULT_MOSS_MIN_SCORE = 0.25
+
+
+def moss_min_score() -> float:
+    """Score floor for the plane's memory search evidence (UNSTEP_MOSS_MIN_SCORE).
+
+    Moss relevance runs 0 to 1 and the SDK documents `min_score` for loaded indexes, not for session
+    queries, so the floor is applied by our code. The default is a placeholder: tune it on real Moss
+    (scripts/moss_live_check.py prints the scores to tune against). The offline stand-in scores differently.
+    """
+    try:
+        return max(0.0, min(1.0, float(env("UNSTEP_MOSS_MIN_SCORE", default=str(DEFAULT_MOSS_MIN_SCORE)))))
+    except ValueError:
+        return DEFAULT_MOSS_MIN_SCORE
+
+
 def realtime_replay() -> bool:
     """Pace replayed audio to the manual STT endpoint at real time (UNSTEP_REALTIME_REPLAY=1).
 

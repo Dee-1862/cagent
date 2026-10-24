@@ -10,6 +10,7 @@ export type Line = {
   who: string;          // "You", "Tower", "Plane B", "Unstep"
   kind: "radio" | "advisory" | "event";
   words: Word[];
+  seen: number;         // words already on screen before the latest update: only the rest animate in
   final: boolean;
   shownAt: number;      // when the visible text last changed
   pending: Word[] | null; // newer text waiting for its one-second slot
@@ -19,7 +20,7 @@ export type Line = {
 };
 export type Lyrics = { lines: Line[] };
 
-export const THROTTLE_MS = 150; // Cartesia sends new words about every 0.5 s: show each as it lands
+export const THROTTLE_MS = 60; // Cartesia sends new words about every 0.5 s: show each as it lands
 export const MAX_LINES = 8;
 export const empty = (): Lyrics => ({ lines: [] });
 
@@ -33,13 +34,13 @@ export function caption(
   const words = m.words.map((w) => ({ text: w.text, kind: w.kind }));
   const i = s.lines.findIndex((l) => l.id === m.id);
   if (i < 0) {
-    return { lines: keep([...s.lines, { id: m.id, who, kind: "radio", words, final: m.final, shownAt: now, pending: null, lagMs: m.lag_ms, mine, source: m.source }]) };
+    return { lines: keep([...s.lines, { id: m.id, who, kind: "radio", words, seen: 0, final: m.final, shownAt: now, pending: null, lagMs: m.lag_ms, mine, source: m.source }]) };
   }
   const line = s.lines[i];
   if (line.final && !m.final) return s; // a late interim never replaces the final text
   const due = m.final || now - line.shownAt >= THROTTLE_MS;
   const next: Line = due
-    ? { ...line, words, final: m.final, shownAt: now, pending: null, lagMs: m.lag_ms ?? line.lagMs }
+    ? { ...line, words, seen: line.words.length, final: m.final, shownAt: now, pending: null, lagMs: m.lag_ms ?? line.lagMs }
     : { ...line, pending: words, lagMs: m.lag_ms ?? line.lagMs };
   return { lines: s.lines.map((l, k) => (k === i ? next : l)) };
 }
@@ -47,7 +48,7 @@ export function caption(
 /** Show waiting text whose one-second slot has come. Call about every 250 ms. */
 export function tick(s: Lyrics, now: number): Lyrics {
   if (!s.lines.some((l) => l.pending && now - l.shownAt >= THROTTLE_MS)) return s;
-  return { lines: s.lines.map((l) => (l.pending && now - l.shownAt >= THROTTLE_MS ? { ...l, words: l.pending, pending: null, shownAt: now } : l)) };
+  return { lines: s.lines.map((l) => (l.pending && now - l.shownAt >= THROTTLE_MS ? { ...l, words: l.pending, seen: l.words.length, pending: null, shownAt: now } : l)) };
 }
 
 // Words the advisory voice says the ICAO way, shown the plain way on screen.
@@ -67,7 +68,7 @@ export function note(s: Lyrics, id: string, who: string, kind: "advisory" | "eve
   const same = kind === "advisory" && s.lines.some((l) => l.kind === kind && now - l.shownAt < DUPLICATE_MS && l.words.map((w) => w.text).join(" ") === shown);
   if (same) return s; // the same advisory twice in a row reads as noise
   const words = shown.split(/\s+/).filter(Boolean).map((t) => ({ text: t, kind: null as Kind }));
-  return { lines: keep([...s.lines, { id, who, kind, words, final: true, shownAt: now, pending: null, lagMs: null, mine: false }]) };
+  return { lines: keep([...s.lines, { id, who, kind, words, seen: words.length, final: true, shownAt: now, pending: null, lagMs: null, mine: false }]) };
 }
 
 /** The label under the card, from the newest radio line with a measured lag. */
@@ -77,4 +78,16 @@ export function lagLabel(s: Lyrics): string | null {
   const line = [...s.lines].reverse().find((l) => l.kind === "radio" && l.lagMs != null);
   if (!line) return null;
   return `Cartesia live caption · ${Math.round(line.lagMs!)} ms behind ${line.mine ? "your voice" : "speech"}`;
+}
+
+/** Delay before the k-th word of an update appears. New words of one Cartesia burst are spread over at
+ * most REVEAL_MS (never held back longer), so a burst reads as speech arriving, not a block popping in. */
+export const REVEAL_MS = 240;
+export const STAGGER_MAX_MS = 90;
+
+export function revealDelay(line: Pick<Line, "words" | "seen">, k: number): number | null {
+  const fresh = line.words.length - line.seen;
+  if (k < line.seen || fresh <= 0) return null; // already on screen
+  const step = Math.min(STAGGER_MAX_MS, REVEAL_MS / fresh);
+  return Math.round((k - line.seen) * step);
 }
