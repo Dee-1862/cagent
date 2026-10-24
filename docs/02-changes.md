@@ -19,6 +19,19 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Pilot app redesign: one hold button that becomes a voice memo, and a lyrics-style caption card
+
+**Type:** Changed
+**Area:** Other
+
+- Deekshith's design (reference: iOS Voice Memos and Spotify lyrics). The flying screen is now only a small header (plane, callsign, connection dot), the big HOLD TO TALK button and a caption card. Tap-to-say lines, Ask Unstep, timings and log moved behind one quiet "More" link (still needed for no-mic fallback and debugging).
+- Hold to talk: the button turns in place into a Voice Memos style panel: dark, a time ruler (00:02, 00:04 ...), rounded warm orange bars from the live mic level scrolling right to left, a red playhead with dots at 60 percent, a dotted line ahead, elapsed time in the corner. Bars turn red while someone else is keyed (talked over). Release turns it back after the usual tail.
+- Caption card (warm mustard, big bold white text): one line per transmission from the hub's `caption` messages, the current line bright and earlier ones dimmed, auto-scrolling. A line's text changes at most once per second; the final caption replaces the interim at once. Keywords are underlined, not coloured. Others' calls are prefixed ("Tower:", "Plane B:"); Unstep's private advisory shows as a calm "Only you" line in plain wording ("three", not "tree", without the spoken "Advisory."); a step-on adds a "Talked over" line. The label under the card shows "Cartesia live caption · N ms behind your voice" (or "TTS timing" for typed lines).
+- "More" also has a multi-lane radio waveform (`Waveform.tsx`) from the hub's `level` and `caption` messages. Reduced motion is respected everywhere. Earcons, join, clock sync, streamed mic frames and language are unchanged.
+- Checked: vitest (lines, throttling, readable advisories, waveform state; 25 pass), the app build, and a headless phone (390x844, fake mic) on the offline hub: idle, holding while another station keys (red bars), captions mid-line and after; no page errors.
+
+**Related:** [16-sponsor-depth.md](16-sponsor-depth.md) C2, agent mail D17, D19
+
 ## 2026-10-24: Live captions use Cartesia's streamed text as checked live
 
 **Type:** Changed

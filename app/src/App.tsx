@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { audio, chirp, keepAwake, playWav, streamChunk, streamEnd } from "./audio";
 import { cue, readbackCue, setAdvisory, setKeyDown, setSpeaker } from "./cues";
+import * as L from "./lyrics";
+import { VoiceMemo } from "./VoiceMemo";
+import { Waveform } from "./Waveform";
+import * as W from "./wave";
 import { Hub, hubFromLocation, join, Live, Msg, parseHub, Seat } from "./hub";
 import { Mic } from "./mic";
 import { ASK_LINES, sayLines } from "./phrases";
@@ -110,6 +114,8 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
   const [conn, setConn] = useState<"connecting" | "open" | "closed">("connecting");
   const [stations, setStations] = useState<Station[]>([]);
   const [keyed, setKeyed] = useState<Record<string, number>>({});
+  const keyedRef = useRef<Record<string, number>>({});
+  keyedRef.current = keyed;
   const [onAir, setOnAir] = useState(false);
   const [alert, setAlert] = useState<Alert | null>(null);
   const [ear, setEar] = useState<Line | null>(null);
@@ -118,11 +124,16 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
   const [uplink, setUplink] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [details, setDetails] = useState(false);
+  const [more, setMore] = useState(false);
+  const [lyrics, setLyrics] = useState<L.Lyrics>(L.empty());
+  const [wave, setWave] = useState<W.Wave>(W.empty());
   const [ask, setAsk] = useState("");
   const [, tick] = useState(0);
   const live = useRef<Live | null>(null);
   const earAudio = useRef<string | null>(null);
   const greeted = useRef(false);
+  const nameRef = useRef<(id: string) => string>((id) => id);
+  const card = useRef<HTMLDivElement | null>(null);
   const lastStatus = useRef<Record<string, string>>({});
   const wasOpen = useRef(false);
   const pressAt = useRef(0);
@@ -130,6 +141,15 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
 
   const me = stations.find((s) => s.id === station);
   const nameOf = useCallback((id: string) => (id === "atc" ? "Tower" : stations.find((s) => s.id === id)?.name ?? id), [stations]);
+  nameRef.current = nameOf;
+  useEffect(() => {
+    const t = setInterval(() => { setLyrics((s) => L.tick(s, Date.now())); setWave((w) => W.prune(w, live.current?.now() ?? Date.now())); }, 250);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => { card.current?.scrollTo?.({ top: card.current.scrollHeight, behavior: "smooth" }); }, [lyrics]);
+  const hubNow = useCallback(() => live.current?.now() ?? Date.now(), []);
+  const micLevel = useCallback(() => mic.level, []);
+  const clashNow = useCallback(() => Object.keys(keyedRef.current).some((k) => k !== station), [station]);
 
   const say = (text: string) => { setToast(text); setTimeout(() => setToast(null), 4000); };
 
@@ -155,7 +175,18 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
           setKeyed(m.keyed);
           if (m.station === station && m.down && m.keyed[station]) setUplink(m.ts - m.keyed[station]);
           return;
+        case "caption":
+          setLyrics((s) => L.caption(s, m as any, Date.now(), m.station === station ? "You" : nameRef.current(m.station), m.station === station));
+          setWave((w) => W.addCaption(w, m as any));
+          return;
+        case "level": return void setWave((w) => W.addLevel(w, m as any));
+        case "radio":
+          for (const o of m.overlaps ?? []) setWave((w) => W.addOverlap(w, { start: o.start_ms, end: o.end_ms, stations: o.stations }));
+          return;
         case "stepon_live":
+          setWave((w) => W.addOverlap(w, { start: m.since_ms, end: null, stations: m.stations }));
+          setLyrics((s) => L.note(s, `over-${m.since_ms}`, "", "event",
+            m.stations.includes(station) ? "Talked over: your call was blocked" : `Talked over: ${m.stations.map(nameRef.current).join(" and ")}`, Date.now()));
           setAlert({ stations: m.stations, uplink_ms: m.uplink_ms, at: Date.now() });
           if (m.stations.includes(station)) navigator.vibrate?.([60, 40, 60]);
           cue(m.stations.includes(station) ? "stepped_on_me" : "stepped_on_others");
@@ -177,7 +208,10 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
         case "cockpit_line": {
           const line = m as unknown as Line;
           setLines((ls) => [...ls.slice(-40), line]);
-          if (line.party === "PILOT EAR") setEar(line);
+          if (line.party === "PILOT EAR") {
+            setEar(line);
+            setLyrics((s) => L.note(s, `ear-${line.ts}`, "Unstep", "advisory", line.text.replace(/^\[chime\]\s*/, ""), Date.now()));
+          }
           return;
         }
         case "trace":
@@ -265,73 +299,92 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
     <main className="fly" style={{ ["--plane" as any]: color }}>
       <header>
         <div className="me">
-          <b>You are {me?.name ?? station}</b>
-          <span>{me?.spoken ?? ""} · radio {me ? "118.7" : ""}</span>
+          <b>{me?.name ?? station}</b>
+          <span>{me?.spoken ?? ""} · {station}</span>
         </div>
         <span className={`dot ${conn}`} title={conn} />
       </header>
 
-      {alertFresh && (
-        <div className={`alert ${steppedOnMe ? "mine" : ""}`} role="alert">
-          <b>Stepped on!</b> {alertFresh.stations.map(nameOf).join(" and ")} talked at the same time.
-          <small> Unstep saw it {alertFresh.uplink_ms} ms after the second key went down.</small>
-        </div>
-      )}
+      <div className={`stage ${onAir ? "recording" : ""}`}>
+        <button
+          className={`ptt ${pttState}`}
+          onPointerDown={(e) => { (e.target as Element).setPointerCapture?.(e.pointerId); down(); }}
+          onPointerUp={up}
+          onPointerCancel={up}
+          onContextMenu={(e) => e.preventDefault()}
+          disabled={conn !== "open"}
+          aria-pressed={onAir}
+        >
+          {onAir
+            ? <VoiceMemo startedAt={pressAt.current} now={hubNow} level={micLevel} clash={clashNow} />
+            : <>
+                <span className="ptt-main">{pttText}</span>
+                {pttState === "busy" && <span className="ptt-sub">You can still talk. Real radios don't stop you.</span>}
+              </>}
+        </button>
+      </div>
 
-      {ear && (
-        <section className="ear">
-          <div className="ear-head"><span>Only you can hear this</span><span>left ear</span></div>
-          <p>{ear.text.replace(/^\[chime\]\s*/, "")}</p>
-          {ear.latency?.moss_ms != null && <small className="moss">Found in your Moss session in {ear.latency.moss_ms.toFixed(1)} ms</small>}
-          <button className="ghost" onClick={() => playWav(earAudio.current)}>Play again</button>
-        </section>
-      )}
-
-      <Readback trace={trace} />
-
-      <button
-        className={`ptt ${pttState}`}
-        onPointerDown={(e) => { (e.target as Element).setPointerCapture?.(e.pointerId); down(); }}
-        onPointerUp={up}
-        onPointerCancel={up}
-        onContextMenu={(e) => e.preventDefault()}
-        disabled={conn !== "open"}
-      >
-        <span className="ptt-main">{pttText}</span>
-        {onAir && <span className="ptt-sub">{((live.current!.now() - pressAt.current) / 1000).toFixed(1)} s</span>}
-        {!onAir && pttState === "busy" && <span className="ptt-sub">You can still talk. Real radios don't stop you.</span>}
-      </button>
-
-      <section className="chips">
-        <h2>Tap to say on the radio</h2>
-        {lines4say.map((l) => (
-          <button key={l.text} onClick={() => live.current?.send({ type: "say", text: l.text })}>
-            {l.label}{l.note && <small> ({l.note})</small>}
-          </button>
+      <div className="lyrics" ref={card} aria-live="polite">
+        {lyrics.lines.length === 0 && <p className="line quiet">What anyone says on the radio appears here as they speak.</p>}
+        {lyrics.lines.map((l, i) => (
+          <p key={l.id} className={`line ${l.kind} ${i === lyrics.lines.length - 1 ? "now" : "past"} ${l.final ? "final" : "interim"}`}>
+            {l.kind === "advisory" && <span className="only-you">Only you</span>}
+            {l.who && l.kind === "radio" && <span className="who">{l.who}:</span>}
+            {l.words.map((w, k) => <span key={k} className={w.kind ? `kw ${w.kind}` : undefined}>{w.text} </span>)}
+          </p>
         ))}
-      </section>
+      </div>
+      <p className="lag">{L.lagLabel(lyrics) ?? "\u00a0"}</p>
 
-      <section className="chips ask">
-        <h2>Ask Unstep (not on the radio)</h2>
-        {ASK_LINES.map((q) => <button key={q} onClick={() => live.current?.send({ type: "ask", text: q })}>{q.replace("Unstep, ", "")}</button>)}
-        <form onSubmit={(e) => { e.preventDefault(); if (ask.trim()) { live.current?.send({ type: "ask", text: ask }); setAsk(""); } }}>
-          <input value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="Ask anything about your flight" />
-        </form>
-      </section>
-
-      <button className="ghost" onClick={() => setDetails((d) => !d)}>{details ? "Hide" : "Show"} timings and log</button>
-      {details && (
-        <section className="details">
-          <dl>
-            <dt>Clock vs tower</dt><dd>{sync ? `${sync.offset} ms offset, ±${Math.ceil(sync.rtt / 2)} ms (${sync.samples} pings)` : "syncing"}</dd>
-            <dt>Round trip</dt><dd>{sync ? `${sync.rtt} ms` : "-"}</dd>
-            <dt>Your key reached the tower</dt><dd>{uplink !== null ? `${uplink} ms after you pressed` : "press to measure"}</dd>
-            <dt>Advisory first audio</dt><dd>{lastFirstAudio !== undefined ? `${Math.round(lastFirstAudio)} ms` : "-"}</dd>
-          </dl>
-          <ol className="log">
-            {lines.slice(-12).map((l, i) => <li key={i}><b>{l.party}</b> {l.text}</li>)}
-          </ol>
-          <button className="ghost" onClick={onLeave}>Leave this plane</button>
+      <button className="more-link" onClick={() => setMore((v) => !v)} aria-expanded={more}>{more ? "Less" : "More"}</button>
+      {more && (
+        <section className="more">
+          {alertFresh && (
+            <div className={`alert ${steppedOnMe ? "mine" : ""}`} role="alert">
+              <b>Stepped on!</b> {alertFresh.stations.map(nameOf).join(" and ")} talked at the same time.
+              <small> Unstep saw it {alertFresh.uplink_ms} ms after the second key went down.</small>
+            </div>
+          )}
+          <Readback trace={trace} />
+          {ear && (
+            <section className="ear">
+              <div className="ear-head"><span>Only you can hear this</span><span>left ear</span></div>
+              <p>{ear.text.replace(/^\[chime\]\s*/, "")}</p>
+              {ear.latency?.moss_ms != null && <small className="moss">Found in your Moss session in {ear.latency.moss_ms.toFixed(1)} ms</small>}
+              <button className="ghost" onClick={() => playWav(earAudio.current)}>Play again</button>
+            </section>
+          )}
+          <section className="chips">
+            <h2>Tap to say on the radio</h2>
+            {lines4say.map((l) => (
+              <button key={l.text} onClick={() => live.current?.send({ type: "say", text: l.text })}>
+                {l.label}{l.note && <small> ({l.note})</small>}
+              </button>
+            ))}
+          </section>
+          <section className="chips ask">
+            <h2>Ask Unstep (not on the radio)</h2>
+            {ASK_LINES.map((q) => <button key={q} onClick={() => live.current?.send({ type: "ask", text: q })}>{q.replace("Unstep, ", "")}</button>)}
+            <form onSubmit={(e) => { e.preventDefault(); if (ask.trim()) { live.current?.send({ type: "ask", text: ask }); setAsk(""); } }}>
+              <input value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="Ask anything about your flight" />
+            </form>
+          </section>
+          <Waveform wave={wave} now={hubNow} nameOf={nameOf} />
+          <button className="ghost" onClick={() => setDetails((d) => !d)}>{details ? "Hide" : "Show"} timings and log</button>
+          {details && (
+            <section className="details">
+              <dl>
+                <dt>Clock vs tower</dt><dd>{sync ? `${sync.offset} ms offset, ±${Math.ceil(sync.rtt / 2)} ms (${sync.samples} pings)` : "syncing"}</dd>
+                <dt>Round trip</dt><dd>{sync ? `${sync.rtt} ms` : "-"}</dd>
+                <dt>Your key reached the tower</dt><dd>{uplink !== null ? `${uplink} ms after you pressed` : "press to measure"}</dd>
+                <dt>Advisory first audio</dt><dd>{lastFirstAudio !== undefined ? `${Math.round(lastFirstAudio)} ms` : "-"}</dd>
+              </dl>
+              <ol className="log">
+                {lines.slice(-12).map((l, i) => <li key={i}><b>{l.party}</b> {l.text}</li>)}
+              </ol>
+              <button className="ghost" onClick={onLeave}>Leave this plane</button>
+            </section>
+          )}
         </section>
       )}
       {toast && <div className="toast">{toast}</div>}
