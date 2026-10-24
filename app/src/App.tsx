@@ -137,6 +137,7 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
   const lastStatus = useRef<Record<string, string>>({});
   const wasOpen = useRef(false);
   const pressAt = useRef(0);
+  const holding = useRef(false); // finger still on the button (the mic prompt can take a moment)
   const releaseTimer = useRef<number | null>(null);
 
   const me = stations.find((s) => s.id === station);
@@ -240,10 +241,17 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
 
   // ---- push to talk
 
-  const down = () => {
+  const down = async () => {
+    holding.current = true;
     if (onAir) return;
     if (releaseTimer.current) { clearTimeout(releaseTimer.current); releaseTimer.current = null; }
-    if (!mic.ready) { cue("mic_off"); return void say("Mic is off: use a line below"); }
+    if (!mic.ready) {
+      // The join tap normally turns the mic on; after a reload or a saved plane link it never ran.
+      // This press is a user gesture too, so ask here.
+      if (!Mic.available()) { cue("mic_off"); return void say("Mic needs https: open the https link, or use More for typed lines"); }
+      if (!(await mic.enable())) { cue("mic_off"); return void say("Microphone blocked: allow it for this site in the browser, then try again"); }
+      if (!holding.current) return void say("Mic on. Hold to talk.");
+    }
     audio();
     if (others.length) cue("busy"); // eyes-free: someone is already talking
     chirp(1400, 30);
@@ -257,6 +265,7 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
     setKeyDown(true);
   };
   const up = () => {
+    holding.current = false;
     if (!onAir || releaseTimer.current) return;
     releaseTimer.current = window.setTimeout(() => {
       releaseTimer.current = null;
@@ -289,7 +298,7 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
   const pttState = conn !== "open" ? "off" : onAir ? (others.length ? "clash" : "air") : others.length ? "busy" : "idle";
   const pttText = {
     off: "Reconnecting...",
-    idle: mic.ready ? "HOLD TO TALK" : "Mic off",
+    idle: mic.ready || Mic.available() ? "HOLD TO TALK" : "Mic off",
     air: "ON AIR",
     busy: `${others.map(nameOf).join(" and ")} talking`,
     clash: "TALKED OVER",
