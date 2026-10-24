@@ -251,3 +251,33 @@ def test_planes_share_one_moss_client(monkeypatch):
         await r.stop()
 
     asyncio.run(go())
+
+
+def test_typed_lines_reuse_one_speech_connection_per_voice(monkeypatch):
+    opened, closed = [], []
+
+    class FakeCartesia:
+        def __init__(self, voice_id=None):
+            opened.append(voice_id)
+
+        async def speak(self, text, context_id=None, on_chunk=None, **options):
+            return await FakeTTS().speak(text)
+
+        async def close(self):
+            closed.append(1)
+
+    async def go():
+        import unstep.cockpit.tts as tts_mod
+
+        monkeypatch.setenv("CARTESIA_API_KEY", "k")
+        monkeypatch.setattr(tts_mod, "CartesiaTTS", FakeCartesia)
+        monkeypatch.setattr(room_mod, "create_memory", LocalMemory)
+        r = LiveRoom(create_app(MemorySink()).state.gateway, live=True, advisory_tts=FakeTTS())
+        for _ in range(5):  # five typed lines in the same voice
+            await r.tts_factory("voice-a").speak("Hold short runway three three")
+        await r.tts_factory("voice-b").speak("Request transition")
+        assert sorted(opened) == ["voice-a", "voice-b"]  # was one connection per line
+        await r.stop()
+        assert len(closed) == 2  # and they are closed with the hub
+
+    asyncio.run(go())

@@ -395,7 +395,8 @@ class LiveRoom:
     def __init__(self, gateway, *, live: bool, stations: list[Station] | None = None,
                  tts_factory: Callable[[str | None], Any] | None = None, advisory_tts=None,
                  tower_transcriber=None, frequency: str = scenario.FREQUENCY,
-                 stream_stt_factory: Callable[[Station], Any] | None = None):
+                 stream_stt_factory: Callable[[Station], Any] | None = None,
+                 caption_turns_factory: Callable[[Station], Any] | None = None):
         self.gateway, self.live, self.frequency = gateway, live, frequency
         self.stations = {s.id: s for s in (stations or DEFAULT_STATIONS)}
         self.voices = station_voices()
@@ -403,6 +404,13 @@ class LiveRoom:
         self.advisory_tts = advisory_tts
         self.tower_transcriber = tower_transcriber
         self.stream_stt_factory = stream_stt_factory
+        self._voice_tts: dict[str, Any] = {}  # voice id -> shared Cartesia speech connection
+        self._controller_voice = None
+        # Live caption source: "manual" shows the text deltas of the same ink-2 stream that makes the final
+        # text (about every 0.5 s); "turns" also streams the audio to Cartesia's turns endpoint and shows its
+        # turn.update text, for display only. Measure both with scripts/caption_probe.py before switching.
+        self.caption_source = (env("UNSTEP_CAPTION_SOURCE") or "manual").strip().lower()
+        self.caption_turns_factory = caption_turns_factory
         self.streams: dict[str, dict] = {}  # station -> push-to-talk stream in progress (P3)
         self.stream_results: dict[str, asyncio.Task] = {}  # tx_id -> streamed transcript
         self.key_log: list[tuple[str, int, int]] = []  # (station, down_ms, up_ms), recent key presses
@@ -455,11 +463,39 @@ class LiveRoom:
     # ------------------------------------------------------------ setup
 
     def _default_tts(self, voice_id: str | None):
+        """One Cartesia connection per station voice, reused for every typed line. A new, never-closed
+        connection per line leaked sockets until Cartesia answered HTTP 429 (Rishit's benchmark hit it)."""
         if self.live and env("CARTESIA_API_KEY") and voice_id:
-            from unstep.cockpit.tts import CartesiaTTS
+            tts = self._voice_tts.get(voice_id)
+            if tts is None:
+                from unstep.cockpit.tts import CartesiaTTS
 
-            return CartesiaTTS(voice_id=voice_id)
+                tts = self._voice_tts[voice_id] = SerialTTS(CartesiaTTS(voice_id=voice_id))
+            return tts
         return FakeTTS(sample_rate=SAMPLE_RATE)
+
+    def _controller_tts(self):
+        """The controller's spoken prompts share one connection too (one per proposal leaked before)."""
+        if self.advisory_tts is not None:
+            return self.advisory_tts
+        if self._controller_voice is None:
+            self._controller_voice = SerialTTS(self._advisory_tts())
+        return self._controller_voice
+
+    async def _close_voices(self) -> None:
+        """Close every Cartesia speech connection the hub opened (on stop)."""
+        engines = [t.engine for t in self._voice_tts.values()]
+        if self._controller_voice is not None:
+            engines.append(self._controller_voice.engine)
+        for engine in engines:
+            close = getattr(engine, "close", None)
+            if close is not None:
+                try:
+                    await close()
+                except Exception:
+                    log.debug("closing a speech connection failed", exc_info=True)
+        self._voice_tts.clear()
+        self._controller_voice = None
 
     def _advisory_tts(self):
         if self.advisory_tts is not None:
@@ -745,6 +781,7 @@ class LiveRoom:
     async def stop(self) -> None:
         for task in list(self._tasks):
             task.cancel()
+        await self._close_voices()
         if self.flight_log is not None and self.edges:  # every flight ends with the hub: archive, push once
             for callsign, edge in list(self.edges.items()):
                 try:
@@ -984,6 +1021,21 @@ class LiveRoom:
         return CartesiaManualSTT(keyterms=build_keyterms(callsigns=[s.spoken or s.callsign, s.callsign],
                                                          runways=runways))
 
+    def _caption_turns_stt(self, s: Station):
+        """A turns-endpoint stream for captions only, when UNSTEP_CAPTION_SOURCE=turns; else None."""
+        if self.caption_source != "turns":
+            return None
+        if self.caption_turns_factory is not None:
+            return self.caption_turns_factory(s)
+        if not (self.live and env("CARTESIA_API_KEY")):
+            return None
+        from unstep.cockpit.stt import CartesiaTurnSTT
+
+        planes = [x for x in self.stations.values() if x.kind == "aircraft"]
+        names = [c for x in planes for c in (x.spoken, x.callsign) if c] if s.kind == "atc" \
+            else [s.spoken or s.callsign, s.callsign]
+        return CartesiaTurnSTT(keyterms=build_keyterms(callsigns=names, runways=("33", "28L")))
+
     async def mic_frame(self, station: str, pcm: bytes, start_ms: int) -> None:
         """About 100 ms of 16 kHz PCM while the key is held. Goes to Cartesia as it arrives,
         so speech reaches STT at real-time pace by itself and finalize can run at release."""
@@ -1150,13 +1202,19 @@ class LiveRoom:
                 self._caption(s.id, stream_id, so_far, final=False, source="stt",
                               lag_ms=now_ms() - st["sent_end_ms"])
 
-        if hasattr(stt, "on_text") and st.get("captions", True):  # set before `async with`: read when the socket opens
+        turns = self._caption_turns_stt(s) if st.get("captions", True) else None
+        tq: asyncio.Queue | None = asyncio.Queue() if turns is not None else None
+        turn_task = self._spawn(self._turn_captions(s, stream_id, st, turns, tq)) if turns is not None else None
+        # set before `async with`: read when the socket opens. With the turns source, that stream owns the captions.
+        if hasattr(stt, "on_text") and st.get("captions", True) and turns is None:
             stt.on_text = on_text
         try:
             async with stt:
                 sent = 0
                 while (pcm := await st["queue"].get()) is not None:
                     await stt.send_audio(pcm)
+                    if tq is not None:
+                        tq.put_nowait(pcm)
                     sent += len(pcm)
                     st["sent_end_ms"] = st["start_ms"] + sent * 1000 // (SAMPLE_RATE * 2)
                 released = now_ms()
@@ -1168,6 +1226,7 @@ class LiveRoom:
                     result = (await stt.finalize()).text
                 log.info("streamed STT for %s final %d ms after release", s.id, now_ms() - released)
                 final_text = result.text if s.kind == "atc" else result
+                st["captions_done"] = True  # a late interim from the turns stream must not undo the final text
                 if final_text:
                     self._caption(s.id, stream_id, final_text, final=True, source="stt", lag_ms=now_ms() - released)
                 if s.kind == "atc":  # S1: how long after the key came up the tower's words were final
@@ -1176,6 +1235,41 @@ class LiveRoom:
         except Exception:
             log.exception("streamed STT failed for %s; the clip will be transcribed instead", s.id)
             return None
+        finally:
+            if tq is not None:
+                tq.put_nowait(None)
+                try:
+                    await asyncio.wait_for(asyncio.shield(turn_task), 1.5)
+                except Exception:
+                    turn_task.cancel()
+
+    async def _turn_captions(self, s: Station, stream_id: str, st: dict, turns, tq: asyncio.Queue) -> None:
+        """Display-only captions from Cartesia's turns endpoint: the same audio, and `turn.update` text as it comes."""
+        committed = ""
+
+        async def read() -> None:
+            nonlocal committed
+            async for ev in turns.events():
+                text = (ev.transcript or "").strip()
+                if ev.type == "turn.end":
+                    committed = f"{committed} {text}".strip() if text else committed
+                    text = ""
+                elif ev.type not in ("turn.update", "turn.eager_end") or not text:
+                    continue
+                shown = f"{committed} {text}".strip()
+                if shown and not st.get("captions_done"):
+                    self._caption(s.id, stream_id, shown, final=False, source="stt",
+                                  lag_ms=now_ms() - st.get("sent_end_ms", st["start_ms"]))
+
+        try:
+            async with turns:
+                reader = asyncio.create_task(read())
+                while (pcm := await tq.get()) is not None:
+                    await turns.send_audio(pcm)
+                await asyncio.sleep(0.2)  # let the last partial arrive before the final text replaces it
+                reader.cancel()
+        except Exception:
+            log.exception("turns caption stream failed for %s; captions fall back to the final text", s.id)
 
     async def mic_end(self, station: str) -> Transmission | None:
         st = self.streams.pop(station, None)
@@ -1667,7 +1761,7 @@ class LiveRoom:
         p = trace.get("proposal") or {}
         text = f"Needs you. Blocked call to {trace.get('callsign')}: {p.get('instruction_text', '')}. Approve?"
         try:
-            speech = await self._advisory_tts().speak(text)
+            speech = await self._controller_tts().speak(text)
             self.send_to({"atc"}, {"type": "controller_audio", "text": text,
                                    "audio": wav_b64(np.frombuffer(speech.pcm, dtype="<i2"), speech.sample_rate)})
         except Exception:
