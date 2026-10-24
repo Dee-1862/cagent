@@ -19,6 +19,16 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: The Moss search step says why no hint came out
+
+**Type:** Fixed
+**Area:** Edge device
+
+- Rishit's review of M3 (R23): the search runs before the age check, so the console could show "Moss searched... top hit X" followed by no hint, as if the hit were ignored. The evidence now carries `no_hint` (clearance too old, no restrictive instruction to guess, or runway not at this airport) and the trace step ends with "No hint: ...".
+- Checked: 1 new test (stale clearance).
+
+**Related:** agent mail R23
+
 ## 2026-10-24: Cartesia feedback: the "niner" respelling lesson
 
 **Type:** Docs

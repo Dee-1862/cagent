@@ -62,3 +62,13 @@ def test_console_trace_shows_the_moss_search(make_room):
         await room.stop()
 
     asyncio.run(go())
+
+
+def test_a_stale_clearance_says_why_there_is_no_hint():
+    m = LocalMemory()
+    airport, flight = run(seed(m, CALLSIGN, t0=T0))
+    evidence = {}
+    hint = run(derive_hint(m, CALLSIGN, "Cessna 123, short runway 30", flight, airport,
+                           now=T0 + 60 * 60_000, evidence=evidence))
+    assert hint.kind == "none" and evidence["top_hit_id"] == f"{flight}/clr-0007"
+    assert "too old to use" in evidence["no_hint"]

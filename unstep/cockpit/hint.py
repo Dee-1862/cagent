@@ -188,11 +188,18 @@ async def _derive_hint(memory, callsign, heard_text, flight_index, airport_index
             log.exception("hint search failed")
             evidence["error"] = "search failed"
     now = now_ms() if now is None else now
+
+    def outcome(why: str) -> None:  # why no hint came out, so the console never shows a hit "ignored"
+        if evidence is not None:
+            evidence["no_hint"] = why
+
     if now - _ts(best) > max_age_ms:
+        outcome(f"the newest clearance is too old to use (over {max_age_ms // 60_000} min)")
         return none_hint(moss_ms)
 
     text = likely_instruction(best.text)
     if text is None or classify(text) != "restrictive":
+        outcome("the newest clearance gives no restrictive instruction to guess")
         return none_hint(moss_ms)
 
     # Confirm the runway exists at this airport before speaking it.
@@ -200,6 +207,7 @@ async def _derive_hint(memory, callsign, heard_text, flight_index, airport_index
     check = await memory.query(airport_index, f"Runway {runway}", top_k=3, alpha=0.2, filter={"type": {"$eq": "runway"}})
     moss_ms += check.time_taken_ms
     if not any(re.search(rf"\b{runway}\b", d.text, re.I) for d in check.docs):
+        outcome(f"Runway {runway} is not in this airport's records")
         return none_hint(moss_ms)
 
     return LocalHint(
