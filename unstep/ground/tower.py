@@ -159,6 +159,18 @@ class TowerStream:
         self.frames = 0
         self.last_alignment: dict | None = None
 
+    @property
+    def on_partial(self):
+        return getattr(self.text_stt, "on_partial", None)
+
+    @on_partial.setter
+    def on_partial(self, callback) -> None:
+        """Live captions: interim text comes from the keyed ink-2 stream."""
+        try:
+            self.text_stt.on_partial = callback
+        except AttributeError:
+            pass
+
     async def __aenter__(self):
         await asyncio.gather(self.text_stt.__aenter__(), self.word_stt.__aenter__())
         return self

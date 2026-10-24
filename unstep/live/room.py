@@ -46,6 +46,7 @@ log = logging.getLogger("unstep.live")
 
 VOICES_FILE = ROOT / "assets" / "clips" / "real" / "voices.json"
 GAP_MS = 300  # quiet time after the last transmission before a cluster is processed
+LEVEL_MS = 50  # one waveform bar per 50 ms of audio
 CHIME_MS = 220  # length of the advisory chime (unstep.cockpit.tts.chime default)
 RECOVERY_STALE_MS = 30_000  # C1: a recovery line older than this is dropped, never spoken late
 RECOVERY_WAIT_GAP_MS = 10_000  # how long a recovery waits for the controller to stop talking
@@ -874,15 +875,63 @@ class LiveRoom:
             self._key(station, True, start_ms)
         if st["bytes"] + len(pcm) > MAX_STREAM_S * SAMPLE_RATE * 2:
             return
+        self._send_levels(station, f"{station}-{start_ms}", start_ms + st["bytes"] * 1000 // (SAMPLE_RATE * 2), pcm)
         st["chunks"].append(pcm)
         st["bytes"] += len(pcm)
         st["queue"].put_nowait(pcm)
 
+    # ------------------------------------------------------------ live captions and levels (display only)
+
+    def _send_levels(self, station: str, stream_id: str, t_ms: int, pcm) -> None:
+        """`level`: one RMS value (0..1) per 50 ms of audio, hub time of the first one. Numbers only."""
+        samples = (np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0
+                   if isinstance(pcm, (bytes, bytearray)) else np.asarray(pcm, dtype=np.float32))
+        step = SAMPLE_RATE * LEVEL_MS // 1000
+        rms = [round(float(np.sqrt(np.mean(samples[i:i + step] ** 2))), 4)
+               for i in range(0, len(samples) - step + 1, step)]
+        if rms:
+            self.send_to(None, {"type": "level", "station": station, "id": stream_id, "t_ms": int(t_ms),
+                                "step_ms": LEVEL_MS, "rms": rms})
+
+    def _caption(self, station: str, stream_id: str, text: str, final: bool, source: str,
+                 lag_ms: float | None = None, at_ms: list[int | None] | None = None) -> None:
+        """`caption`: the words so far (Cartesia interim or final), keywords tagged by kind."""
+        from unstep.live.captions import tag
+
+        words = tag(text)
+        for k, w in enumerate(words):
+            w["at_ms"] = at_ms[k] if at_ms and k < len(at_ms) else None
+        self.send_to(None, {"type": "caption", "station": station, "id": stream_id, "text": text, "final": final,
+                            "source": source, "lag_ms": None if lag_ms is None else round(lag_ms, 1),
+                            "words": words, "ts": now_ms()})
+
+    async def _tts_captions(self, tx: Transmission) -> None:
+        """Typed lines have no STT stream: show each word at its spoken time, from Cartesia TTS word times."""
+        words = [(w, tx.start_ms + int(start * 1000)) for w, start, _ in tx.words if str(w).strip()]
+        for k in range(len(words)):
+            await asyncio.sleep(max(0.0, (words[k][1] - now_ms()) / 1000))
+            text = " ".join(str(w).strip() for w, _ in words[:k + 1])
+            self._caption(tx.station, tx.tx_id, text, final=k == len(words) - 1, source="tts",
+                          at_ms=[t for _, t in words[:k + 1]])
+
     async def _pump(self, s: Station, stt, st: dict):
+        stream_id = f"{s.id}-{st['start_ms']}"
+        st["sent_end_ms"] = st["start_ms"]
+
+        def partial(text: str) -> None:  # Cartesia interim transcript, while the key is still held
+            self._caption(s.id, stream_id, text, final=False, source="stt", lag_ms=now_ms() - st["sent_end_ms"])
+
+        try:
+            stt.on_partial = partial  # STT classes without interim results simply never call it
+        except AttributeError:
+            pass
         try:
             async with stt:
+                sent = 0
                 while (pcm := await st["queue"].get()) is not None:
                     await stt.send_audio(pcm)
+                    sent += len(pcm)
+                    st["sent_end_ms"] = st["start_ms"] + sent * 1000 // (SAMPLE_RATE * 2)
                 released = now_ms()
                 if s.kind == "atc":
                     result = await stt.finish(st["start_ms"], st["end_ms"], self.frequency)
@@ -891,6 +940,9 @@ class LiveRoom:
                 else:
                     result = (await stt.finalize()).text
                 log.info("streamed STT for %s final %d ms after release", s.id, now_ms() - released)
+                final_text = result.text if s.kind == "atc" else result
+                if final_text:
+                    self._caption(s.id, stream_id, final_text, final=True, source="stt", lag_ms=now_ms() - released)
                 if s.kind == "atc":  # S1: how long after the key came up the tower's words were final
                     self.stt_final[result.transcript_id] = (now_ms(), now_ms() - released)
                 return result
@@ -936,6 +988,9 @@ class LiveRoom:
         self.send_to({tx.station}, {"type": "transmitting", "tx_id": tx.tx_id, "text": tx.text,
                                     "end_ms": tx.end_ms})
         self.flow(tx.station if tx.station == "atc" else f"pilot:{tx.station}", "radio", "voice")
+        if tx.text and tx.words:  # typed line: captions and levels from the TTS audio and word times
+            self._send_levels(tx.station, tx.tx_id, tx.start_ms, tx.pcm)
+            self._spawn(self._tts_captions(tx))
         self.pending.append(tx)
         self._wake.set()
 

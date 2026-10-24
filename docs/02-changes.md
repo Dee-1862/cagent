@@ -19,6 +19,19 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Live captions and waveform levels from the hub
+
+**Type:** Added
+**Area:** Audio
+
+- To show how fast Cartesia is, every seat now gets `caption {station, id, text, final, source, lag_ms, words: [{text, kind, at_ms}], ts}` while someone talks: interim text while the key is held (`source: "stt"`, `lag_ms` = hub now minus the hub time of the end of the audio sent so far), the final text at release, and for typed lines each word at its spoken time from the TTS word timestamps (`source: "tts"`).
+- `level {station, id, t_ms, step_ms: 50, rms: [...]}`: one loudness value per 50 ms of the audio already arriving (push-to-talk frames, or the TTS audio of a typed line), for a scrolling waveform. Numbers only, no audio; neither message goes to Elastic.
+- `unstep/live/captions.py` tags words as callsign, action, runway or taxiway, for spoken and written forms ("Cessna one two three", "Runway 28L", "via Bravo", "cross runway two niner").
+- Interim results need an `on_partial` callback in Rishit's `CartesiaManualSTT` (asked in D17); until then the room sets it and STT classes without it simply send no partials. `TowerStream` passes it to its ink-2 stream.
+- Checked: 3 tagger tests and 2 room tests with a fake STT that emits partials.
+
+**Related:** agent mail D17
+
 ## 2026-10-24: Recorder for a live-room demo video (R24)
 
 **Type:** Added
