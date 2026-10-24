@@ -194,9 +194,12 @@ def test_tower_dual_stream_text_words_and_pacing(monkeypatch):
     monkeypatch.setattr(tower.asyncio, "sleep", sleep)
     monkeypatch.setattr(tower.time, "monotonic", lambda: 0)
     pcm = b"\x00\x00" * 2400
-    result = asyncio.run(tower.TowerTranscriber(Stream).transcribe(pcm, 1000, 1150, "118.7", "N123"))
-    assert result.text == "keyed text" and result.words[0].word == "word"
-    assert result.words[0].start == 0.02 and result.ptt_start == 1000
+    transcriber = tower.TowerTranscriber(Stream)
+    result = asyncio.run(transcriber.transcribe(pcm, 1000, 1150, "118.7", "N123"))
+    # P7b: the words are ink-2's; with nothing in common they are spread over the call and flagged
+    assert result.text == "keyed text" and [w.word for w in result.words] == ["keyed", "text"]
+    assert result.words[0].start == 0 and result.words[-1].end == 0.15 and result.ptt_start == 1000
+    assert transcriber.last_alignment["matched"] == 0 and len(transcriber.last_alignment["interpolated"]) == 2
     assert all(b"".join(stream.audio) == pcm for stream in streams)
     assert "N123" in streams[0].options["keyterms"]
     assert streams[1].options == {"model": "ink-whisper", "timestamp_granularities": ["word"]}

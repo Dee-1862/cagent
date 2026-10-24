@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Tower words from ink-2 now carry ink-whisper's times (P7b)
+
+**Type:** Fixed
+**Area:** Ground agents
+
+- Cartesia gives key terms only on `ink-2` and word times only on `ink-whisper`, so the two tower texts could differ and the struck "blocked words" could be the wrong words.
+- `unstep/ground/tower.py` `align_words()`: both texts are cut into comparison keys (lowercase, one digit per key, spoken digits as digits) and matched with difflib. Each `ink-2` word takes the time span of the keys it matched, so "1-2-3" gets the span of "one two three". Words with no match get times interpolated between their neighbours.
+- `TowerTranscriber` and `TowerStream` both use it and keep the report in `last_alignment`; `alignment_audit()` turns it into an `AuditRecord` (stage `tower_word_alignment`) listing the interpolated words. No contract change.
+- Checked with fake STT streams only (8 new tests); not run against live Cartesia.
+
+**Related:** [09-cartesia-feedback.md](09-cartesia-feedback.md) item 2, agent mail D4, D7
+
 ## 2026-10-24: Cartesia re-test written up, repro script runs without PYTHONPATH
 
 **Type:** Docs
