@@ -48,6 +48,7 @@ VOICES_FILE = ROOT / "assets" / "clips" / "real" / "voices.json"
 GAP_MS = 300  # quiet time after the last transmission before a cluster is processed
 TRANSCRIPT_WAIT_S = 12.0  # how long ground agents wait for the tower transcript
 READBACK_WAIT_S = 45.0  # how long a cockpit waits for the pilot's readback
+CLAIM_S = 20.0  # a seat handed out by join() stays reserved this long for its websocket
 
 
 @dataclass
@@ -57,12 +58,18 @@ class Station:
     label: str
     voice_role: str | None = None  # key in assets/clips/real/voices.json
     callsign: str | None = None
+    spoken: str | None = None  # callsign as said on frequency, e.g. "Cessna 1-2-3"
+    name: str | None = None  # plain name for judges, e.g. "Plane A"
 
 
+def aircraft_station(callsign: str, spoken: str, name: str, voice_role: str) -> Station:
+    return Station(callsign, "aircraft", f"Pilot, {spoken} ({callsign})", voice_role, callsign, spoken, name)
+
+
+FLEET_STATIONS = [aircraft_station(*f) for f in scenario.FLEET]
 DEFAULT_STATIONS = [
     Station("atc", "atc", "Tower controller: human in the loop", "tower"),
-    Station("N123AB", "aircraft", "Pilot, Cessna 1-2-3 (N123AB)", "pilot", "N123AB"),
-    Station("H456", "aircraft", "Pilot, Helicopter 4-5-6 (H456)", "heli", "H456"),
+    *FLEET_STATIONS[:2],
     Station("observer", "observer", "Observer screen for judges"),
 ]
 
@@ -320,6 +327,11 @@ class LiveRoom:
         self._start_lock = asyncio.Lock()
         self.links: dict[str, InProcLink] = {}
         self.policy: PolicyAgent | None = None
+        self.graph = [dict(n) for n in GRAPH_NODES]
+        self.key_since: dict[str, int] = {}  # station -> hub time its radio key went down
+        self.claims: dict[str, float] = {}  # station -> hub time join() handed it out
+        self._join_lock = asyncio.Lock()
+        self._moss_used = 0
 
     # ------------------------------------------------------------ setup
 
@@ -362,25 +374,66 @@ class LiveRoom:
             for link in self.links.values():
                 await link.connect()
 
-            first = True
-            for s in self.stations.values():
-                if s.kind != "aircraft":
-                    continue
-                turns = StationTurns()
-                # Moss allows a few indexes per plan: the first aircraft uses Moss, others local memory.
-                edge = LiveEdge(callsign=s.callsign, frequency=self.frequency,
-                                link=InProcLink(gw, "cockpit"),
-                                memory=create_memory() if first else LocalMemory(),
-                                tts=SerialTTS(self._advisory_tts()), turn_stt_factory=turns.factory,
-                                audio_out=BrowserAudioOut(self, s.id))
-                edge.room = self
-                first = False
-                await edge.start()
-                self.edges[s.callsign] = edge
-                self.turns[s.callsign] = turns
+            for s in list(self.stations.values()):
+                if s.kind == "aircraft":
+                    await self._start_edge(s)
             self._spawn(self._scheduler())
             self._spawn(self._ticker())
             self._started = True
+
+    async def _start_edge(self, s: Station) -> None:
+        """One cockpit agent per aircraft, with its own flight session."""
+        turns = StationTurns()
+        # A Moss session indexes in memory and only reaches the cloud index on push_index(),
+        # so the plan's index limit should not cap sessions. Until that is checked live,
+        # UNSTEP_MOSS_AIRCRAFT (default 1) aircraft get Moss and the rest local memory.
+        memory = create_memory() if self._moss_used < int(env("UNSTEP_MOSS_AIRCRAFT") or 1) else LocalMemory()
+        self._moss_used += 1
+        edge = LiveEdge(callsign=s.callsign, frequency=self.frequency,
+                        link=InProcLink(self.gateway, "cockpit"), memory=memory,
+                        tts=SerialTTS(self._advisory_tts()), turn_stt_factory=turns.factory,
+                        audio_out=BrowserAudioOut(self, s.id))
+        edge.room = self
+        await edge.start()
+        self.edges[s.callsign] = edge
+        self.turns[s.callsign] = turns
+        node = f"cockpit:{s.callsign}"
+        if not any(n["id"] == node for n in self.graph):
+            self.graph.append({"id": node, "label": f"Cockpit agent {s.callsign}",
+                               "sub": "Cartesia + " + getattr(memory, "backend", "local")})
+
+    def stations_info(self) -> list[dict]:
+        return [asdict(s) for s in self.stations.values()]
+
+    async def claim_aircraft(self) -> Station | None:
+        """Seat for a person who taps "join as a pilot": a free fleet aircraft, added on demand.
+
+        Free means nobody is connected to it and no other join claimed it in the last
+        CLAIM_S seconds. None when the whole fleet is taken.
+        """
+        async with self._join_lock:
+            now = now_ms()
+            for s in FLEET_STATIONS:
+                if s.callsign not in self.fleet_limit():
+                    break
+                taken = self.clients.get(s.id) or now - self.claims.get(s.id, -1e12) < CLAIM_S * 1000
+                if taken:
+                    continue
+                if s.id not in self.stations:
+                    self.stations[s.id] = s
+                    self.clients[s.id] = set()
+                    if self._started:
+                        await self._start_edge(s)
+                    self.send_to(None, {"type": "stations", "stations": self.stations_info(),
+                                        "graph": self.graph})
+                self.claims[s.id] = now
+                return self.stations[s.id]
+            return None
+
+    @staticmethod
+    def fleet_limit() -> set[str]:
+        n = int(env("UNSTEP_MAX_AIRCRAFT") or len(scenario.FLEET))
+        return {f[0] for f in scenario.FLEET[:max(1, n)]}
 
     async def stop(self) -> None:
         for task in list(self._tasks):
@@ -400,18 +453,21 @@ class LiveRoom:
 
     async def join(self, station: str, ws) -> None:
         self.clients[station].add(ws)
+        self.claims.pop(station, None)
         await ws.send_json(self.snapshot(station))
         self.presence()
 
     def leave(self, station: str, ws) -> None:
         self.clients[station].discard(ws)
+        if not self.clients[station] and station in self.key_since:
+            self._key(station, False)  # a phone that drops mid-call must not hold the key down
         self.presence()
 
     def snapshot(self, station: str) -> dict:
         return {"type": "hello", "you": station, "now_ms": now_ms(), "live": self.live,
                 "frequency": self.frequency,
-                "stations": [asdict(s) for s in self.stations.values()],
-                "graph": GRAPH_NODES, "autonomy": self.policy.enabled if self.policy else True,
+                "stations": self.stations_info(), "keyed": dict(self.key_since),
+                "graph": self.graph, "autonomy": self.policy.enabled if self.policy else True,
                 "traces": list(self.traces.values()), "radio": self.radio_log[-30:],
                 "insights": self.insights[-20:], "mic": self.live and bool(env("CARTESIA_API_KEY"))}
 
@@ -446,8 +502,8 @@ class LiveRoom:
         elif kind == "mic":
             await self.mic(station, base64.b64decode(data["pcm"]), int(data["start_ms"]))
         elif kind == "key":
-            (self.keyed.add if data.get("down") else self.keyed.discard)(station)
-            self._wake.set()
+            at = data.get("at")
+            self._key(station, bool(data.get("down")), int(at) if isinstance(at, (int, float)) else None)
         elif kind == "ask" and station in self.edges:
             self._spawn(self.edges[station].ask(str(data.get("text", ""))[:200]))
         elif kind == "decide" and station == "atc":
@@ -470,7 +526,7 @@ class LiveRoom:
         s = self.stations.get(station)
         if s is None or s.kind == "observer" or not pcm:
             return None
-        self.keyed.discard(station)
+        self._key(station, False)
         tx = Transmission(station, start_ms, to_mono16k(pcm, SAMPLE_RATE))
         await self.transmit(tx)
         return tx
@@ -486,6 +542,36 @@ class LiveRoom:
         self.flow(tx.station if tx.station == "atc" else f"pilot:{tx.station}", "radio", "voice")
         self.pending.append(tx)
         self._wake.set()
+
+    def _key(self, station: str, down: bool, at: int | None = None) -> None:
+        """Radio key up or down, shared with every seat the moment it happens.
+
+        Phones show "Tower is talking" from this, and two keys down at once is a
+        stepped-on call known within one network hop, long before any transcript.
+        `at` is the press time on the hub clock as the phone measured it (after its
+        clock sync); the gap to now is the one-way delay from that phone.
+        """
+        received = now_ms()
+        s = self.stations.get(station)
+        if s is None or s.kind == "observer":
+            return
+        if down:
+            if station in self.key_since:
+                return
+            pressed = at if at is not None and abs(received - at) < 5000 else received
+            self.key_since[station] = pressed
+            self.keyed.add(station)
+        else:
+            if self.key_since.pop(station, None) is None:
+                return
+            self.keyed.discard(station)
+        self._wake.set()
+        self.send_to(None, {"type": "keyed", "station": station, "down": down,
+                            "keyed": dict(self.key_since), "ts": received})
+        if down and len(self.key_since) >= 2:
+            self.send_to(None, {"type": "stepon_live", "stations": sorted(self.key_since),
+                                "since_ms": max(self.key_since.values()), "detected_ms": received,
+                                "uplink_ms": received - self.key_since[station]})
 
     async def decide(self, event_id: str, approve: bool) -> None:
         trace = self.traces.get(event_id)

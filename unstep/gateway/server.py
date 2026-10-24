@@ -13,6 +13,7 @@ Run: uvicorn unstep.gateway.server:app --port 8765
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 import json
 import logging
 import os
@@ -28,7 +29,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import ValidationError
 
 from unstep.clock import now_ms
-from unstep.config import allowed_hosts, gateway_token, pending_ttl_s
+from unstep.config import allowed_hosts, allowed_origins, gateway_token, pending_ttl_s
 from unstep.contracts import (
     ApprovedDirective,
     ProposedDirective,
@@ -194,11 +195,16 @@ class Gateway:
 
 
 def origin_ok(ws: WebSocket) -> bool:
-    """Browsers send Origin. Only accept pages served by this gateway (or local tools)."""
+    """Browsers send Origin. Accept pages served by this gateway, local tools, and the
+    origins listed in UNSTEP_ALLOWED_ORIGINS (the hosted pilot app)."""
     origin = ws.headers.get("origin")
     if origin is None:
         return True
-    return urlparse(origin).netloc == ws.headers.get("host")
+    return urlparse(origin).netloc == ws.headers.get("host") or origin_listed(origin)
+
+
+def origin_listed(origin: str) -> bool:
+    return any(fnmatch.fnmatchcase(origin.rstrip("/"), pattern) for pattern in allowed_origins())
 
 
 def create_app(sink=None, pending_ttl_s: float = PENDING_TTL_S,

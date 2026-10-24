@@ -148,10 +148,10 @@ def display_text(text: str) -> str:
 
 
 def spoken_callsign(callsign: str) -> str:
-    """How a callsign is said on frequency: the demo registration uses its type and digits."""
+    """How a callsign is said on frequency: fleet registrations use their type and digits."""
     from unstep import scenario
 
-    return scenario.SPOKEN_CALLSIGN if callsign == scenario.CALLSIGN else callsign
+    return scenario.SPOKEN.get(callsign, callsign)
 
 
 # ---------------------------------------------------------------- parsing input

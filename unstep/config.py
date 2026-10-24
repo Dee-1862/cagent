@@ -65,6 +65,15 @@ def allowed_hosts() -> list[str]:
     return sorted(set(hosts))
 
 
+def allowed_origins() -> list[str]:
+    """Web origins on other domains that may open a live room socket, for example the
+    pilot app on Vercel: UNSTEP_ALLOWED_ORIGINS=https://unstep.vercel.app (comma
+    separated, `*` wildcards allowed, as in https://*.vercel.app). Pages served by the
+    gateway itself are always allowed. The gateway token still applies."""
+    extra = env("UNSTEP_ALLOWED_ORIGINS") or ""
+    return [o.strip().rstrip("/") for o in extra.split(",") if o.strip()]
+
+
 def gateway_token() -> str | None:
     """Optional shared secret (FR-13). When set, every client must send it."""
     return env("UNSTEP_GATEWAY_TOKEN")

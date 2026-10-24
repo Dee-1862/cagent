@@ -8,11 +8,15 @@ import logging
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+import fnmatch
+
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from unstep.config import ROOT, env, gateway_token
+from unstep.clock import now_ms
+from unstep.config import ROOT, allowed_origins, env, gateway_token
 from unstep.gateway.server import create_app, origin_ok
 from unstep.live.room import LiveRoom
 
@@ -42,11 +46,28 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None) -> Fast
         html = (WEB / "atc" / "index.html").read_text(encoding="utf-8")
         return HTMLResponse(html.replace("__UNSTEP_TOKEN_QUERY__", query))
 
+    origins = allowed_origins()
+    if origins:  # the hosted pilot app reads /live/stations and calls /live/join cross-origin
+        app.add_middleware(CORSMiddleware, allow_origin_regex="|".join(fnmatch.translate(o) for o in origins),
+                           allow_methods=["GET", "POST"], allow_headers=["content-type"])
+
     @app.get("/live/stations")
     async def live_stations():
-        return {"live": room.live, "frequency": room.frequency,
-                "stations": [{"id": st.id, "kind": st.kind, "label": st.label} for st in room.stations.values()],
+        return {"live": room.live, "frequency": room.frequency, "now_ms": now_ms(),
+                "stations": [{"id": st.id, "kind": st.kind, "label": st.label, "callsign": st.callsign,
+                              "spoken": st.spoken, "name": st.name} for st in room.stations.values()],
                 "connected": {sid: len(c) for sid, c in room.clients.items()}}
+
+    @app.post("/live/join")
+    async def live_join(request: Request):
+        """"Join as a pilot": hands out a free aircraft, adding one from the fleet if needed."""
+        if gateway_token() and request.query_params.get("token") != gateway_token():
+            return JSONResponse({"error": "wrong room token"}, status_code=403)
+        seat = await room.claim_aircraft()
+        if seat is None:
+            return JSONResponse({"error": "every aircraft is taken"}, status_code=409)
+        return {"station": seat.id, "callsign": seat.callsign, "spoken": seat.spoken, "name": seat.name,
+                "frequency": room.frequency, "live": room.live}
 
     app.mount("/live/static", StaticFiles(directory=WEB), name="live-static")
 
@@ -82,6 +103,11 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None) -> Fast
         try:
             while True:
                 data = await ws.receive_json()
+                if isinstance(data, dict) and data.get("type") == "ping":
+                    # Clock sync: the phone takes the reply with the shortest round trip and
+                    # sets offset = t1 - (t0 + t3) / 2, so its key and mic times are hub times.
+                    await ws.send_json({"type": "pong", "t0": data.get("t0"), "t1": now_ms()})
+                    continue
                 try:
                     await room.handle(station, data)
                 except Exception as e:  # one bad input must not drop the seat

@@ -26,6 +26,19 @@ CALLSIGN = "N123AB"
 SPOKEN_CALLSIGN = "Cessna 1-2-3"
 FREQUENCY = "118.700"
 
+# Aircraft people can fly in the live room, in join order: (callsign, spoken callsign,
+# plain name, voice role in assets/clips/real/voices.json). Digit groups never contain
+# each other, so callsigns_match can't confuse two aircraft.
+FLEET = [
+    ("N123AB", "Cessna 1-2-3", "Plane A", "pilot"),
+    ("H456", "Helicopter 4-5-6", "Plane B", "heli"),
+    ("N789PA", "Piper 7-8-9", "Plane C", "pilot"),
+    ("N240CR", "Cirrus 2-4-0", "Plane D", "heli"),
+    ("N901DA", "Diamond 9-0-1", "Plane E", "pilot"),
+    ("N678SK", "Skyhawk 6-7-8", "Plane F", "heli"),
+]
+SPOKEN = {callsign: spoken for callsign, spoken, _, _ in FLEET}
+
 # Fixed base time so examples are stable. Live runs use clock.now_ms().
 T0 = 1_792_800_000_000
 
