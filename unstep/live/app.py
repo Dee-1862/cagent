@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from unstep.clock import now_ms
 from unstep.config import ROOT, allowed_origins, env, gateway_token
 from unstep.gateway.server import create_app, origin_listed, origin_ok
+from unstep.cockpit.translate import LANGUAGES
 from unstep.live.room import LiveRoom
 
 log = logging.getLogger("unstep.live")
@@ -119,7 +120,8 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
         return {"live": room.live, "frequency": room.frequency, "now_ms": now_ms(),
                 "stations": [{"id": st.id, "kind": st.kind, "label": st.label, "callsign": st.callsign,
                               "spoken": st.spoken, "name": st.name} for st in room.stations.values()],
-                "connected": {sid: len(c) for sid, c in room.clients.items()}}
+                "connected": {sid: len(c) for sid, c in room.clients.items()},
+                "languages": dict(LANGUAGES)}  # offered for the private repeat; English always first
 
     @app.get("/live/stats")
     async def live_stats(since_ms: int = 0):
@@ -139,11 +141,11 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
         """"Join as a pilot": hands out a free aircraft, adding one from the fleet if needed."""
         if gateway_token() and request.query_params.get("token") != gateway_token():
             return JSONResponse({"error": "wrong room token"}, status_code=403)
-        seat = await room.claim_aircraft()
+        seat = await room.claim_aircraft(language=request.query_params.get("language"))
         if seat is None:
             return JSONResponse({"error": "every aircraft is taken"}, status_code=409)
         return {"station": seat.id, "callsign": seat.callsign, "spoken": seat.spoken, "name": seat.name,
-                "frequency": room.frequency, "live": room.live}
+                "frequency": room.frequency, "live": room.live, "language": room.languages.get(seat.id)}
 
     app.mount("/live/static", StaticFiles(directory=WEB), name="live-static")
     if PILOT_APP.is_dir():  # `npm run build` in app/: the pilot app, served here for LAN or offline runs

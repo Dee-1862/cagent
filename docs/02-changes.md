@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Pilots pick a language for Unstep's private repeat when they join
+
+**Type:** Added
+**Area:** Other
+
+- Rishit's cockpit now repeats approved directives in the pilot's language after the English (d711e89; Spanish, Hindi, French, only if every number survives). The join side is ours.
+- `POST /live/join?language=es` stores the language for that seat and calls `CockpitEdge.set_language()`; a `{type: "language", code}` socket message changes it later. Only `unstep.cockpit.translate.LANGUAGES` are kept, anything else means English only. `/live/stations` lists the offered languages.
+- Pilot app: a small "English, then ..." picker on the join screen, remembered on the phone.
+- Checked: 1 new test through the real routes and socket; vitest and build pass.
+
+**Related:** agent mail R17 (a), R18 item 2
+
 ## 2026-10-24: Elastic ground agents as files, a deploy script and the hub client (B5)
 
 **Type:** Added

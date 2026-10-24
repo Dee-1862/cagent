@@ -35,10 +35,13 @@ export function parseHub(raw: string, token: string | null = null): Hub {
   return { http, ws: http.replace(/^http/i, "ws"), token: token || null };
 }
 
-export type Seat = { station: string; callsign: string; spoken: string; name: string; frequency: string; live: boolean };
+export type Seat = { station: string; callsign: string; spoken: string; name: string; frequency: string; live: boolean; language?: string | null };
 
-export async function join(hub: Hub): Promise<Seat> {
-  const q = hub.token ? `?token=${encodeURIComponent(hub.token)}` : "";
+export async function join(hub: Hub, language?: string | null): Promise<Seat> {
+  const params = new URLSearchParams();
+  if (hub.token) params.set("token", hub.token);
+  if (language) params.set("language", language);
+  const q = params.toString() ? `?${params}` : "";
   const r = await fetch(`${hub.http}/live/join${q}`, { method: "POST" });
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(body.error || `hub answered ${r.status}`);

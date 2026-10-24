@@ -381,6 +381,7 @@ class LiveRoom:
         self.stream_stt_factory = stream_stt_factory
         self.streams: dict[str, dict] = {}  # station -> push-to-talk stream in progress (P3)
         self.stream_results: dict[str, asyncio.Task] = {}  # tx_id -> streamed transcript
+        self.languages: dict[str, str | None] = {}  # station -> pilot language for the private repeat
         self.streamed_advisory: set[str] = set()  # stations whose last advisory was streamed (R14)
         self.alignments: dict[str, dict] = {}  # transcript_id -> tower word alignment report (P7b)
         # W3: replays to the manual STT endpoint go as fast as possible unless UNSTEP_REALTIME_REPLAY=1
@@ -508,6 +509,8 @@ class LiveRoom:
             await edge.start()
         self.edges[s.callsign] = edge
         self.turns[s.callsign] = turns
+        if self.languages.get(s.id):
+            edge.set_language(self.languages[s.id])
         if self.key_since:  # joined while someone is talking: hold its advisories too
             self._spawn(self._frequency_busy(edge, True))
         node = f"cockpit:{s.callsign}"
@@ -518,7 +521,22 @@ class LiveRoom:
     def stations_info(self) -> list[dict]:
         return [asdict(s) for s in self.stations.values()]
 
-    async def claim_aircraft(self) -> Station | None:
+    def set_language(self, station: str, language: str | None) -> str | None:
+        """The pilot's language for the private repeat of directives (R17 a). Only languages
+        the cockpit has checked live are kept (unstep.cockpit.translate.LANGUAGES); anything
+        else means English only. Returns what was kept."""
+        from unstep.cockpit.translate import LANGUAGES
+
+        code = (language or "").strip().lower()[:8] or None
+        code = code if code in LANGUAGES else None
+        self.languages[station] = code
+        s = self.stations.get(station)
+        edge = self.edges.get(s.callsign) if s is not None and s.callsign else None
+        if edge is not None:
+            edge.set_language(code)
+        return code
+
+    async def claim_aircraft(self, language: str | None = None) -> Station | None:
         """Seat for a person who taps "join as a pilot": a free fleet aircraft, added on demand.
 
         Free means nobody is connected to it and no other join claimed it in the last
@@ -540,6 +558,7 @@ class LiveRoom:
                     self.send_to(None, {"type": "stations", "stations": self.stations_info(),
                                         "graph": self.graph})
                 self.claims[s.id] = now
+                self.set_language(s.id, language)
                 return self.stations[s.id]
             return None
 
@@ -628,6 +647,9 @@ class LiveRoom:
         elif kind == "key":
             at = data.get("at")
             self._key(station, bool(data.get("down")), int(at) if isinstance(at, (int, float)) else None)
+        elif kind == "language":
+            kept = self.set_language(station, data.get("code"))
+            self.send_to({station}, {"type": "language", "code": kept})
         elif kind == "ask" and station in self.edges:
             self._spawn(self.edges[station].ask(str(data.get("text", ""))[:200]))
         elif kind == "decide" and station == "atc":

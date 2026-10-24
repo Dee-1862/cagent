@@ -47,7 +47,8 @@ function HubPrompt({ onHub }: { onHub: (h: Hub) => void }) {
 function Join({ hub, onSeat }: { hub: Hub; onSeat: (s: Seat) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [room, setRoom] = useState<{ live: boolean; stations: Station[]; connected: Record<string, number> } | null>(null);
+  const [room, setRoom] = useState<{ live: boolean; stations: Station[]; connected: Record<string, number>; languages?: Record<string, string> } | null>(null);
+  const [language, setLanguage] = useState<string>(() => { try { return localStorage.getItem("unstep.language") ?? ""; } catch { return ""; } });
 
   useEffect(() => {
     let stop = false;
@@ -67,7 +68,8 @@ function Join({ hub, onSeat }: { hub: Hub; onSeat: (s: Seat) => void }) {
     await mic.enable();
     await keepAwake();
     try {
-      onSeat(await join(hub));
+      try { localStorage.setItem("unstep.language", language); } catch { /* private mode */ }
+      onSeat(await join(hub, language || null));
     } catch (e) {
       setError(String((e as Error).message));
       setBusy(false);
@@ -81,6 +83,14 @@ function Join({ hub, onSeat }: { hub: Hub; onSeat: (s: Seat) => void }) {
       <h1>Unstep <span>pilot</span></h1>
       <p className="lead">You are about to fly a plane at a pretend airport. Everyone shares one radio, like real pilots.
         If two people talk at once, the call gets <b>stepped on</b> and nobody knows. Unstep catches it.</p>
+      {room?.languages && Object.keys(room.languages).length > 0 && (
+        <label className="small lang">Unstep's private messages: English, then
+          <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+            <option value="">English only</option>
+            {Object.entries(room.languages).map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+          </select>
+        </label>
+      )}
       <button className="big" onClick={go} disabled={busy || !room}>{busy ? "Getting your plane..." : "Turn on my radio and join"}</button>
       {error && <p className="error">{error}</p>}
       <p className="small">{room ? `${flying} of ${planes.length} planes flying · ${room.live ? "live voice" : "offline voice"}` : "Looking for the tower..."}</p>

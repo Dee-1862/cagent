@@ -182,3 +182,20 @@ def test_offline_rooms_never_use_moss(monkeypatch):
         await r.stop()
 
     asyncio.run(go())
+
+
+def test_join_with_a_language_sets_the_cockpit_language(monkeypatch):
+    r = room(monkeypatch)
+    with TestClient(create_live_app(live=False, room=r)) as client:
+        assert client.get("/live/stations").json()["languages"].get("es") == "Spanish"
+        seat = client.post("/live/join?language=es").json()
+        assert seat["language"] == "es" and r.languages[seat["station"]] == "es"
+        with client.websocket_connect(f"/live/ws/{seat['station']}") as ws:
+            ws.receive_json()
+            assert r.edges[seat["callsign"]].language == "es"
+            ws.send_json({"type": "language", "code": "klingon"})
+            while (m := ws.receive_json())["type"] != "language":
+                pass
+            assert m["code"] is None and r.edges[seat["callsign"]].language is None
+        other = client.post("/live/join?language=xx").json()
+        assert other["language"] is None
