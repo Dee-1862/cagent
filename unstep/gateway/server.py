@@ -37,6 +37,7 @@ from unstep.contracts import (
     unwrap,
     wrap,
 )
+from unstep.cockpit.phraseology import is_restrictive
 from unstep.gateway.sink import sink_from_env
 
 log = logging.getLogger("unstep.gateway")
@@ -44,9 +45,9 @@ log = logging.getLogger("unstep.gateway")
 ROOT = Path(__file__).resolve().parents[2]
 
 ROUTES: dict[str, set[str]] = {
-    "TowerTranscript": {"agents", "monitor", "dashboard"},
-    "AnomalyEvent": {"agents", "monitor", "dashboard"},
-    "ProposedDirective": {"dashboard", "controller_voice"},
+    "TowerTranscript": {"agents", "monitor", "dashboard", "policy"},
+    "AnomalyEvent": {"agents", "monitor", "dashboard", "policy"},
+    "ProposedDirective": {"dashboard", "controller_voice", "policy"},
     "VoiceApproval": {"dashboard"},
     "ApprovedDirective": {"cockpit", "dashboard", "controller_voice", "agents"},
     "RejectedDirective": {"cockpit", "dashboard", "controller_voice", "agents"},
@@ -66,12 +67,18 @@ ALLOWED_SENDERS: dict[str, set[str]] = {
     # The voice loop repeats back "Approved, sending to ..." before it sends "approve" (task B10).
     "controller_voice": {"VoiceApproval", "AuditRecord"},
     "monitor": {"Insight", "AuditRecord"},
+    # Auto-relay of the controller's own verified words (unstep/ground/policy.py). Never rejects.
+    "policy": {"ApprovedDirective", "AuditRecord"},
 }
 ROLES = set(ALLOWED_SENDERS)
 # "testclient" is the host Starlette's TestClient reports; no real peer can have it.
 LOOPBACK = {"127.0.0.1", "::1", "localhost", "testclient"}
 
 PENDING_TTL_S = pending_ttl_s()
+
+
+def auto_relay_allowed(proposal: ProposedDirective) -> bool:
+    return proposal.confidence == "high" and is_restrictive(proposal.slots.action)
 
 
 class Gateway:
@@ -151,11 +158,19 @@ class Gateway:
             if msg.decision != "unclear":  # the voice loop retries, then times out
                 await self.decide(msg.event_id, msg.decision == "approve", "voice", ws)
         elif isinstance(msg, (ApprovedDirective, RejectedDirective)):
-            await self.decide(msg.event_id, isinstance(msg, ApprovedDirective), "click", ws)
+            via = "auto" if role == "policy" else "click"
+            await self.decide(msg.event_id, isinstance(msg, ApprovedDirective), via, ws)
         else:
             await self.broadcast(env.model_dump_json(), env.type)
 
     async def decide(self, event_id: str, approve: bool, via: str, ws: WebSocket) -> None:
+        if via == "auto":
+            # Defense in depth: the policy agent may only relay restrictive, high-confidence
+            # proposals. Anything else stays pending for the controller.
+            entry = self.pending.get(event_id)
+            if entry is None or not auto_relay_allowed(entry[0]):
+                await self.error(ws, f"{event_id} may not be auto-relayed; left for the controller")
+                return
         proposal = self.take_pending(event_id)
         if proposal is None:
             await self.error(ws, f"{event_id} is not pending")
@@ -166,7 +181,7 @@ class Gateway:
                     event_id=event_id,
                     instruction_text=proposal.instruction_text,
                     slots=proposal.slots,
-                    approved_by="controller",
+                    approved_by="unstep-policy" if via == "auto" else "controller",
                     approved_via=via,
                 )
             )

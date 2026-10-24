@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Policy agent: the controller is needed only for edge cases
+
+**Type:** Added
+**Area:** Ground agents
+
+- Added `unstep/ground/policy.py`. The blocked instruction was already spoken by the controller, so when the agents can show they are re-delivering exactly those words, the policy agent relays them without asking again. Every other case goes to the controller with readable reasons.
+- Auto-relay needs all of: the tower transcript exists, it was addressed to this aircraft, the instruction is restrictive, confidence is high, the cockpit hint does not disagree, the controller spoke within `UNSTEP_AUTO_MAX_AGE_S` (default 30 s), and auto-relay is switched on.
+- Gateway: new `policy` role that may only send `ApprovedDirective` and `AuditRecord`, never a rejection. The gateway re-checks every auto approval (restrictive and high confidence) and rebuilds it from the stored proposal, so a forged or unsafe auto approval stays pending for the controller.
+- Contract change, needs Rishit's agreement: `ApprovedDirective.approved_via` now allows `"auto"`, with `approved_by` set to `unstep-policy`.
+- PRD rule change, needs Rishit's agreement: FR-6 ("no directive without explicit human approval") becomes "no directive without explicit human approval, except an auto-relay of the controller's own verified restrictive words, which the controller can switch off".
+- 14 new tests.
+
 ## 2026-10-24: Proposed a live multi-person demo room
 
 **Type:** Docs

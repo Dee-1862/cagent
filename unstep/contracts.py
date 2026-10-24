@@ -107,7 +107,8 @@ class ApprovedDirective(BaseModel):
     instruction_text: str
     slots: Slots
     approved_by: str
-    approved_via: Literal["voice", "click"]
+    # "auto": relayed by the policy agent without asking (docs/11-live-demo.md, needs both developers).
+    approved_via: Literal["voice", "click", "auto"]
     approved_at: int = Field(default_factory=now_ms)
 
 
