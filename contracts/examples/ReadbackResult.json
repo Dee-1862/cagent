@@ -1,0 +1,15 @@
+{
+  "type": "ReadbackResult",
+  "ts": 0,
+  "data": {
+    "event_id": "evt-0001",
+    "readback_text": "Hold short Runway 23, Cessna 1-2-3",
+    "slots": {
+      "callsign": "N123AB",
+      "action": "hold short",
+      "runway": "23"
+    },
+    "match": false,
+    "attempt": 1
+  }
+}

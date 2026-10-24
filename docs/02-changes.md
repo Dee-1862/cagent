@@ -19,6 +19,19 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: M0 contracts and M2 first wire
+
+**Type:** Added
+**Area:** Other
+
+- Python stack: FastAPI WebSocket gateway, Pydantic contracts, plain HTML dashboard.
+- `unstep/contracts.py` implements every contract from Work Split section 3, plus `RejectedDirective` (the cockpit needs it to say "request say again"). Please confirm this addition.
+- `contracts/examples/` has one JSON example per contract, generated from `unstep/scenario.py`.
+- Gateway routes messages by role, stores every message (JSON lines for now, Elastic in B1), and turns voice or click decisions into one `ApprovedDirective` or `RejectedDirective`. A second decision on the same event is refused.
+- Mock cockpit, mock agents, auto approver and mock dashboard. M2 passes 10 runs in a row live and in tests.
+
+**Related:** [Work Split, milestones](04-work-split.md#6-milestones), [README](../README.md)
+
 ## 2026-10-23: Voice first in PRD v0.4
 
 **Type:** Changed

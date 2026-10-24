@@ -1,0 +1,11 @@
+{
+  "type": "VoiceApproval",
+  "ts": 0,
+  "data": {
+    "event_id": "evt-0001",
+    "heard_text": "Approve",
+    "decision": "approve",
+    "attempt": 1,
+    "ts": 1792800009000
+  }
+}

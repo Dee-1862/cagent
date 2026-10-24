@@ -1,0 +1,23 @@
+{
+  "type": "ProposedDirective",
+  "ts": 0,
+  "data": {
+    "event_id": "evt-0001",
+    "transcript_id": "tx-0001",
+    "blocked_words": [
+      "hold",
+      "short",
+      "Runway",
+      "33"
+    ],
+    "instruction_text": "Cessna 1-2-3, hold short Runway 33",
+    "slots": {
+      "callsign": "N123AB",
+      "action": "hold short",
+      "runway": "33"
+    },
+    "confidence": "high",
+    "confidence_method": "tower transcript match + rule match",
+    "rule_citation": "FAA JO 7110.65, paragraph TBD"
+  }
+}

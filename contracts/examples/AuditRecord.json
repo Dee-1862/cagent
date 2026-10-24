@@ -1,0 +1,14 @@
+{
+  "type": "AuditRecord",
+  "ts": 0,
+  "data": {
+    "event_id": "evt-0001",
+    "stage": "local_hint",
+    "actor": "cockpit",
+    "ts": 1792800002700,
+    "latency_ms": 3.1,
+    "payload": {
+      "source_doc_id": "flight-N123AB/clr-0007"
+    }
+  }
+}

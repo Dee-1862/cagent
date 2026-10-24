@@ -1,0 +1,12 @@
+{
+  "type": "Insight",
+  "ts": 0,
+  "data": {
+    "insight_id": "ins-0001",
+    "frequency": "118.700",
+    "callsign": "N123AB",
+    "kind": "repeated_blocked_calls",
+    "text": "N123AB has had 2 blocked calls in 5 minutes.",
+    "ts": 1792800031000
+  }
+}

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unstep Controller</title>
+<!-- M2 mock dashboard. Dev B replaces this in task B7. Click is the fallback to voice approval. -->
+<style>
+  :root { --bg: #f6f7f9; --fg: #15181d; --card: #fff; --muted: #667085; --line: #d0d5dd;
+          --ok: #127a43; --bad: #b42318; --blocked: #fde2e1; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111418; --fg: #e6e8eb; --card: #1a1f25; --muted: #98a2b3; --line: #2c333b;
+            --ok: #4ade80; --bad: #f87171; --blocked: #4a1d1d; }
+  }
+  body { margin: 0; font: 15px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  main { max-width: 900px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  #status { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 12px; }
+  .card h2 { font-size: 16px; margin: 0 0 8px; }
+  .row { margin: 2px 0; } .row b { display: inline-block; min-width: 110px; color: var(--muted); font-weight: 500; }
+  .blocked { background: var(--blocked); text-decoration: line-through; padding: 0 2px; border-radius: 3px; }
+  button { font: inherit; padding: 6px 14px; margin-right: 8px; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; background: var(--card); color: var(--fg); }
+  .approve { border-color: var(--ok); color: var(--ok); } .reject { border-color: var(--bad); color: var(--bad); }
+  .decided { color: var(--muted); }
+  pre { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 300px; overflow: auto; font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Unstep controller</h1>
+  <div id="status">connecting…</div>
+  <div id="cards"></div>
+  <h2 style="font-size:15px">Message log</h2>
+  <pre id="log"></pre>
+</main>
+<script>
+const proposals = {};
+const cards = document.getElementById("cards");
+const logEl = document.getElementById("log");
+const statusEl = document.getElementById("status");
+let ws;
+
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws/dashboard`);
+  ws.onopen = () => statusEl.textContent = "connected to gateway";
+  ws.onclose = () => { statusEl.textContent = "disconnected, retrying…"; setTimeout(connect, 1000); };
+  ws.onmessage = (e) => {
+    const env = JSON.parse(e.data);
+    logEl.textContent = `${env.type} ${JSON.stringify(env.data)}\n` + logEl.textContent;
+    if (env.type === "ProposedDirective") showCard(env.data);
+    if (env.type === "ApprovedDirective") markDecided(env.data.event_id, `Approved by ${env.data.approved_via}`);
+    if (env.type === "RejectedDirective") markDecided(env.data.event_id, `Rejected by ${env.data.rejected_via}`);
+  };
+}
+
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+function highlight(text, blocked) {
+  const set = new Set((blocked || []).map(w => w.toLowerCase()));
+  return text.split(" ").map(w => set.has(w.replace(/[,.]/g, "").toLowerCase())
+    ? `<span class="blocked">${esc(w)}</span>` : esc(w)).join(" ");
+}
+
+function showCard(p) {
+  proposals[p.event_id] = p;
+  const el = document.createElement("div");
+  el.className = "card"; el.id = `card-${p.event_id}`;
+  el.innerHTML = `
+    <h2>${esc(p.slots.callsign)}: ${esc(p.slots.action)} ${esc(p.slots.runway || "")}</h2>
+    <div class="row"><b>Instruction</b>${highlight(p.instruction_text, p.blocked_words)}</div>
+    <div class="row"><b>Confidence</b>${esc(p.confidence)} (${esc(p.confidence_method)})</div>
+    <div class="row"><b>Verified via</b>${esc(p.rule_citation || "none yet")}</div>
+    <div class="actions" style="margin-top:10px">
+      <button class="approve">Approve</button><button class="reject">Reject</button>
+    </div>`;
+  el.querySelector(".approve").onclick = () => decide(p.event_id, true);
+  el.querySelector(".reject").onclick = () => decide(p.event_id, false);
+  cards.prepend(el);
+}
+
+function decide(eventId, approve) {
+  const p = proposals[eventId];
+  const data = approve
+    ? { event_id: eventId, instruction_text: p.instruction_text, slots: p.slots,
+        approved_by: "controller", approved_via: "click", approved_at: Date.now() }
+    : { event_id: eventId, rejected_by: "controller", rejected_via: "click", rejected_at: Date.now() };
+  ws.send(JSON.stringify({ type: approve ? "ApprovedDirective" : "RejectedDirective", ts: Date.now(), data }));
+}
+
+function markDecided(eventId, text) {
+  const el = document.getElementById(`card-${eventId}`);
+  if (el) el.querySelector(".actions").innerHTML = `<span class="decided">${esc(text)}</span>`;
+}
+
+connect();
+</script>
+</body>
+</html>

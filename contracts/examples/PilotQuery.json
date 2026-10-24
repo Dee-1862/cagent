@@ -1,0 +1,13 @@
+{
+  "type": "PilotQuery",
+  "ts": 0,
+  "data": {
+    "query_id": "q-0001",
+    "callsign": "N123AB",
+    "question": "Unstep, what was my last clearance?",
+    "answer": "Hold short Runway tree tree, issued one four zero two.",
+    "source_doc_id": "flight-N123AB/clr-0008",
+    "moss_ms": 2.7,
+    "ts": 1792800030000
+  }
+}

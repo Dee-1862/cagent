@@ -1,0 +1,26 @@
+{
+  "type": "AnomalyEvent",
+  "ts": 0,
+  "data": {
+    "event_id": "evt-0001",
+    "callsign": "N123AB",
+    "frequency": "118.700",
+    "squelch_open": 1792800000040,
+    "squelch_close": 1792800002650,
+    "overlap_start": 1792800001300,
+    "overlap_end": 1792800002600,
+    "heard_text": "Cessna 1-2-3 [static]",
+    "local_hint": {
+      "text": "hold short Runway 33",
+      "kind": "restrictive",
+      "source_doc_id": "flight-N123AB/clr-0007",
+      "source_text": "Cessna 1-2-3, Runway 33, taxi via Bravo",
+      "moss_ms": 3.1
+    },
+    "gps": {
+      "lat": 37.6188,
+      "lon": -122.375
+    },
+    "taxiway_node": "B4"
+  }
+}
