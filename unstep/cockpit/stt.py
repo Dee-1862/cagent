@@ -20,7 +20,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from typing import AsyncIterator, Iterable, Optional
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from unstep.contracts import Word
 
@@ -69,7 +69,7 @@ def build_keyterms(callsigns: Iterable[str] = (), runways: Iterable[str] = (),
 
 
 def _url(base: str, params: list[tuple[str, str]]) -> str:
-    return f"{base}?{urlencode(params)}"
+    return f"{base}?{urlencode(params, quote_via=quote)}"
 
 
 @dataclass
