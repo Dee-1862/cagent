@@ -195,6 +195,8 @@ def test_app_serves_seats_and_joins(monkeypatch):
     assert [s["id"] for s in seats["stations"]] == ["atc", "N123AB", "H456", "observer"]
     with client.websocket_connect("/live/ws/atc") as ws:
         hello = ws.receive_json()
+        if hello["type"] == "auth_status":  # the ATC seat reports its password state first
+            hello = ws.receive_json()
         assert hello["type"] == "hello" and hello["you"] == "atc" and hello["autonomy"] is True
         assert {n["id"] for n in hello["graph"]} >= {"radio", "gateway", "policy", "controller", "elastic"}
         ws.send_json({"type": "autonomy", "on": False})
