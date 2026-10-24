@@ -6,10 +6,13 @@ import asyncio
 import hmac
 import logging
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+import qrcode
+from qrcode.image.svg import SvgPathImage
+
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from unstep.config import ROOT, env, gateway_token
@@ -41,6 +44,19 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None) -> Fast
         query = f"?token={quote(token, safe='')}" if token else ""
         html = (WEB / "atc" / "index.html").read_text(encoding="utf-8")
         return HTMLResponse(html.replace("__UNSTEP_TOKEN_QUERY__", query))
+
+    @app.get("/live/qr.svg")
+    async def live_qr(request: Request, u: str):
+        try:
+            url = urlsplit(u)
+            valid = (url.scheme in {"http", "https"} and url.hostname == request.url.hostname
+                     and url.username is None and url.password is None)
+        except ValueError:
+            valid = False
+        if not valid:
+            raise HTTPException(status_code=400, detail="QR URL must use this server's host")
+        qr = qrcode.make(u, image_factory=SvgPathImage)
+        return Response(qr.to_string(), media_type="image/svg+xml")
 
     @app.get("/live/stations")
     async def live_stations():

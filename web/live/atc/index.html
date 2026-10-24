@@ -11,7 +11,8 @@
     <a class="brand" href="/live/">UNSTEP<span class="brand-mark">↗</span></a>
     <div class="identity"><strong>Control Tower</strong><small>KUNS · Radio <span id="frequency">118.700</span></small></div>
     <div class="presence"><b id="planes">0 planes connected</b><small id="password-state">Checking tower access…</small></div>
-    <div class="join"><small>JOIN AS A PLANE</small><a id="join-url" href="/live/"></a><small>QR code: TODO · use this address</small></div>
+    <a id="join-qr" href="/live/"><img id="qr" width="96" height="96" alt="Scan to join as a plane"></a>
+    <div class="join"><small>JOIN AS A PLANE</small><a id="join-url" href="/live/"></a><small id="phone-hint" hidden>Phones: start with --host 0.0.0.0 and open this page via the laptop's LAN IP</small></div>
     <span id="connection" class="connection">OFFLINE</span>
     <button id="sound" class="quiet">Turn on sound</button>
   </header>
@@ -35,12 +36,12 @@
           <text x="602" y="165">Runway 33</text><text x="80" y="290">Taxiway B</text>
           <path d="M423 199V273M431 199V273" class="stop-line"/>
           <text x="374" y="322">Stop line</text><text x="470" y="322" class="muted small-map">hold short</text>
-          <g transform="translate(95 70)"><path d="M0 8H48L40 32H8ZM16 32H32V76H16Z" fill="#233041" stroke="#8B9AAB"/><text x="60" y="35">Tower</text><text x="60" y="58" class="muted">You are here</text></g>
+          <g transform="translate(610 225)"><path d="M0 8H48L40 32H8ZM16 32H32V76H16Z" fill="#233041" stroke="#8B9AAB"/><text x="60" y="35">Tower</text><text x="60" y="58" class="muted">You are here</text></g>
           <g id="plane-N123AB" class="plane neutral" transform="translate(285 237)">
             <circle class="ring" r="35"/><path d="M-22-5L-5-8L-11-25L-3-25L9-8L26-3L26 3L9 8L-3 25L-11 25L-5 8L-22 5Z" class="aircraft"/>
             <text x="-110" y="-64" class="plane-name">Plane A · Cessna 1-2-3</text><text id="state-N123AB" x="-110" y="-41" class="state-label">Waiting for radio activity</text>
           </g>
-          <g id="plane-H456" class="plane neutral" transform="translate(320 76)">
+          <g id="plane-H456" class="plane neutral" transform="translate(95 65)">
             <circle class="ring" r="31"/><path d="M-13-9H10L20 0L10 9H-13ZM-13-3H-28V-12M-23-16H23M0-16V-9" class="aircraft"/>
             <text x="48" y="-4" class="plane-name">Plane B · Helicopter 4-5-6</text><text id="state-H456" x="48" y="20" class="state-label">Waiting for radio activity</text>
           </g>
@@ -57,7 +58,7 @@
     <section class="panel radio-panel">
       <div class="section-title"><h2>Radio <small>One shared frequency</small></h2><span id="onair" class="cyan">Waiting for radio activity</span></div>
       <div id="radio"></div>
-      <form id="say-form"><label class="sr-only" for="say">Tower radio message</label><input id="say" maxlength="300" placeholder="Say something on the tower radio…" required><button id="transmit" disabled>Transmit</button></form>
+      <form id="say-form"><label class="sr-only" for="say">Tower radio message</label><input id="say" maxlength="300" placeholder="Say something on the tower radio…" required><button id="transmit" type="submit" disabled>Transmit</button></form>
       <div class="suggestions"><button data-say="Cessna one two three, hold short runway three three.">Tell Plane A to stop</button><button data-say="Cessna one two three, cleared for takeoff runway three three.">Clear Plane A for takeoff</button></div>
     </section>
     <section class="panel explanation"><div class="section-title"><h2>How Unstep handled it</h2><small id="event-label">Evidence appears as it arrives</small></div><div id="steps"></div><div id="history"></div></section>
