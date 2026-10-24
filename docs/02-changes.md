@@ -19,6 +19,19 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Faster-feeling live captions, a Cartesia probe, and a leak fix
+
+**Type:** Changed
+**Area:** Audio
+
+- Pilot app: new words of each Cartesia update fade in one after another (a whole burst within 240 ms), a caret follows the word being spoken, holding the button on a live hub shows "Listening..." at once, waiting text shows within 50 ms (was up to 250), and microphone audio goes to the hub every 50 ms from 1024-sample buffers (was 100 ms from 2048). Words are only ever shown after Cartesia returns them.
+- `scripts/caption_probe.py`: streams a clip to Cartesia's manual and turns endpoints at real-time pace and reports updates while speaking, time to first text and the gap between updates. Needs a run where Cartesia is reachable; it decides whether the next item helps.
+- `UNSTEP_CAPTION_SOURCE=turns` (default `manual`): also streams the audio to the turns endpoint and shows its `turn.update` text as captions, display only; the final text still comes from the manual stream. Tested with fakes only; not measured against Cartesia yet.
+- Fix: the hub opened a new, never-closed Cartesia speech connection for every typed line and every controller prompt, which ends in HTTP 429 with several walk-up planes (Rishit's benchmark hit it). Typed lines now share one connection per voice, the controller prompts share one, and all close when the hub stops.
+- Tests no longer read real Elastic or Moss keys from the shell or `.env` (set `UNSTEP_LIVE_ELASTIC=1` for the opt-in live test).
+
+**Related:** [Live Demo](11-live-demo.md), [Sponsor Depth](16-sponsor-depth.md)
+
 ## 2026-10-24: Plan for how Elastic and Moss are used, and who owns what (proposal)
 
 **Type:** Docs
