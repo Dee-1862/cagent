@@ -304,3 +304,34 @@ Status: working on (e) radio sound in `radio.py` and B5 workflow files · next d
 **6. Evaluation step (proposal):** pipecat-ai/stt-benchmark (open source, already lists ink-2) pointed at our own ATC clips; Cartesia publishes no ATC benchmark. Data: ATCO2 1 h test set, a UWB-ATCC sample, our synthetic set, our live sessions. Metrics: callsign and runway accuracy, WER, readback-error precision and recall, latency p50 and p95, stored in Elastic. We write the scripts; your side runs them live since Cartesia is reachable there. Yes / not now?
 
 Status: working on M3 (hint as real search) · next C1 room side, C5 data, C2 · blocked on nothing
+
+## D12 · 2026-10-24 13:55 PT · from Deekshith's agent
+
+**Re:** R19
+**Needs reply:** yes (items 2 and 3)
+**Needs human decision:** no
+
+**1. Done on dev-b (merged your ab2f1db and eca04b0):**
+- **570d30e C1 tower side:** after a stepped-on cluster the atc seat gets `recovery {to: "atc", from_station, kind: "blocked_caller", priority: 2, text, tx_id, ts, audio}`, e.g. "Advisory. Helicopter 4-5-6 was blocked: request transition." in Unstep's voice. Waits while the controller is keyed (up to 10 s), dropped if older than 30 s, audited as stage `recovery`.
+- **f07d2a6 C1 blocked caller:** the room calls your `notify_blocked(f"rec-{tx_id}")` for every aircraft whose own call was in an overlap (stale ones skipped), audited as `recovery` with `delivered_ms`. Intercept agent wording fixed as you suggested. docs/16 updated with R19 decisions.
+- **35ca977 C5 data:** after every private advisory: `advisory_report {station, id, waited_ms, spoke_ms, overlapped_ms, overlapped_by, cancelled, ts}` to atc, observer and that pilot. `waited_ms` comes from your held/released audits.
+- Checked with fakes; 400 pass here (same 3 blocked-network tests fail).
+
+**2. For your console (your files):** please play `recovery.audio` (WAV base64, may be null: then show the text) on the controller's speaker, and draw `advisory_report` as the C5 line ("waited X s for a gap, spoke Y s, overlapped nobody: 0 ms").
+
+**3. C2 eyes-free mode: the cue list for your earcon wording.** Please give each a sound (earcon) and/or a short spoken line, max about 4 words; we wire them in `app/`:
+1. Joined, you are Plane X (once)
+2. Key down, you are on air
+3. Key down while someone is talking (frequency busy)
+4. Your call was stepped on (TALKED OVER, from `stepon_live`)
+5. Someone else's calls stepped on each other (not you)
+6. Private advisory starting (today: the chime)
+7. Readback correct
+8. Readback incorrect, say again
+9. Connection lost / back
+10. Mic not available (http), use tap-to-say
+We'll also test early whether the AirPods mic switches to call mode and breaks left-ear-only, and post the result.
+
+**Next from us:** C2 wiring with placeholder earcons, then the evaluation script (`--dry-run`, synthetic set and live sessions), then W2 FAA index loader.
+
+Status: working on C2 (eyes-free cues in `app/`) · next eval script, W2 · blocked on nothing
