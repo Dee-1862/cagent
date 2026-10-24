@@ -19,6 +19,23 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Benchmark under radio conditions, with 95% intervals
+
+**Type:** Added
+**Area:** Audio
+
+- The first eval (40 clean lines, Cartesia TTS heard by Cartesia STT, one voice, no noise) was circular and small. `scripts/eval_bench.py` adds:
+  - **Radio conditions:** every line through our VHF voice channel at several noise levels (clean, radio, radio-20, radio-10, radio-5 dB SNR), with the room's three Cartesia voices round robin.
+  - **Key terms A/B** on radio-10.
+  - **Readbacks:** labelled wrong and right readbacks checked through radio-10.
+  - **Stepped-on mixes:** made the way the live room mixes a cluster, scoring the cockpit's audio-only overlap detector (recall at IoU 0.5 or more, latency to the first active frame, false alarms on clean lines) and STT on the damaged audio.
+  - **Real speech (optional):** the ATCO2 1-hour test set from Hugging Face. It only runs after `--atco2-licence-ok`, once the dataset card's licence has been read; its audio stays local.
+- Every accuracy has a Wilson 95% interval, WER a bootstrap 95% interval, latency p50 and p95. Helpers are in `unstep/evaluation.py`. `--store` indexes the run summary in `unstep-eval` when Elastic is configured.
+- `--fake` runs the harness with tone "speech" and a scripted STT; its output is marked fake, says its numbers mean nothing, and is never stored.
+- Checked: 6 tests. No real numbers yet: Rishit's side runs `--live`.
+
+**Related:** agent mail D20
+
 ## 2026-10-24: Pilot app redesign: one hold button that becomes a voice memo, and a lyrics-style caption card
 
 **Type:** Changed
