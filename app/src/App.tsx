@@ -47,6 +47,7 @@ function HubPrompt({ onHub }: { onHub: (h: Hub) => void }) {
 
 function Join({ hub, onSeat }: { hub: Hub; onSeat: (s: Seat) => void }) {
   const [error, setError] = useState<string | null>(null);
+  const [full, setFull] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [room, setRoom] = useState<{ live: boolean; stations: Station[]; connected: Record<string, number>; languages?: Record<string, string> } | null>(null);
   const [language, setLanguage] = useState<string>(() => { try { return localStorage.getItem("unstep.language") ?? ""; } catch { return ""; } });
@@ -72,7 +73,9 @@ function Join({ hub, onSeat }: { hub: Hub; onSeat: (s: Seat) => void }) {
       try { localStorage.setItem("unstep.language", language); } catch { /* private mode */ }
       onSeat(await join(hub, language || null));
     } catch (e) {
-      setError(String((e as Error).message));
+      const err = e as Error & { full?: boolean };
+      if (err.full) setFull(err.message); // not an error: the room is full, watch the projector
+      else setError(String(err.message));
       setBusy(false);
     }
   };
@@ -94,6 +97,7 @@ function Join({ hub, onSeat }: { hub: Hub; onSeat: (s: Seat) => void }) {
       )}
       <button className="big" onClick={go} disabled={busy || !room}>{busy ? "Getting your plane..." : "Turn on my radio and join"}</button>
       {error && <p className="error">{error}</p>}
+      {full && <p className="lead full">{full}</p>}
       <p className="small">{room ? `${flying} of ${planes.length} planes flying · ${room.live ? "live voice" : "offline voice"}` : "Looking for the tower..."}</p>
       {!Mic.available() && <p className="small warn">This page isn't on https, so your mic is off. You can still talk with the tap-to-say lines.</p>}
     </main>
@@ -139,6 +143,14 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
           setTrace([...m.traces].reverse().find((t: Trace) => t.callsign === station) ?? null);
           return;
         case "stations": return setStations(m.stations);
+        case "seat_freed": // the presenter reset the room, or this phone was away too long
+          say("Your plane was handed back. Join again to fly.");
+          return void setTimeout(onLeave, 2500);
+        case "room_reset":
+          setTrace(null);
+          setLines([]);
+          setEar(null);
+          return void setStations(m.stations);
         case "keyed":
           setKeyed(m.keyed);
           if (m.station === station && m.down && m.keyed[station]) setUplink(m.ts - m.keyed[station]);

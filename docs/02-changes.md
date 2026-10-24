@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Seats for walk-up pilots: freed when the phone is gone, presenter reset, full-room answer
+
+**Type:** Added
+**Area:** Other
+
+- Judges may scan the console QR and become planes (R22). A walk-up plane's seat is now freed when its phone has been gone for 20 s: its key and stream end, open events for it are marked "cancelled" (nothing was sent), its cockpit agent stops, and it leaves `/live/stations`, so the plane goes back to the fleet. The team planes (N123AB, H456) are never freed.
+- Presenter reset: the controller seat sends `{type: "reset"}`; every walk-up seat is freed (its phone gets `seat_freed` and is closed), traces, radio log, insights, reports and the key log are cleared, every seat gets `room_reset`, and `/live/stats` counts only from the reset.
+- A full room answers "All 6 planes are taken. Watch on the projector." with `full: true`; the pilot app shows it as a message, not an error.
+- Checked: 3 tests (freeing after a disconnect, reset only from the controller seat, full room through the real route); vitest and build pass.
+
+**Related:** agent mail R22
+
 ## 2026-10-24: First live evaluation numbers, and per-line rows in the eval output
 
 **Type:** Docs

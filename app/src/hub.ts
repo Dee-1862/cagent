@@ -50,7 +50,7 @@ export async function join(hub: Hub, language?: string | null): Promise<Seat> {
   const q = params.toString() ? `?${params}` : "";
   const r = await fetch(`${hub.http}/live/join${q}`, { method: "POST" });
   const body = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(body.error || `hub answered ${r.status}`);
+  if (!r.ok) throw Object.assign(new Error(body.error || `hub answered ${r.status}`), { full: Boolean(body.full) });
   return body as Seat;
 }
 

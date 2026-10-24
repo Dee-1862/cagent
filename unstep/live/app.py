@@ -131,7 +131,7 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
         now = now_ms()
         if (cached := stats_cache.get(since_ms)) and now - cached[0] < STATS_CACHE_MS:
             return cached[1]
-        result = await frequency_stats(room.frequency, since_ms, room.traces)
+        result = await frequency_stats(room.frequency, max(since_ms, room.reset_at), room.traces)
         stats_cache.clear()  # one console polls one since_ms; keep the cache tiny
         stats_cache[since_ms] = (now, result)
         return result
@@ -143,7 +143,9 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
             return JSONResponse({"error": "wrong room token"}, status_code=403)
         seat = await room.claim_aircraft(language=request.query_params.get("language"))
         if seat is None:
-            return JSONResponse({"error": "every aircraft is taken"}, status_code=409)
+            n = len(room.fleet_limit())
+            return JSONResponse({"error": f"All {n} planes are taken. Watch on the projector.", "full": True},
+                                status_code=409)
         return {"station": seat.id, "callsign": seat.callsign, "spoken": seat.spoken, "name": seat.name,
                 "frequency": room.frequency, "live": room.live, "language": room.languages.get(seat.id)}
 

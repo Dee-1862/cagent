@@ -52,6 +52,7 @@ RECOVERY_WAIT_GAP_MS = 10_000  # how long a recovery waits for the controller to
 TRANSCRIPT_WAIT_S = 12.0  # how long ground agents wait for the tower transcript
 READBACK_WAIT_S = 45.0  # how long a cockpit waits for the pilot's readback
 CLAIM_S = 20.0  # a seat handed out by join() stays reserved this long for its websocket
+SEAT_FREE_S = 20.0  # a walk-up pilot's seat is freed when its phone has been gone this long
 MAX_STREAM_S = 60  # longest push-to-talk stream accepted
 STREAM_FINAL_S = 10.0  # how long consumers wait for a streamed transcript before replaying the clip
 
@@ -72,6 +73,7 @@ def aircraft_station(callsign: str, spoken: str, name: str, voice_role: str) -> 
 
 
 FLEET_STATIONS = [aircraft_station(*f) for f in scenario.FLEET]
+TEAM_STATIONS = {"N123AB", "H456"}  # the team's two planes: never freed or reset (R22)
 DEFAULT_STATIONS = [
     Station("atc", "atc", "Tower controller: human in the loop", "tower"),
     *FLEET_STATIONS[:2],
@@ -434,6 +436,7 @@ class LiveRoom:
         self.claims: dict[str, float] = {}  # station -> hub time join() handed it out
         self._join_lock = asyncio.Lock()
         self._moss_used = 0
+        self.reset_at = 0  # hub time of the last presenter reset; /live/stats never counts before it
 
     # ------------------------------------------------------------ setup
 
@@ -670,10 +673,84 @@ class LiveRoom:
         self.presence()
 
     def leave(self, station: str, ws) -> None:
-        self.clients[station].discard(ws)
-        if not self.clients[station] and station in self.key_since:
+        self.clients.get(station, set()).discard(ws)
+        if not self.clients.get(station) and station in self.key_since:
             self._key(station, False)  # a phone that drops mid-call must not hold the key down
+        if not self.clients.get(station) and self.is_walk_up(station):
+            self._spawn(self._free_later(station))
         self.presence()
+
+    # ------------------------------------------------------------ walk-up seats (R22)
+
+    @staticmethod
+    def is_team_station(station: str) -> bool:
+        return station in TEAM_STATIONS
+
+    def is_walk_up(self, station: str) -> bool:
+        s = self.stations.get(station)
+        return s is not None and s.kind == "aircraft" and not self.is_team_station(station)
+
+    async def _free_later(self, station: str) -> None:
+        await asyncio.sleep(SEAT_FREE_S)
+        claimed = now_ms() - self.claims.get(station, -1e12) < CLAIM_S * 1000
+        if not self.clients.get(station) and not claimed:
+            await self.free_seat(station, "phone gone for 20 s")
+
+    async def free_seat(self, station: str, reason: str) -> bool:
+        """Give a walk-up plane back to the fleet: its key, stream, cockpit agent and open
+        events end cleanly and it leaves /live/stations. The team planes are never freed."""
+        if not self.is_walk_up(station):
+            return False
+        s = self.stations[station]
+        st = self.streams.pop(station, None)
+        if st is not None:  # end a stream that was still open; the pump sees the end and stops
+            st.setdefault("end_ms", now_ms())
+            st["queue"].put_nowait(None)
+        if station in self.key_since:
+            self._key(station, False)
+        for trace in self.traces.values():
+            if trace.get("callsign") == s.callsign and trace["status"] in ("detected", "proposed", "needs_you"):
+                trace["status"] = "cancelled"
+                self._step(trace, "room", "cancelled", f"{s.name or s.callsign} left: {reason}. Nothing was sent")
+                self.send_to(None, {"type": "trace", "trace": trace})
+        edge = self.edges.pop(s.callsign, None)
+        if edge is not None:
+            try:
+                await edge.stop()
+            except Exception:
+                log.exception("stopping the cockpit agent for %s failed", station)
+            self._moss_used = max(0, self._moss_used - 1)
+        self.turns.pop(s.callsign, None)
+        for d in (self.languages, self.claims, self.last_wait):
+            d.pop(station, None)
+        for ws in list(self.clients.pop(station, ())):
+            try:
+                await ws.send_json({"type": "seat_freed", "reason": reason})
+                await ws.close()
+            except Exception:
+                pass
+        self.stations.pop(station, None)
+        self.graph = [n for n in self.graph if n["id"] != f"cockpit:{s.callsign}"]
+        log.info("freed seat %s (%s)", station, reason)
+        self.send_to(None, {"type": "stations", "stations": self.stations_info(), "graph": self.graph})
+        self.presence()
+        return True
+
+    async def reset(self) -> None:
+        """Presenter "reset room" (atc only): free every walk-up seat and clear traces, lanes,
+        reports and the stats window. The team planes (N123AB, H456) stay."""
+        for station in [sid for sid in list(self.stations) if self.is_walk_up(sid)]:
+            await self.free_seat(station, "room reset by the presenter")
+        self.traces.clear()
+        self.transcripts.clear()
+        self.radio_log.clear()
+        self.insights.clear()
+        self.stepons = []
+        self.advisory_reports = []
+        self.key_log = []
+        self.reset_at = now_ms()
+        self.send_to(None, {"type": "room_reset", "ts": self.reset_at, "stations": self.stations_info(),
+                            "graph": self.graph})
 
     def snapshot(self, station: str) -> dict:
         return {"type": "hello", "you": station, "now_ms": now_ms(), "live": self.live,
@@ -720,6 +797,8 @@ class LiveRoom:
         elif kind == "key":
             at = data.get("at")
             self._key(station, bool(data.get("down")), int(at) if isinstance(at, (int, float)) else None)
+        elif kind == "reset" and station == "atc":
+            await self.reset()
         elif kind == "cue":
             self._spawn(self.say_cue(station, str(data.get("name", ""))))
         elif kind == "language":
