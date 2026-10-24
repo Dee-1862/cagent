@@ -26,3 +26,15 @@ def elastic_settings() -> tuple[str, str] | None:
     url = env("ELASTIC_CLOUD_URL", "ELASTIC_URL")
     key = env("ELASTIC_API_KEY", "ELASTIC_CLOUD_KEY")
     return (url, key) if url and key else None
+
+
+def kibana_url() -> str | None:
+    """Kibana hosts Agent Builder and Workflows (task B5). On Elastic Cloud its
+    address is the Elasticsearch one with ".es." replaced by ".kb."."""
+    explicit = env("KIBANA_URL")
+    if explicit:
+        return explicit.rstrip("/")
+    settings = elastic_settings()
+    if settings and ".es." in settings[0]:
+        return settings[0].replace(".es.", ".kb.", 1).rstrip("/")
+    return None

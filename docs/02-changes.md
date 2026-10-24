@@ -19,6 +19,17 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: New Elastic API key checked, Kibana URL added
+
+**Type:** Changed
+**Area:** Ground agents
+
+- Checked the new `ELASTIC_API_KEY` (name "lolo"): it authenticates on Elasticsearch and has create, write, read and manage rights on `unstep-*`.
+- The same key works on Kibana, and the Agent Builder API answers, so task B5 is unblocked without a second key.
+- Added `kibana_url()` to `unstep/config.py`. It uses `KIBANA_URL` if set, otherwise the Elasticsearch URL with `.es.` replaced by `.kb.`.
+- `.env.example` now lists `KIBANA_URL` and notes that the key must work on both Elasticsearch and Kibana.
+- Live Elastic round-trip test passes with the new key.
+
 ## 2026-10-23: Gateway stores every message in Elastic (task B1)
 
 **Type:** Added

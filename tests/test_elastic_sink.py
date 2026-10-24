@@ -184,3 +184,14 @@ def test_live_elastic_round_trip():
         assert count == 1
     finally:
         httpx.delete(f"{url}/{index}", headers=headers, timeout=20)
+
+
+def test_kibana_url_is_derived_from_the_elasticsearch_url(monkeypatch):
+    from unstep.config import kibana_url
+
+    monkeypatch.delenv("KIBANA_URL", raising=False)
+    monkeypatch.setenv("ELASTIC_CLOUD_URL", "https://abc.es.us-east4.gcp.elastic.cloud:443")
+    monkeypatch.setenv("ELASTIC_API_KEY", "key")
+    assert kibana_url() == "https://abc.kb.us-east4.gcp.elastic.cloud:443"
+    monkeypatch.setenv("KIBANA_URL", "https://kibana.example/")
+    assert kibana_url() == "https://kibana.example"
