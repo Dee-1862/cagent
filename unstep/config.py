@@ -126,6 +126,11 @@ def moss_aircraft() -> int:
         return DEFAULT_MOSS_AIRCRAFT
 
 
+def radio_sound() -> bool:
+    """Listeners hear transmissions band-limited like VHF radio (UNSTEP_RADIO_SOUND, default on)."""
+    return env("UNSTEP_RADIO_SOUND", default="1").lower() not in ("0", "false", "no", "off")
+
+
 def realtime_replay() -> bool:
     """Pace replayed audio to the manual STT endpoint at real time (UNSTEP_REALTIME_REPLAY=1).
 

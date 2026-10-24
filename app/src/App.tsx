@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { audio, chirp, keepAwake, playWav } from "./audio";
+import { audio, chirp, keepAwake, playWav, streamChunk, streamEnd } from "./audio";
 import { Hub, hubFromLocation, join, Live, Msg, parseHub, Seat } from "./hub";
 import { Mic } from "./mic";
 import { ASK_LINES, sayLines } from "./phrases";
@@ -133,8 +133,11 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
           if (m.stations.includes(station)) navigator.vibrate?.([60, 40, 60]);
           return;
         case "onair": return void playWav(m.audio);
+        case "advisory_chunk": return streamChunk(m.id, m.seq, m.sample_rate, m.pcm);
+        case "advisory_end": return streamEnd(m.id, m.cancelled);
         case "advisory_audio":
           earAudio.current = m.audio;
+          if (m.streamed) return; // already heard chunk by chunk; kept for "Play again"
           return void playWav(m.audio);
         case "cockpit_line": {
           const line = m as unknown as Line;
@@ -229,6 +232,7 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
         <section className="ear">
           <div className="ear-head"><span>Only you can hear this</span><span>left ear</span></div>
           <p>{ear.text.replace(/^\[chime\]\s*/, "")}</p>
+          {ear.latency?.moss_ms != null && <small className="moss">Found in your Moss session in {ear.latency.moss_ms.toFixed(1)} ms</small>}
           <button className="ghost" onClick={() => playWav(earAudio.current)}>Play again</button>
         </section>
       )}

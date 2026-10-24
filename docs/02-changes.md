@@ -19,6 +19,42 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Transmissions sound like a radio; Unstep's voice stays clean (R17 e)
+
+**Type:** Added
+**Area:** Audio
+
+- People in the room now hear every transmission the way an aircraft VHF radio sounds: band-limited to about 300 to 3400 Hz, mild clipping, a little hiss, a short squelch tail (`radio_voice()` in `unstep/live/radio.py`). Unstep's private advisory is never shaped, so the contrast itself says "this is not ATC".
+- Only the audio sent to listeners (`onair`, now with `radio: true`) is shaped. Cartesia STT, the overlap detector and the tower transcript still get the clean mix.
+- `UNSTEP_RADIO_SOUND=0` turns it off. This is local signal processing, not Cartesia's voice changer.
+- Checked: 2 tests (band limits, tail, never louder, room sends shaped audio while the mix stays clean). Not listened to on real speakers yet.
+
+**Related:** [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md) section 5 (Cartesia), agent mail R17
+
+## 2026-10-24: Every heard call goes into the plane's Moss session; "what did the tower tell me?" (P4, part 2)
+
+**Type:** Added
+**Area:** Edge device
+
+- `CockpitEdge.index_heard()` (`unstep/cockpit/edge.py`, agreed with Rishit in R15): every transmission a cockpit hears goes into its own `flight-<callsign>` session the moment its STT finishes, with `callsign`, `speaker`, `speakers`, `ts`, `stepped_on` and the event id for blocked calls. It indexes what this cockpit actually heard, static and gaps included, never the tower's full text. The pilot's own readbacks are indexed too (`type: readback`). Written through the cockpit writer only; never pushed.
+- `unstep/cockpit/queries.py` new intent "recent": "what did the tower tell me in the last minute?", "what did I miss?", "last 2 minutes". A Moss session query over heard docs filtered on `ts` (and `speaker: atc` when the question says tower); the answer reads the two newest matches, marks stepped-on ones, and cites the newest doc with the search time. Calls naming another aircraft are left out.
+- The live room tells each cockpit who was keyed for the audio it hears. Pilot app: new Ask line, and the private panel shows "Found in your Moss session in X ms".
+- Checked: 2 new tests (answer from local memory; a full stepped-on room run indexed and answered). Not run against live Moss here.
+
+**Related:** PRD 6.4, [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md) section 5, agent mail R15
+
+## 2026-10-24: Private advisory streams to the pilot's phone as Cartesia speaks it
+
+**Type:** Changed
+**Area:** Audio
+
+- Rishit's live run showed about 1.5 s from approval to sound while Cartesia's first audio was 131 ms (R14): the phone got the advisory only after the whole line was synthesized.
+- `unstep/live/room.py` `StreamingTTS`: each TTS chunk goes to the pilot's phone at once as `advisory_chunk {id, seq, sample_rate, pcm}` (the first chunk starts with the advisory chime), then `advisory_end {id, chunks, cancelled}`. The full clip still follows as `advisory_audio` with `streamed: true`, for "Play again" and older pages.
+- Pilot app (`app/src/audio.ts`): plays chunks back to back in the left ear, in `seq` order; a cut-off line (pilot keys, frequency busy) stops at once.
+- Checked: 4 Python tests (chunk order, chime first, cut-off, full room run) and a vitest for PCM decoding; `npm run build` passes. Not heard on a real phone or with live Cartesia yet.
+
+**Related:** PRD section 9, agent mail R14 item 2
+
 ## 2026-10-24: Moss session for every plane, and a Moss frequency session on the hub (P4, part 1)
 
 **Type:** Changed
