@@ -38,7 +38,7 @@ projector (ATC console)           ------------------>  same laptop, /live/atc/
 4. Deploy `app/` to Vercel (root directory `app`, build `npm run build`, output `dist`).
 5. The ATC console shows the QR from `/live/pilot-link`.
 
-**Fallback with no internet:** phone hotspot, no tunnel, and phones open `http://<laptop IP>:8765/pilot/`. Over plain http the mic is off, so pilots use the tap-to-say lines, which still go on air through Cartesia TTS (or fake speech offline).
+**Fallback with no internet:** phone hotspot, no tunnel. Run `python -m unstep.live --host 0.0.0.0 --https`: the hub makes a self-signed certificate for localhost and the laptop's LAN address (`data/certs/`, gitignored) and serves https and wss. Set `UNSTEP_PUBLIC_URL=https://<laptop IP>:8765` so the QR points there. Each phone opens `https://<laptop IP>:8765/pilot/` once and accepts the certificate warning; after that the mic works. With your own certificate use `--cert` and `--key`. Checked here: https and wss answer with the generated certificate (`tests/test_hub_https.py`); not yet tried on a real iPhone or Android. If a phone refuses the certificate, pilots use the tap-to-say lines over plain http, which still go on air through Cartesia TTS (or fake speech offline). The hosted Vercel app can't use a self-signed hub unless each phone has accepted the hub's certificate first, so the tunnel stays the main path.
 
 ## 3. Demo Flow for a Crowd
 

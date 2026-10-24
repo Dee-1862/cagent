@@ -19,6 +19,17 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Hub serves https for phone microphones on the LAN (W5)
+
+**Type:** Added
+**Area:** Other
+
+- Phones only allow the microphone on https. `python -m unstep.live --https` makes a self-signed certificate for localhost, 127.0.0.1 and the laptop's LAN address (`unstep/live/certs.py`, stored in `data/certs/`, gitignored) and serves https and wss. `--cert` and `--key` use your own. Uses the `cryptography` package if installed, otherwise the `openssl` tool.
+- The tunnel in docs/15 section 2 stays the main path; this is the no-internet fallback. Each phone accepts the certificate warning once.
+- Checked: 3 tests, including a real hub process answering https and a wss socket with the generated certificate. Not yet tried on a real phone.
+
+**Related:** [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md) section 2, agent mail R10 (W5)
+
 ## 2026-10-24: Cockpit voices hold while the frequency is busy (P5 hook)
 
 **Type:** Added
