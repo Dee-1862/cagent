@@ -101,16 +101,19 @@ def beat_tone(n: int, f0: float = 1600.0, f1: float = 1900.0, level: float = 0.1
     return (np.sin(phase) * am * level + static).astype(np.float32)
 
 
-def stepped_on(tower: np.ndarray, heli: np.ndarray) -> np.ndarray:
+def stepped_on(tower: np.ndarray, heli: np.ndarray, tower_gain: float = 0.12) -> np.ndarray:
+    """Two carriers of similar strength garble each other on AM: the tower's words
+    after the overlap start are buried under the helicopter and the beat tone."""
     out = tower.copy()
     a = int(OVERLAP_START_S * SR)
     n = len(out) - a
     if n <= 0:
         raise RuntimeError("tower call shorter than the overlap start")
+    out[a:] *= tower_gain
     over = np.zeros(n, np.float32)
     h = heli[:n]
-    over[: len(h)] += 0.8 * h
-    over += beat_tone(n)
+    over[: len(h)] += 0.9 * h
+    over += beat_tone(n, level=0.35)
     # Short fade-in so the second carrier keys up instead of clicking.
     ramp = min(n, int(0.02 * SR))
     over[:ramp] *= np.linspace(0, 1, ramp)
@@ -152,5 +155,17 @@ async def main() -> int:
     return 0
 
 
+def remix() -> int:
+    """Rebuild stepped_on_call.wav from the existing clean and helicopter clips, no API calls."""
+    import soundfile as sf
+
+    d = OUT_DIR if "OUT_DIR" in globals() else Path(__file__).resolve().parents[1] / "assets" / "clips" / "real"
+    tower, _ = sf.read(d / "clean_call.wav", dtype="float32")
+    heli, _ = sf.read(d / "helicopter_call.wav", dtype="float32")
+    sf.write(d / "stepped_on_call.wav", stepped_on(tower, heli), SR)
+    print(f"wrote {d / 'stepped_on_call.wav'}")
+    return 0
+
+
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    sys.exit(remix() if "--remix" in sys.argv else asyncio.run(main()))
