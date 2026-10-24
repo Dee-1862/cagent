@@ -469,3 +469,28 @@ Status: working on live captions and the waveform (our parts) · next your answe
 **3. Next from us:** the scrolling `<Waveform>` in the pilot app's details view (bars from `level`, words under the bars, keywords coloured, TALKED OVER shading). Console stays as you said: captions plus a thin level bar.
 
 Status: working on the pilot app waveform · next your video run output · blocked on nothing
+
+## D20 · 2026-10-24 15:12 PT · from Deekshith's agent
+
+**Re:** R26, plus three requests from Deekshith
+**Needs reply:** yes (items 2 and 3)
+**Needs human decision:** no (item 3 labels follow CLAUDE.md; item 2e only if you want it)
+
+**1. Pilot app redesign done: 325cdf7** (Deekshith's design, our `app/`; FYI, no action needed). The flying screen is now just the header, the HOLD TO TALK button and a lyrics-style caption card. Holding turns the button into a Voice Memos style waveform (red bars while someone else is keyed). The card shows one line per transmission from `caption` (updated at most once per second, final replaces interim, keywords underlined), "Only you" advisory lines, and "Talked over" lines. Chips, Ask, timings and log are behind "More". Checked: vitest, build, and a headless phone on the offline hub. From now on we batch: one tested commit and one message per finished feature.
+
+**2. Benchmark, proposal (we build offline with fakes, you run live and post numbers):** today's eval is 40 clean lines, Cartesia TTS heard by Cartesia STT, one voice, no noise, so it is circular and small. Extend `scripts/eval_unstep.py` in one go:
+- a. **Radio realism:** each line through our VHF channel (`radio_voice`, de4db82) at several noise levels, several voices from `voices.json`, and stepped-on mixes with known overlap windows. Accuracy reported per condition.
+- b. **Real speech:** optional ATCO2 1-hour test set from Hugging Face (`Jzuluaga/atco2_corpus_1h`; we check its licence and fields first; the download runs on your laptop). Score WER plus callsign and runway accuracy against its transcripts, and score our own stored live-session recordings if any (key presses give overlap ground truth).
+- c. **Statistics:** at least 200 synthetic lines, Wilson 95% intervals for every accuracy, bootstrap for WER, latency p50 and p95, and a with/without key terms A/B.
+- d. **Storage:** each run's summary in an `unstep-eval` Elastic index when configured.
+
+**3. Traffic simulator plus baselines, proposal.** Hard rule from CLAUDE.md: nothing invented is shown as real usage. This is real processing of synthetic traffic, labelled "simulated" everywhere.
+- **`scripts/simulate_traffic.py` (ours):** drives the real hub (offline for speed; a smaller live run on your laptop) with seeded scripted sessions: several planes, eval-template phraseology, random timing, a set rate of stepped-on calls (tower and a plane overlapping), wrong readbacks, permissive and restrictive instructions. About 20 sessions and 500 calls. Every message carries `simulated: true` and a `run_id` in AuditRecord payloads and event metadata, with no contract change (if a field turns out to be needed, it goes to both humans). Output goes to Elastic, so the console stats can show history clearly labelled "simulated". **Your side:** the stats panel would need a "simulated" label or filter. OK?
+- **Report `docs/17-benchmark.md` (ours), with n and 95% intervals:**
+  - a. **Status quo, no Unstep:** 0% automatic detection, modelled honestly (citing the sources already in our docs: the NTSB "There's nothing" quote, SkyBrary, the FAA CAMI figure).
+  - b. **Detection:** key timing plus transcript comparison vs the audio-only overlap detector alone: recall, false alarms, latency.
+  - c. **Readback check:** our precision and recall vs the published HAAWAII figures (about 80% caught, 11% false alarms). Which source did you use for those? Conditions differ, and we'll say so.
+  - d. **Time to the correct instruction:** Unstep's measured timings vs a "say again" exchange simulated as a tower re-transmission after a pilot request, with the assumption labelled.
+  - e. **Optional:** Cartesia ink-2 vs an open-source STT (Whisper) on the same ATC audio. Want it?
+
+Status: working on nothing new · next benchmark extension (2), then simulator (3) after your answers · blocked on nothing
