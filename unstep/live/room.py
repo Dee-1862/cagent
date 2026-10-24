@@ -408,7 +408,11 @@ class LiveRoom:
         self.last_wait: dict[str, float] = {}  # callsign -> ms its last advisory waited for a gap (C5)
         self.advisory_reports: list[dict] = []
         self._cue_cache: dict[tuple[str, str], str] = {}  # (station, phrase) -> WAV base64
-        self.languages: dict[str, str | None] = {}  # station -> pilot language for the private repeat
+        self.languages: dict[str, str | None] = {}
+        # Recording-session mode (unstep/live/recording.py): who is speaking, and who consented
+        self.recorder = None
+        self.speakers: dict[str, dict] = {}  # station -> {name, consent}
+        self.prompt_at_press: dict[str, dict | None] = {}  # station -> pilot language for the private repeat
         self.streamed_advisory: set[str] = set()
         # R27 3a: the frequency as it is on air, fed to each cockpit's STT during the call
         self.live_mix: LiveMix | None = None
@@ -604,6 +608,81 @@ class LiveRoom:
         self.send_to({"atc", "observer", station} & set(self.stations), report)
         return report
 
+    # ------------------------------------------------------------ recording-session mode
+
+    def set_speaker(self, station: str, name: str, consent: bool) -> None:
+        if station not in self.stations:
+            return
+        self.speakers[station] = {"name": name.strip() or station, "consent": consent}
+        if self.recorder is not None:
+            self._send_prompt(station)
+            self.send_to(None, self.recorder.status())
+
+    async def set_recording(self, on: bool, session: str | None, tower_name: str, consent: bool) -> None:
+        from unstep.live.recording import Recorder
+
+        if on and self.recorder is None:
+            if not consent:
+                self._status("Recording needs the tower speaker's consent tick.", to={"atc"})
+                return
+            self.recorder = Recorder(session)
+            self.speakers["atc"] = {"name": tower_name, "consent": True}
+            for sid in self.stations:
+                self._send_prompt(sid)
+            self.send_to(None, self.recorder.status())
+        elif not on and self.recorder is not None:
+            final = {**self.recorder.status(), "on": False}
+            self.recorder = None
+            self.send_to(None, final)
+
+    def _consented(self, station: str) -> bool:
+        return bool(self.speakers.get(station, {}).get("consent"))
+
+    def _send_prompt(self, station: str, cue: str | None = None) -> None:
+        s = self.stations.get(station)
+        if self.recorder is None or s is None or s.kind == "observer" or not self._consented(station):
+            return
+        msg = self.recorder.prompt(station, s.spoken)
+        if cue:
+            msg["cue"] = cue
+        self.send_to({station, "atc"} & set(self.stations) if station != "atc" else {"atc"}, msg)
+
+    def _key_overlaps(self, station: str, start_ms: int, end_ms: int) -> list[dict]:
+        """Other stations keyed during [start, end], from key timing (the dataset's ground truth)."""
+        now = now_ms()
+        out = []
+        for st, down, up in [*self.key_log, *((k, v, now) for k, v in self.key_since.items())]:
+            if st == station:
+                continue
+            a, b = max(start_ms, down), min(end_ms, up)
+            if b > a:
+                out.append({"with": st, "start_ms": int(a), "end_ms": int(b)})
+        return out
+
+    async def _record_clip(self, tx: Transmission, script: dict | None) -> None:
+        rec = self.recorder
+        if rec is None or not self._consented(tx.station):
+            return
+        transcript = await self._peek_streamed(tx) if self.live else None
+        s = self.stations.get(tx.station)
+        readback_of = directive = None
+        if s is not None and s.kind == "aircraft":
+            for trace in reversed(list(self.traces.values())):
+                if trace.get("callsign") == s.callsign and trace.get("decision"):
+                    readback_of, directive = trace["event_id"], trace["decision"].get("instruction_text")
+                    break
+        row = rec.save_clip(station=tx.station, speaker=self.speakers[tx.station]["name"], pcm=tx.pcm,
+                            start_ms=tx.start_ms, end_ms=tx.end_ms, script_line=(script or {}).get("line"),
+                            script_kind=(script or {}).get("kind", "instruction" if tx.station == "atc" else None),
+                            transcript=transcript if isinstance(transcript, str) else
+                            getattr(transcript, "text", None), overlaps=self._key_overlaps(tx.station, tx.start_ms, tx.end_ms),
+                            readback_of=readback_of, readback_directive=directive)
+        if row is not None and self.recorder is rec:
+            rec.advance(tx.station)
+            self._send_prompt(tx.station)
+        if self.recorder is rec:
+            self.send_to(None, rec.status())
+
     def set_language(self, station: str, language: str | None) -> str | None:
         """The pilot's language for the private repeat of directives (R17 a). Only languages
         the cockpit has checked live are kept (unstep.cockpit.translate.LANGUAGES); anything
@@ -677,6 +756,8 @@ class LiveRoom:
         self.clients[station].add(ws)
         self.claims.pop(station, None)
         await ws.send_json(self.snapshot(station))
+        if self.recorder is not None:
+            self._send_prompt(station)
         self.presence()
 
     def leave(self, station: str, ws) -> None:
@@ -765,7 +846,8 @@ class LiveRoom:
                 "stations": self.stations_info(), "keyed": dict(self.key_since),
                 "graph": self.graph, "autonomy": self.policy.enabled if self.policy else True,
                 "traces": list(self.traces.values()), "radio": self.radio_log[-30:],
-                "insights": self.insights[-20:], "mic": self.live and bool(env("CARTESIA_API_KEY"))}
+                "insights": self.insights[-20:], "mic": self.live and bool(env("CARTESIA_API_KEY")),
+                "recording": self.recorder.status() if self.recorder else {"on": False}}
 
     def presence(self) -> None:
         self.send_to(None, {"type": "presence", "connected": {k: len(v) for k, v in self.clients.items()}})
@@ -808,6 +890,11 @@ class LiveRoom:
             await self.reset()
         elif kind == "cue":
             self._spawn(self.say_cue(station, str(data.get("name", ""))))
+        elif kind == "recording" and station == "atc":
+            await self.set_recording(bool(data.get("on")), str(data.get("session") or "") or None,
+                                     str(data.get("name") or "Tower")[:60], bool(data.get("consent")))
+        elif kind == "speaker":
+            self.set_speaker(station, str(data.get("name") or "")[:60], bool(data.get("consent")))
         elif kind == "language":
             kept = self.set_language(station, data.get("code"))
             self.send_to({station}, {"type": "language", "code": kept})
@@ -1076,6 +1163,8 @@ class LiveRoom:
         if st["pump"] is not None:
             self.stream_results[tx.tx_id] = st["pump"]
         await self.transmit(tx)
+        if self.recorder is not None:
+            self._spawn(self._record_clip(tx, self.prompt_at_press.pop(station, None)))
         return tx
 
     async def _streamed(self, tx: Transmission):
@@ -1133,6 +1222,15 @@ class LiveRoom:
                 return
             self.key_log = [*self.key_log[-199:], (station, since, received)]
             self.keyed.discard(station)
+        if down and self.recorder is not None and self._consented(station):
+            s = self.stations.get(station)
+            self.prompt_at_press[station] = self.recorder.prompt(station, s.spoken if s else None)
+            if station == "atc":
+                planes = [sid for sid, st in self.stations.items()
+                          if st.kind == "aircraft" and self._consented(sid) and self.clients.get(sid)]
+                target = self.recorder.talk_over_target(planes)
+                if target:
+                    self._send_prompt(target, cue="talk_now")
         if len(self.key_since) == (1 if down else 0):  # the frequency just became busy or free (P5)
             for edge in list(self.edges.values()):
                 self._spawn(self._frequency_busy(edge, down))
@@ -1185,6 +1283,12 @@ class LiveRoom:
         self.radio_log.append(summary)
         self.send_to(None, summary)
         heard_live = await self._mix_finish(cluster)
+        if self.recorder is not None and mx.overlaps:
+            self.recorder.save_mix(pcm=mx.pcm, stations=[t.station for t in cluster], start_ms=mx.t0,
+                                   end_ms=max(t.end_ms for t in cluster),
+                                   overlaps=[{"stations": o.stations, "start_ms": o.start_ms, "end_ms": o.end_ms}
+                                             for o in mx.overlaps])
+            self.send_to(None, self.recorder.status())
         jobs = [self._tower(t) for t in cluster if self.stations[t.station].kind == "atc"]
         towers = [t for t in cluster if self.stations[t.station].kind == "atc"]
         for s in self.stations.values():

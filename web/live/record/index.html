@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Unstep recording session</title>
+  <style>
+    :root { --bg: #0b1020; --panel: #131a2e; --text: #e8ecf8; --muted: #93a0bd; --red: #ef4444; --amber: #f59e3b; --green: #22c55e; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.4 system-ui, sans-serif; }
+    main { max-width: 760px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
+    h1 { margin: 0; font-size: 22px; }
+    .panel { background: var(--panel); border-radius: 14px; padding: 14px 16px; }
+    label { display: block; margin: 6px 0; }
+    input[type=text], input[type=password] { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 10px; border: 1px solid #2a3554; background: #0e1427; color: var(--text); font: inherit; }
+    button { font: inherit; padding: 10px 16px; border-radius: 10px; border: 0; background: var(--amber); color: #1b1203; font-weight: 700; cursor: pointer; }
+    button.stop { background: var(--red); color: #fff; }
+    .rec { color: var(--red); font-weight: 700; }
+    .counts { display: flex; gap: 18px; flex-wrap: wrap; font-size: 18px; }
+    .counts b { font-size: 28px; display: block; }
+    #line { font-size: 30px; font-weight: 800; line-height: 1.2; }
+    #to { color: var(--muted); }
+    .small { color: var(--muted); font-size: 13px; }
+    @media (max-width: 480px) { #line { font-size: 24px; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Recording session <span id="state" class="small">connecting...</span></h1>
+  <section class="panel" id="setup">
+    <label>Session name <input id="session" type="text" placeholder="e.g. calhacks-saturday"></label>
+    <label>Tower speaker's name <input id="name" type="text" placeholder="Who is talking as the tower"></label>
+    <label><input id="consent" type="checkbox"> My voice is recorded for the Unstep dataset</label>
+    <button id="toggle" disabled>Start recording</button>
+    <p class="small">Pilots join with the QR code, type their name and tick the same box. Only people who ticked it are recorded. Clips go to data/recordings/&lt;session&gt;/ on this machine.</p>
+  </section>
+  <section class="panel">
+    <div class="counts">
+      <div><b id="clips">0</b>clips</div><div><b id="overlaps">0</b>talked over</div>
+      <div><b id="mixes">0</b>mixes</div><div><b id="flagged">0</b>flagged</div><div><b id="dropped">0</b>dropped</div>
+    </div>
+    <p id="speakers" class="small"></p>
+  </section>
+  <section class="panel">
+    <p class="small">Tower, say next (hold to talk on the console):</p>
+    <p id="line">Start a session to get lines.</p>
+    <p id="to"></p>
+  </section>
+</main>
+<script>window.UNSTEP_TOKEN_QUERY = "__UNSTEP_TOKEN_QUERY__";</script>
+<script type="module" src="/live/static/record/record.js"></script>
+</body>
+</html>

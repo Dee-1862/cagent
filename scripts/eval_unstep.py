@@ -211,6 +211,96 @@ def sessions_summary(path: Path) -> dict:
             "latency_ms": {k: {"n": len(v), "p50": pct(v, 0.5), "p95": pct(v, 0.95)} for k, v in sorted(stages.items())}}
 
 
+def load_recordings(folder: Path) -> tuple[list[dict], list[dict]]:
+    """Clip and mix rows from an exported dataset (train/, test/, mixes/) or a raw session folder."""
+    clips, mixes = [], []
+    metas = [m for m in (folder / "train" / "metadata.jsonl", folder / "test" / "metadata.jsonl") if m.is_file()]
+    if metas:
+        for m in metas:
+            for line in m.read_text(encoding="utf-8").splitlines():
+                row = json.loads(line)
+                row["_audio"] = str(m.parent / row["file_name"])
+                clips.append(row)
+        mix_meta = folder / "mixes" / "metadata.jsonl"
+        for line in (mix_meta.read_text(encoding="utf-8").splitlines() if mix_meta.is_file() else []):
+            row = json.loads(line)
+            row["_audio"] = str(folder / "mixes" / row["file_name"])
+            mixes.append(row)
+    else:
+        for line in (folder / "manifest.jsonl").read_text(encoding="utf-8").splitlines():
+            row = json.loads(line)
+            row["_audio"] = str(folder / row["clip"])
+            (mixes if row.get("kind") == "mix" else clips).append(row)
+    return clips, mixes
+
+
+def score_recordings(clips: list[dict], mixes: list[dict], heard: dict[str, str]) -> dict:
+    """Real voices: WER against the prompted line, slot agreement, readback precision/recall, and the
+    audio-only overlap detector against key-timing ground truth. `heard`: clip path -> transcript."""
+    import soundfile as sf
+
+    from unstep.evaluation import bootstrap_wer, detect_overlap, iou, proportion, wer
+
+    pairs, cs, cs_n, rw, rw_n = [], 0, 0, 0, 0
+    tp = fp = fn = tn = 0
+    for c in clips:
+        said, got = c.get("text") or c.get("script_line"), heard.get(c["_audio"]) or c.get("transcript") or ""
+        if not said:
+            continue
+        pairs.append(wer(said, got))
+        ref, hyp = parse_instruction(said), parse_instruction(got)
+        if ref and ref.callsign:
+            cs_n += 1
+            cs += bool(hyp and callsign_digits(hyp.callsign) == callsign_digits(ref.callsign))
+        if ref and ref.runway:
+            rw_n += 1
+            rw += bool(hyp and (hyp.runway or "") == ref.runway)
+        directive = parse_instruction(c.get("readback_directive") or "")
+        if directive is not None:
+            labelled = not check_readback(directive, said)[0]
+            flagged = not check_readback(directive, got)[0]
+            tp += flagged and labelled
+            fp += flagged and not labelled
+            fn += labelled and not flagged
+            tn += not flagged and not labelled
+    hits, clean_flags = 0, []
+    for m in mixes:
+        pcm, _ = sf.read(m["_audio"], dtype="float32")
+        found = detect_overlap(pcm, t0=m["start_ms"])
+        truth = [(o["start_ms"], o["end_ms"]) for o in m.get("overlaps", [])]
+        hits += any(iou(t, f) >= 0.5 for t in truth for f in found)
+    for c in clips[:200]:
+        if c.get("stepped_on"):
+            continue
+        pcm, _ = sf.read(c["_audio"], dtype="float32")
+        clean_flags.append(bool(detect_overlap(pcm, t0=c.get("start_ms") or 0)))
+    return {"n_clips": len(clips), "wer": bootstrap_wer(pairs), "callsign": proportion(cs, cs_n),
+            "runway": proportion(rw, rw_n),
+            "readback": {"precision": proportion(tp, tp + fp), "recall": proportion(tp, tp + fn),
+                         "confusion": {"tp": tp, "fp": fp, "fn": fn, "tn": tn}},
+            "detection": {"recall_iou_0_5": proportion(hits, len(mixes)),
+                          "false_alarms_on_clean_clips": proportion(sum(clean_flags), len(clean_flags))}}
+
+
+async def transcribe_recordings(clips: list[dict]) -> dict[str, str]:
+    """Cartesia ink-2 (with key terms) on every recorded clip, sent fast."""
+    import soundfile as sf
+
+    from unstep.cockpit.audio import SAMPLE_RATE
+    from unstep.cockpit.stt import CartesiaManualSTT, build_keyterms
+
+    terms = build_keyterms(callsigns=[s for _, s, *_ in scenario.FLEET], runways=RUNWAYS)
+    out = {}
+    for c in clips:
+        pcm, _ = sf.read(c["_audio"], dtype="int16")
+        data = pcm.tobytes()
+        async with CartesiaManualSTT(keyterms=terms) as stt:
+            for i in range(0, len(data), SAMPLE_RATE // 5):
+                await stt.send_audio(data[i:i + SAMPLE_RATE // 5])
+            out[c["_audio"]] = (await stt.finalize()).text
+    return out
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--n", type=int, default=40)
@@ -218,6 +308,7 @@ def main(argv=None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="text only, no API calls")
     parser.add_argument("--live", action="store_true", help="Cartesia TTS and STT (needs keys)")
     parser.add_argument("--sessions", type=Path, help="JSONL event log from live sessions")
+    parser.add_argument("--recordings", type=Path, help="recorded dataset (export_recordings.py) or a session folder")
     parser.add_argument("--out", type=Path, default=OUT)
     args = parser.parse_args(argv)
     items = build_items(args.n, args.seed)
@@ -232,6 +323,15 @@ def main(argv=None) -> int:
                           "audio_ms": {"p50": pct(lengths, 0.5), "p95": pct(lengths, 0.95)}}
     if args.sessions:
         result["sessions"] = sessions_summary(args.sessions)
+    if args.recordings:
+        clips, mixes = load_recordings(args.recordings)
+        heard = asyncio.run(transcribe_recordings(clips)) if args.live else {}
+        result["recorded_sessions"] = score_recordings(clips, mixes, heard)
+        r = result["recorded_sessions"]
+        print(f"Recorded sessions: {r['n_clips']} clips, WER {r['wer']['value']} {r['wer']['ci95']}, "
+              f"callsign {r['callsign']['value']}, runway {r['runway']['value']}, "
+              f"overlap detector recall {r['detection']['recall_iou_0_5']['value']}"
+              + ("" if args.live else " (stored live transcripts; add --live to transcribe again)"))
     if args.dry_run:
         result["items_preview"] = [asdict(i) for i in items[:5]]
     for name in ("text_only", "live"):

@@ -48,10 +48,11 @@ export function parseHub(raw: string, token: string | null = null): Hub {
 
 export type Seat = { station: string; callsign: string; spoken: string; name: string; frequency: string; live: boolean; language?: string | null };
 
-export async function join(hub: Hub, language?: string | null): Promise<Seat> {
+export async function join(hub: Hub, language?: string | null, speaker?: { name: string; consent: boolean }): Promise<Seat> {
   const params = new URLSearchParams();
   if (hub.token) params.set("token", hub.token);
   if (language) params.set("language", language);
+  if (speaker?.name) { params.set("name", speaker.name); params.set("consent", speaker.consent ? "1" : "0"); }
   const q = params.toString() ? `?${params}` : "";
   const r = await fetch(`${hub.http}/live/join${q}`, { method: "POST" });
   const body = await r.json().catch(() => ({}));

@@ -163,6 +163,14 @@ No public labelled set exists for stepped-on detection or restrictive versus per
 
 With 100 items a 95 percent interval is about plus or minus 10 points; 500 items gets it to about 4. Our own live room is also a data source: every judge session is a labelled stepped-on event (keys give ground truth), stored in Elastic.
 
+## 6a. Recording a Real Dataset in About an Hour
+
+1. Start the hub (`python -m unstep.live`, live keys for transcripts). Open `/live/record/` on the laptop: session name, the tower speaker's name, tick consent, Start recording.
+2. People join with the QR code, type their first name and tick "My voice is recorded for the Unstep dataset". Only people who ticked it are recorded; the others can still fly.
+3. Everyone sees their next line ("Say: ...") above the talk button; the tower reads its lines from the record page. Every third tower call, one plane gets "Talk NOW, over the tower", so overlaps happen on purpose. About 20 lines per person in 10 minutes is a comfortable pace.
+4. Each push-to-talk is saved as a 16 kHz WAV in `data/recordings/<session>/` with a manifest row (speaker, prompted line, live transcript, key times, overlaps from key timing, readback target, QC). Every stepped-on cluster is also saved as the mix a cockpit heard. Clips under 0.3 s are dropped; clipping and near silence are flagged. The record page shows live counts.
+5. Export: `python scripts/export_recordings.py --all --licence "<what the recorders agree>"` writes a datasets-style folder (train/test split by speaker, mixes, `DATASET_CARD.md` crediting the recorders by name). Evaluate: `python scripts/eval_unstep.py --recordings data/dataset/unstep-radio [--live]`.
+
 ## 7. Decisions Needed
 
 | Question | Who |

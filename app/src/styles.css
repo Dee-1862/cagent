@@ -153,3 +153,13 @@ input {
   .stage .ptt, .lyrics .line, .memo { transition: none; animation: none; }
   .lyrics { scroll-behavior: auto; }
 }
+
+/* ------------------------------------------------ recording-session prompter */
+.join label.name input { display: block; width: 100%; margin-top: 4px; }
+.join label.consent { display: flex; gap: 8px; align-items: center; }
+.prompter { background: #1f1630; border: 2px solid #7c3aed; border-radius: 16px; padding: 10px 14px; }
+.prompter .rec { color: #f87171; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; }
+.prompter p { margin: 6px 0 0; font-size: 22px; font-weight: 700; }
+.prompter .say { color: #c4b5fd; }
+.prompter.now { border-color: #ef4444; background: #3a1414; animation: flash 0.3s ease-out 3; }
+@media (prefers-reduced-motion: reduce) { .prompter.now { animation: none; } }

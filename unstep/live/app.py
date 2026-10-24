@@ -74,6 +74,15 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
         html = (WEB / "index.html").read_text(encoding="utf-8")
         return HTMLResponse(html.replace("__UNSTEP_TOKEN_QUERY__", query))
 
+    @app.get("/live/record/")
+    @app.get("/live/record")
+    async def record_page():
+        """Recording-session mode: the presenter's start/stop page, with the tower's line prompter."""
+        token = gateway_token()
+        query = f"?token={quote(token, safe='')}" if token else ""
+        html = (WEB / "record" / "index.html").read_text(encoding="utf-8")
+        return HTMLResponse(html.replace("__UNSTEP_TOKEN_QUERY__", query))
+
     @app.get("/live/atc/")
     @app.get("/live/atc")
     async def atc_page():
@@ -142,6 +151,8 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
         if gateway_token() and request.query_params.get("token") != gateway_token():
             return JSONResponse({"error": "wrong room token"}, status_code=403)
         seat = await room.claim_aircraft(language=request.query_params.get("language"))
+        if seat is not None and request.query_params.get("name"):  # recording-session mode: who is speaking
+            room.set_speaker(seat.id, request.query_params["name"][:60], request.query_params.get("consent") == "1")
         if seat is None:
             n = len(room.fleet_limit())
             return JSONResponse({"error": f"All {n} planes are taken. Watch on the projector.", "full": True},

@@ -55,6 +55,9 @@ function Join({ hub, onSeat }: { hub: Hub; onSeat: (s: Seat) => void }) {
   const [busy, setBusy] = useState(false);
   const [room, setRoom] = useState<{ live: boolean; stations: Station[]; connected: Record<string, number>; languages?: Record<string, string> } | null>(null);
   const [language, setLanguage] = useState<string>(() => { try { return localStorage.getItem("unstep.language") ?? ""; } catch { return ""; } });
+  // Recording sessions: only people who type a name and tick the box are recorded.
+  const [speakerName, setSpeakerName] = useState<string>(() => { try { return localStorage.getItem("unstep.name") ?? ""; } catch { return ""; } });
+  const [consent, setConsent] = useState(false);
 
   useEffect(() => {
     let stop = false;
@@ -84,7 +87,8 @@ function Join({ hub, onSeat }: { hub: Hub; onSeat: (s: Seat) => void }) {
     await keepAwake();
     try {
       try { localStorage.setItem("unstep.language", language); } catch { /* private mode */ }
-      onSeat(await join(hub, language || null));
+      try { localStorage.setItem("unstep.name", speakerName); } catch { /* private mode */ }
+      onSeat(await join(hub, language || null, speakerName.trim() ? { name: speakerName.trim(), consent } : undefined));
     } catch (e) {
       const err = e as Error & { full?: boolean };
       if (err.full) setFull(err.message); // not an error: the room is full, watch the projector
@@ -108,6 +112,10 @@ function Join({ hub, onSeat }: { hub: Hub; onSeat: (s: Seat) => void }) {
           </select>
         </label>
       )}
+      <label className="small name">Your name (for the dataset credits, optional)
+        <input value={speakerName} onChange={(e) => setSpeakerName(e.target.value)} placeholder="First name" maxLength={60} />
+      </label>
+      <label className="small consent"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} /> My voice is recorded for the Unstep dataset</label>
       <button className="big" onClick={go} disabled={busy || !room}>{busy ? "Getting your plane..." : "Turn on my radio and join"}</button>
       {error && <p className="error">{error}</p>}
       {full && <p className="lead full">{full}</p>}
@@ -135,6 +143,8 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
   const [toast, setToast] = useState<string | null>(null);
   const [details, setDetails] = useState(false);
   const [more, setMore] = useState(false);
+  const [recording, setRecording] = useState<{ session: string; clips: number; overlaps: number } | null>(null);
+  const [prompt, setPrompt] = useState<{ line: string; cue: string | null; at: number } | null>(null);
   const [lyrics, setLyrics] = useState<L.Lyrics>(L.empty());
   const [wave, setWave] = useState<W.Wave>(W.empty());
   const [ask, setAsk] = useState("");
@@ -169,6 +179,7 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
     const l = new Live(hub, station, (m: Msg) => {
       switch (m.type) {
         case "hello":
+          setRecording(m.recording?.on ? { session: m.recording.session, clips: m.recording.clips, overlaps: m.recording.overlaps } : null);
           if (!greeted.current) { greeted.current = true; cue("joined"); }
           setStations(m.stations);
           setHubLive(!!m.live);
@@ -214,6 +225,12 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
           return;
         }
         case "cue_audio": return void playWav(m.audio);
+        case "recording": return void setRecording(m.on ? { session: m.session, clips: m.clips, overlaps: m.overlaps } : null);
+        case "prompt":
+          if (m.station !== station) return;
+          setPrompt({ line: m.line, cue: m.cue ?? null, at: Date.now() });
+          if (m.cue === "talk_now") { cue("stepped_on_others"); navigator.vibrate?.([80, 40, 80]); }
+          return;
         case "advisory_audio":
           earAudio.current = m.audio;
           if (m.streamed) return; // already heard chunk by chunk; kept for "Play again"
@@ -344,6 +361,12 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
         <span className={`dot ${conn}`} title={conn} />
       </header>
 
+      {recording && (
+        <div className={`prompter ${prompt?.cue === "talk_now" && Date.now() - prompt.at < 6000 ? "now" : ""}`}>
+          <span className="rec">● REC {recording.clips} clips · {recording.overlaps} talked over</span>
+          {prompt && <p>{prompt.cue === "talk_now" && Date.now() - prompt.at < 6000 ? <b>Talk NOW, over the tower: </b> : <span className="say">Say: </span>}{prompt.line}</p>}
+        </div>
+      )}
       <div className={`stage ${onAir ? "recording" : ""}`}>
         <button
           className={`ptt ${pttState}`}

@@ -19,6 +19,22 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Recording-session mode: a real dataset of us talking over each other
+
+**Type:** Added
+**Area:** Audio
+
+- To record a real dataset in about an hour, the presenter opens `/live/record/`, names the session and the tower speaker, ticks consent and starts recording (controller seat only).
+  - **Who is recorded:** pilots type a first name and tick "My voice is recorded for the Unstep dataset" when they join. Only people who ticked it are recorded.
+  - **What is saved:** every push-to-talk becomes a 16 kHz WAV in `data/recordings/<session>/` (gitignored) with a manifest row: speaker, prompted line and its kind, live transcript, key times, overlaps from key timing, readback target, QC. Every stepped-on cluster is saved as the mix a cockpit heard, with its overlap windows.
+- **Prompter (`unstep/live/recording.py`):** everyone sees their next line above the talk button, and the tower reads its lines on the record page. Pilot lines include some readbacks that are wrong on purpose. Every third tower call cues one plane: "Talk NOW, over the tower".
+- **QC:** clips under 0.3 s are dropped; clipping and near silence are flagged. Live counts show on the record page and the phones.
+- **Export:** `scripts/export_recordings.py` writes a datasets-style folder (train/test split by speaker, mixes, `DATASET_CARD.md` crediting the recorders by name; the licence is the recorders' decision, default "for evaluation only").
+- **Evaluation:** `scripts/eval_unstep.py --recordings <folder>` scores the real set: WER against the prompted lines, callsign and runway agreement, readback precision and recall, and the audio-only overlap detector against key-timing ground truth.
+- Checked: 3 tests (recorder, consent and key-timing overlaps in a room run, export plus eval). A headless browser run took a real fake-mic clip from join with consent through the prompter to the manifest. Vitest and build pass. Steps are in [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md) section 6a.
+
+**Related:** agent mail D21
+
 ## 2026-10-24: Devpost draft: lines we can prove filled in
 
 **Type:** Docs
