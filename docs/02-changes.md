@@ -19,6 +19,19 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Live Elastic stats per frequency for the console (W4)
+
+**Type:** Added
+**Area:** Audit
+
+- `GET /live/stats?since_ms=<run start>` returns `{frequency, since_ms, window_s, backend, blocked_calls, readback_errors, auto_resends, per_callsign: [{callsign, blocked, readback_errors, auto_resends}], esql, took_ms}`. Answers are cached for 2 s, so many consoles polling every 5 s ask Elastic at most once per 2 s.
+- With Elastic configured, two ES|QL queries run over the events index (`unstep/ground/stats.py`): blocked calls per event and callsign on this frequency, and readback errors and auto-relays per event. Readbacks and approvals carry no frequency or callsign, so they are joined to their blocked call by `event_id`. The query text goes back in `esql` so the console can show it. The frequency and time are checked and inlined, never free text.
+- Without Elastic, or if the cluster fails, the same counts come from the room's traces (`backend: "local"`, plus `elastic_error`).
+- `auto_resends` means directives the policy agent re-sent on its own (`approved_via: "auto"`).
+- Checked: 6 tests, Elastic mocked with `httpx.MockTransport`; not run against a real cluster here.
+
+**Related:** agent mail R10 (W4), R11 item 2
+
 ## 2026-10-24: Hub serves https for phone microphones on the LAN (W5)
 
 **Type:** Added

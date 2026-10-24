@@ -26,12 +26,14 @@ from unstep.live.room import LiveRoom
 log = logging.getLogger("unstep.live")
 WEB = ROOT / "web" / "live"
 PILOT_APP = ROOT / "app" / "dist"
+STATS_CACHE_MS = 2000  # consoles poll /live/stats every 5 s; Elastic is asked at most this often
 
 
 def create_live_app(live: bool, sink=None, room: LiveRoom | None = None) -> FastAPI:
     app = create_app(sink)
     room = room or LiveRoom(app.state.gateway, live=live)
     app.state.room = room
+    stats_cache: dict[int, tuple[int, dict]] = {}
 
     @app.get("/live")
     @app.get("/live/")
@@ -89,6 +91,19 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None) -> Fast
                 "stations": [{"id": st.id, "kind": st.kind, "label": st.label, "callsign": st.callsign,
                               "spoken": st.spoken, "name": st.name} for st in room.stations.values()],
                 "connected": {sid: len(c) for sid, c in room.clients.items()}}
+
+    @app.get("/live/stats")
+    async def live_stats(since_ms: int = 0):
+        """Per-frequency counts for the console (W4): Elastic ES|QL when configured, else the room's traces."""
+        from unstep.ground.stats import frequency_stats
+
+        now = now_ms()
+        if (cached := stats_cache.get(since_ms)) and now - cached[0] < STATS_CACHE_MS:
+            return cached[1]
+        result = await frequency_stats(room.frequency, since_ms, room.traces)
+        stats_cache.clear()  # one console polls one since_ms; keep the cache tiny
+        stats_cache[since_ms] = (now, result)
+        return result
 
     @app.post("/live/join")
     async def live_join(request: Request):
