@@ -17,6 +17,8 @@ Feedback from building Unstep on Cartesia (Sonic TTS, Ink STT). Everything under
 - **Why it matters:** Replaying recorded audio is common in tests and demos. Empty transcripts with no error look exactly like silence, so this is easy to miss. It may be intended for a real-time model, but it isn't documented.
 - **Suggestion:** Document the pacing requirement, or send a warning when input runs ahead of real time.
 
+**Re-test 2026-10-24 ~12:30 PT (`scripts/cartesia_repro.py --runs 15`): not reproduced.** Fast and paced sends both gave 15/15 correct `turn.end` transcripts, 0 empty. We saw empty transcripts on fast input the previous night; it may have been transient or since fixed. Treat this item as unconfirmed until it reproduces again.
+
 ### 2. Word timestamps depend on the model, which the docs don't say
 
 - **Endpoint:** `wss://api.cartesia.ai/stt/websocket` (manual finalize)
