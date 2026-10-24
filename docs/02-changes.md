@@ -19,6 +19,20 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Pilot app, join on demand, and a sponsor plan
+
+**Type:** Added
+**Area:** Other
+
+- `app/`: pilot phone app (React, TypeScript, Vite) that runs on Vercel or at `/pilot/` on the hub. One tap joins as the next free plane; hold-to-talk with live "someone is talking" and TALKED OVER states, private advisory panel, readback result, tap-to-say lines, Ask Unstep, timings.
+- Hub: `POST /live/join` (six-plane fleet, cockpit agent per plane on demand), live `keyed` and `stepon_live` messages, ping/pong clock sync, `UNSTEP_ALLOWED_ORIGINS`, `/live/pilot-link` for the QR, `UNSTEP_MOSS_AIRCRAFT`.
+- Seed data uses each plane's own spoken callsign, so H456 no longer gets Cessna clearances.
+- [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md): hosting, crowd demo flow, millisecond-level ideas, Moss in-session indexing, Cartesia and Elastic plans, dataset build and validation.
+- CLAUDE.md: agent mail rules, no force pushes on shared branches, commit as the human.
+- Our 5 commits from earlier today were re-authored from a tool identity to Dee-1862; Rishit was told in agent mail (D2).
+
+**Related:** [Pilot App and Sponsor Plan](15-pilot-app-and-sponsor-plan.md), [Live Demo](11-live-demo.md)
+
 ## 2026-10-24: Projector-ready Control Tower console
 
 **Type:** Added
