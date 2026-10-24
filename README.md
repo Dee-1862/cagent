@@ -4,6 +4,23 @@
 
 Pilots and controllers share one half-duplex VHF channel, so when two stations transmit at once the call turns into a squeal and is lost. An FAA CAMI study (DOT/FAA/AM-05/19, 2005) found blocked, stepped-on or clipped calls in 1.16% of transmissions sampled at the five busiest US TRACONs, and no alerting system for stepped-on or clipped calls ([source](https://rosap.ntl.bts.gov/view/dot/58248/dot_58248_DS1.pdf)). Today recovery depends on someone noticing and asking "say again", and a misheard readback is only caught if the controller happens to hear it.
 
+![Unstep demo screen, full view, from a live run on Cartesia, Moss and Moss Inference](docs/img/demo-full-view.png)
+
+*Full view after a live run: the tower words lost under the squeal are struck out, the cockpit's local hint came from Moss in 2 ms with its source record, the controller approved by voice, the wrong readback ("23") was caught and corrected, and every number in the bottom strip was measured in that run.*
+
+## Presenter mode (the live demo)
+
+```bash
+python -m unstep.demo --live    # real Cartesia, Moss and Moss Inference; warms up for about 30 s
+python -m unstep.demo           # same pipeline offline, with labeled fakes
+```
+
+Opens `http://127.0.0.1:8765/demo/`. **Space** runs the next scene, **A** toggles audio mode and the full view, **?** shows the keys. Every scene runs the real pipeline on recorded clips in `assets/clips/real/`; nothing on screen is canned. Design and storyboard: [docs/11-demo-design.md](docs/11-demo-design.md). Pitch script: [docs/12-pitch.md](docs/12-pitch.md).
+
+| Audio mode (the first minute) | Close |
+| --- | --- |
+| ![Audio mode caption](docs/img/demo-audio-mode.png) | ![Close card](docs/img/demo-close.png) |
+
 Full spec: [docs/01-prd.md](docs/01-prd.md). We logged API feedback for Cartesia: [docs/09-cartesia-feedback.md](docs/09-cartesia-feedback.md).
 
 ## Demo
