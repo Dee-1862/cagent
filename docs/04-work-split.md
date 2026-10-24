@@ -24,6 +24,8 @@ How the two of us divide Unstep so we can build in parallel and get the full sys
 | Dev A | _name_ | Cockpit edge, cockpit voice, readback check, pilot voice queries, all Moss work including the Frequency Monitor | **Moss** and Cartesia in the cockpit |
 | Dev B | _name_ | Gateway, tower transcription, controller voice approval, all Elastic work, dashboard, audit | **Elastic** and Cartesia on the ground |
 
+**Update:** Dev A finished A1 to A10 and took over B10 (controller voice approval) so Dev B can focus on B5, the critical path. It's in `unstep/ground/voice_approval.py`.
+
 Fill in the names. Cartesia is split by side: Dev A owns TTS, readback STT and pilot query STT in the cockpit. Dev B owns tower STT and the controller's voice approval loop on the ground.
 
 ### Why this split is balanced
@@ -111,7 +113,7 @@ Dev A total: S x4, M x4, L x2 = 4 + 8 + 6 = 18, plus the Moss section of the pit
 | B7 | Controller dashboard: card with blocked words, Approve or Reject as the click fallback, readback status, monitoring panel, live word highlighting | L | One click sends `ApprovedDirective`, insights and readback status update live |
 | B8 | Audit and live ES\|QL: event trail, blocked calls per hour, readback error rate by frequency | M | Queries run live on screen (M-007) |
 | B9 | Ground latency measurements, including "Approve" spoken to directive sent | S | Numbers written into [Research section 4](06-research.md#4-our-own-measurements) |
-| B10 | Controller voice approval: chime and Cartesia TTS prompt in the controller headset, Unstep key with turn STT for "Approve" or "Reject", repeat-back, one retry, 10 second timeout, `VoiceApproval` contract | M | Saying "Approve" sends the directive and is repeated back. "Approve" played on the radio clip does nothing. Silence sends nothing |
+| B10 | **Done by Dev A (Rishit), see note below.** Controller voice approval: chime and Cartesia TTS prompt in the controller headset, Unstep key with turn STT for "Approve" or "Reject", repeat-back, one retry, 10 second timeout, `VoiceApproval` contract | M | Saying "Approve" sends the directive and is repeated back. "Approve" played on the radio clip does nothing. Silence sends nothing |
 | BR | Research RB-1 to RB-9 (1 hour) | | Rows filled with links |
 
 Dev B total: S x4, M x4, L x2 = 4 + 8 + 6 = 18, plus the Elastic implementation write-up the sponsor asked for = 20.

@@ -85,7 +85,7 @@ flowchart LR
     GW --> UI
 ```
 
-Ownership: the cockpit box, the Moss frequency session and the Frequency Monitor belong to Dev A (all Moss, plus pilot voice queries). Everything else on the ground belongs to Dev B (all Elastic, tower STT and controller voice approval). The Frequency Monitor is the only writer to the Moss frequency session. See [Work Split](04-work-split.md#2-owners).
+Ownership: the cockpit box, the Moss frequency session and the Frequency Monitor belong to Dev A (all Moss, plus pilot voice queries). Everything else on the ground belongs to Dev B (all Elastic and tower STT). Controller voice approval (`unstep/ground/voice_approval.py`) was built by Dev A. The Frequency Monitor is the only writer to the Moss frequency session. See [Work Split](04-work-split.md#2-owners).
 
 ## 3. Data Flow, Start to Finish
 

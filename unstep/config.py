@@ -8,7 +8,7 @@ shell win over .env.
 
 import os
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 from dotenv import load_dotenv
 
@@ -52,10 +52,15 @@ def gateway_token() -> str | None:
 
 
 def ws_url(role: str, base: str | None = None) -> str:
-    """The WebSocket address for a role, with the token when one is set."""
-    url = f"{(base or gateway_url()).rstrip('/')}/ws/{role}"
+    """The WebSocket address for a role. A query already in `base` (such as
+    ?token=...) is kept; otherwise the token from the environment is added."""
+    parts = urlsplit(base or gateway_url())
+    query = parse_qsl(parts.query)
     token = gateway_token()
-    return f"{url}?token={quote(token, safe='')}" if token else url
+    if token and not any(k == "token" for k, _ in query):
+        query.append(("token", token))
+    path = parts.path.rstrip("/") + f"/ws/{role}"
+    return urlunsplit(parts._replace(path=path, query=urlencode(query, quote_via=quote)))
 
 
 def pending_ttl_s() -> float:

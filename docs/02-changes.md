@@ -19,6 +19,32 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: Controller voice approval (B10)
+
+**Type:** Added
+**Area:** Ground agents
+
+Built by Dev A so Dev B can focus on B5. Code: `unstep/ground/voice_approval.py`, tests: `tests/test_voice_approval.py` (38 tests).
+
+**How it works**
+
+1. A `ProposedDirective` arrives on the `controller_voice` role. Proposals are queued and handled one at a time.
+2. Chime, then Cartesia TTS in the controller's headset: "Blocked call to N123AB: hold short Runway 33. Approve?"
+3. Cartesia turn STT listens only to the controller's Unstep key (the STT source passed in), never to radio audio.
+4. The answer is matched exactly after cleanup: approve ("approve", "approved", "affirm", "send it", "yes approve") or reject ("reject", "negative", "cancel", "I'll reissue"). Anything else, or a mix like "approve, no, reject", is unclear.
+5. Unclear: "Say again, approve or reject?" once. A second unclear answer, or no answer within 10 s, sends `VoiceApproval(decision="unclear")`, which the gateway ignores. Nothing is sent and the dashboard card stays for a click.
+6. Approve: Unstep says "Approved, sending to N123AB." and only **after** that finishes sends `VoiceApproval(decision="approve")`. If the repeat-back is cut off, nothing is sent. Reject works the same with "Rejected. Reissue by voice."
+7. If the event is decided elsewhere (a dashboard click), the loop stops speaking and sends nothing.
+8. The gateway still builds the `ApprovedDirective` from its stored proposal (unchanged).
+
+**Run:** `python -m unstep.ground.voice_approval` (scripted "Approve"), or `--live --answer-clip <wav>` for real Cartesia TTS and STT on a recorded answer. `scripts/run_demo.py` now uses this loop instead of the auto approver.
+
+**Limits:** no live microphone input yet (recorded clip or scripted speech). Strict phrase matching may ask "say again" more often than a person would; that's the safe direction.
+
+**Process note:** written by OpenAI Codex under Rishit's direction, then reviewed line by line against the PRD voice approval rules and tested with the full suite (168 passed).
+
+**Related:** [PRD section 7, voice approval rules](01-prd.md#7-end-to-end-workflow), [Work Split B10](04-work-split.md#5-dev-b-gateway-tower-and-elastic)
+
 ## 2026-10-23: Simple demo view added to the agentic architecture
 
 **Type:** Docs

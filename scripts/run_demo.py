@@ -45,7 +45,7 @@ from unstep.clock import now_ms  # noqa: E402
 from unstep.contracts import ProposedDirective, ReadbackResult, VoiceApproval, unwrap  # noqa: E402
 from unstep.gateway.server import create_app  # noqa: E402
 from unstep.gateway.sink import MemorySink  # noqa: E402
-from unstep.ground import auto_approver, mock_agents  # noqa: E402
+from unstep.ground import mock_agents, voice_approval  # noqa: E402
 
 CLIPS = ROOT / "assets" / "clips"
 QUESTION = "Unstep, what was my last clearance?"
@@ -165,8 +165,10 @@ def print_transcript(lines: list[Line]) -> None:
 async def demo(clean: bool, play: bool, live: bool = False) -> int:
     sink = MemorySink()
     server, server_task, url, gw = await start_gateway(sink)
-    print(f"gateway on {url}; starting mock agents, auto approver, cockpit edge")
-    helpers = [asyncio.create_task(mock_agents.run(url)), asyncio.create_task(auto_approver.run(url))]
+    print(f"gateway on {url}; starting mock agents, controller voice approval, cockpit edge")
+    # Controller voice approval loop (B10): prompt, "Approve" on the Unstep key, repeat-back, then send.
+    controller = voice_approval.run(url, FakeTTS(), lambda: FakeTurnSTT(["Approve"]))
+    helpers = [asyncio.create_task(mock_agents.run(url)), asyncio.create_task(controller)]
     if live:
         tts, manual_factory, readbacks, question_stt = live_engines()
         edge = CockpitEdge(link=GatewayLink(url), memory=create_memory(), tts=tts,  # real Moss when keys are set

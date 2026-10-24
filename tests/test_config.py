@@ -61,3 +61,9 @@ def test_dashboard_page_carries_the_token(monkeypatch):
 def test_dashboard_page_without_token(monkeypatch, no_token):
     html = TestClient(create_app(MemorySink())).get("/").text
     assert "/ws/dashboard`" in html
+
+
+def test_token_already_in_the_url_is_kept(monkeypatch):
+    monkeypatch.setenv("UNSTEP_GATEWAY_TOKEN", "from-env")
+    assert config.ws_url("controller_voice", "ws://test?token=test") == "ws://test/ws/controller_voice?token=test"
+    assert config.ws_url("cockpit", "ws://g:1/base/") == "ws://g:1/base/ws/cockpit?token=from-env"

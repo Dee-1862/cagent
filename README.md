@@ -13,11 +13,11 @@ python scripts/run_demo.py           # full flow, offline, no keys needed
 python scripts/run_demo.py --clean   # a clean call: proves no false alarm fires
 ```
 
-One command starts the gateway, mock ground agents, an auto approver and the real cockpit pipeline on `assets/clips/stepped_on_call.wav`, with fake STT and TTS. It prints what each party heard, with measured latencies:
+One command starts the gateway, mock ground agents, the controller voice approval loop and the real cockpit pipeline on `assets/clips/stepped_on_call.wav`, with fake STT and TTS. It prints what each party heard, with measured latencies:
 
 1. The overlap detector finds the squeal on the stepped-on call.
 2. Pilot hears a chime, then "Advisory. Transmission blocked. Likely hold short runway tree tree. Awaiting controller." The hint comes from local memory search, with its source record.
-3. The controller approves (auto approver stands in for voice approval).
+3. The controller hears "Blocked call to N123AB: hold short Runway 33. Approve?", says "Approve" on the Unstep key, hears the repeat-back, and only then is the directive sent (`unstep/ground/voice_approval.py`).
 4. The directive plays in the left ear only, ending "Read back."
 5. Pilot reads back "runway two three". Unstep: "Readback incorrect", pilot corrects, confirmed.
 6. Pilot asks "Unstep, what was my last clearance?" and gets an answer from the flight session.
@@ -33,7 +33,7 @@ python -m unstep.cockpit.monitor --url ws://127.0.0.1:8765   # Frequency Monitor
 python -m unstep.cockpit.edge assets/clips/stepped_on_call.wav --play
 ```
 
-Approve or Reject on the dashboard, or also run `python -m unstep.ground.auto_approver`. `python -m unstep.cockpit.mock_cockpit --runs 10` is a lightweight stand-in for the edge.
+Approve by voice with `python -m unstep.ground.voice_approval` (add `--live --answer-clip <wav>` for Cartesia), or click Approve or Reject on the dashboard. `python -m unstep.ground.auto_approver` approves everything instantly for load tests. `python -m unstep.cockpit.mock_cockpit --runs 10` is a lightweight stand-in for the edge.
 
 ## Setup
 
@@ -76,7 +76,7 @@ Every script prints `skipped: ...` and exits 0 when its keys are missing.
 | Context cancel on interrupt | `CartesiaTTS.cancel`, `AdvisoryVoice.interrupt` on `turn.start` | Pilot speech cuts the voice off (FR-10) |
 | Ink-2 STT with key terms (callsigns, runways, "hold short", "niner") | `unstep/cockpit/stt.py` `build_keyterms`, `CartesiaManualSTT` | Correct ATC words. Verified live: "likely hold short runway tree tree" came back exactly |
 | Manual `finalize` on squelch close / PTT release | `CartesiaManualSTT.finalize`, used by `unstep/cockpit/edge.py` when a key is set | Transcript is final the moment the transmission ends |
-| Turns endpoint (`turn.start` / `turn.end`, tuned end threshold) | `CartesiaTurnSTT` | Readbacks and pilot queries. Client works live (`smoke_cartesia.py`); the edge uses a scripted fake by default. Controller voice approval on this endpoint is planned (task B10) |
+| Turns endpoint (`turn.start` / `turn.end`, tuned end threshold) | `CartesiaTurnSTT` | Readbacks and pilot queries. Client works live (`smoke_cartesia.py`); the edge uses a scripted fake by default. Also used for controller voice approval (`unstep/ground/voice_approval.py`, task B10) |
 | `ink-whisper` for word timestamps | Not in code yet | Planned workaround (Cartesia feedback item 2), to get tower word times for blocked-word marking |
 
 ## Moss and Elastic
@@ -102,7 +102,7 @@ Every script prints `skipped: ...` and exits 0 when its keys are missing.
 - **Moss real backend untested end to end.** Filters are translated to Moss's format and covered by tests, but the full demo has only run on the local fallback.
 - **Cartesia workarounds.** `ink-2` returns no word timestamps and `ink-whisper` has no key terms (Cartesia feedback item 2), so tower word times need a second stream. The turns endpoint returns empty transcripts if audio arrives faster than real time (Cartesia feedback item 1), so replays are paced at real time.
 - **Readback parser is regex-based.** It compares callsign, action and runway only; unusual phrasing can be misread.
-- Ground agents, Elastic and controller voice approval are mocked today (tasks B5, B10).
+- Ground agents and Elastic are mocked today (task B5). Controller voice approval is built and tested with scripted speech; live mode replays a recorded answer clip, there is no live microphone input yet.
 
 ## Repo layout
 
@@ -113,7 +113,7 @@ Every script prints `skipped: ...` and exits 0 when its keys are missing.
 | `unstep/scenario.py` | Demo scenario data | Both |
 | `unstep/cockpit/` | Cockpit edge: overlap detector, Cartesia STT/TTS, Moss memory, hint, readback, queries, Frequency Monitor | Dev A |
 | `unstep/gateway/` | WebSocket gateway and event sink | Dev B |
-| `unstep/ground/` | Mock agents and auto approver | Dev B |
+| `unstep/ground/` | Controller voice approval (B10), mock agents, auto approver | Dev A built B10, Dev B owns the rest |
 | `web/dashboard.html` | Controller dashboard | Dev B |
 | `scripts/` | Demo, smoke tests, clip generation, pronunciation upload | Both |
 | `assets/` | Demo clips and pronunciation dictionary | Dev A |
