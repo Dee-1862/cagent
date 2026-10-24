@@ -1,4 +1,797 @@
-:root{color-scheme:dark;--bg:#0A0E13;--panel:#121922;--grid:#233041;--text:#E6EDF3;--muted:#8B9AAB;--cyan:#22D3EE;--green:#34D399;--amber:#FBBF24;--red:#F87171;--pilot:#A5B4FC;font-family:"Segoe UI Variable","Segoe UI",system-ui,sans-serif;color:var(--text);background:var(--bg);font-variant-numeric:tabular-nums}
-*{box-sizing:border-box}body{margin:0;height:100dvh;display:grid;grid-template-rows:88px minmax(0,1fr) 58px 46px;overflow:hidden}button{font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--grid);border-radius:4px;padding:8px 14px;cursor:pointer}button:focus-visible{outline:2px solid var(--cyan)}header{display:flex;align-items:center;gap:28px;padding:0 32px;border-bottom:1px solid var(--grid);white-space:nowrap}header .brand{font-size:28px;letter-spacing:.14em}#callsign{font-size:32px}#services{display:flex;gap:18px;margin-left:auto;font-size:14px}small{display:block;color:var(--muted);font-size:13px}#services small{font-size:11px}#clock,.mono,.value,pre,.transcript,#caption,footer{font-family:"Cascadia Mono","Consolas",ui-monospace,monospace}.section-label,h2{font-size:13px;font-weight:600;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}#full-view{display:grid;grid-template-columns:minmax(0,62fr) minmax(0,38fr);min-height:0;padding:24px 32px;gap:24px}#timeline{display:grid;grid-template-rows:25px repeat(4,minmax(0,1fr));min-height:0}#connection{float:right}.lane{display:grid;grid-template-columns:115px minmax(0,1fr);border-bottom:1px solid var(--grid);padding:16px 0;min-height:0}.lane h2{margin-top:4px}.pilot h2{color:var(--pilot)}.unstep h2,#hint h2{color:var(--cyan)}.transmissions{overflow:auto;scrollbar-width:thin;display:flex;flex-direction:column;gap:14px}.transmission{position:relative;background:var(--panel);border-left:3px solid var(--muted);padding:8px 14px;flex:none}.pilot .transmission{border-color:var(--pilot)}.unstep .transmission{border-color:var(--cyan)}.controller .transmission{border-color:var(--green)}.transcript{font-size:clamp(22px,1.5vw,30px);line-height:1.35}.transmission canvas{width:100%;height:25px;display:block}.transmission small{font-size:11px}aside{display:grid;grid-template-rows:1fr 1fr 1.4fr;gap:16px;min-height:0}article{background:var(--panel);border:1px solid var(--grid);padding:18px 24px;overflow:auto}article h2{margin:0 0 12px}article p{margin:8px 0}article small{margin-top:12px}.value{font-size:clamp(26px,2.1vw,40px);font-weight:700}#hint-source{font-size:16px;color:var(--muted)}#hint-status{color:var(--amber)}#hint.ready{animation:hint 350ms ease-out}.readback-row{padding:5px 0;font-family:"Cascadia Mono","Consolas",ui-monospace,monospace;font-size:22px}.bad{color:var(--red)}.good{color:var(--green)}.flash{animation:flash 800ms steps(1) 2}.ear{border:1px solid var(--cyan);padding:2px 5px;color:var(--cyan);font-size:13px}.active-word{color:var(--cyan);text-decoration:underline;text-underline-offset:5px}.blocked-word{text-decoration:line-through;text-decoration-color:var(--amber);text-decoration-thickness:3px}.blocked-band{position:absolute;top:0;height:26px;background:repeating-linear-gradient(135deg,var(--panel) 0 5px,var(--grid) 5px 8px);color:var(--amber);border:1px solid var(--amber);font-size:12px;text-align:center;pointer-events:none}.shake{animation:shake 300ms ease-out}footer{display:flex;align-items:center;justify-content:center;gap:20px;border-top:1px solid var(--grid);font-size:16px;color:var(--muted)}footer b{color:var(--text)}nav{display:flex;align-items:center;gap:8px;padding:0 24px}nav button{font-size:12px;padding:4px 8px}#status{font-size:12px;color:var(--muted);margin-left:auto;max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#audio-view{display:none;align-self:center;justify-self:center;width:min(1500px,85vw);text-align:center}#caption{font-size:44px;line-height:1.45;margin:22px 0}#audio-wave{width:85%;height:50px}#caption-speaker{font-size:16px;color:var(--cyan)}#start{display:block;margin:30px auto}#start[hidden]{display:none}.audio-mode #full-view,.audio-mode footer{display:none}.audio-mode{grid-template-rows:88px minmax(0,1fr) 46px}.audio-mode #audio-view{display:block}.audio-mode nav{opacity:.65}.audio-mode nav:hover,.audio-mode nav:focus-within{opacity:1}#close{align-self:center;text-align:center}#close h1{font-size:80px;line-height:1.15}#close p{font-size:32px;color:var(--cyan)}body.closing #full-view,body.closing #audio-view,body.closing footer{display:none}body.closing{grid-template-rows:88px minmax(0,1fr) 46px}pre{font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--cyan)}#stats-rows{font-size:20px}dialog{background:var(--panel);color:var(--text);border:1px solid var(--grid);max-width:550px;padding:32px}dialog::backdrop{background:var(--bg);opacity:.85}dl{display:grid;grid-template-columns:140px 1fr;gap:12px}dd{margin:0}@keyframes hint{from{transform:translateX(15px);border-color:var(--cyan)}to{transform:translateX(0);border-color:var(--grid)}}@keyframes shake{25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}@keyframes flash{0%,49%{text-decoration:underline}50%,100%{text-decoration:none}}
-@media(max-height:800px){body{grid-template-rows:65px minmax(0,1fr) 44px 40px}header{gap:16px;padding:0 20px}header .brand{font-size:22px}#callsign{font-size:24px}#services{gap:10px}#full-view{padding:14px 20px;gap:16px}.lane{grid-template-columns:95px minmax(0,1fr);padding:8px 0}article{padding:12px 16px}article h2{margin-bottom:6px}aside{gap:10px}.transcript{font-size:24px}.readback-row{font-size:18px}footer{font-size:13px;gap:12px}.audio-mode,body.closing{grid-template-rows:65px minmax(0,1fr) 40px}#close h1{font-size:64px}}
-@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+/* Unstep demo screen. Palette, type and motion follow docs/11-demo-design.md. */
+
+/* ---------------------------------------------------------------- tokens */
+
+:root {
+  color-scheme: dark;
+  --bg: #0A0E13;
+  --panel: #121922;
+  --grid: #233041;
+  --text: #E6EDF3;
+  --muted: #8B9AAB;
+  --cyan: #22D3EE;
+  --green: #34D399;
+  --amber: #FBBF24;
+  --red: #F87171;
+  --pilot: #A5B4FC;
+  --ui-font: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --mono-font: "Cascadia Mono", "Consolas", ui-monospace, monospace;
+  --header-h: 88px;
+  --footer-h: 58px;
+  --nav-h: 46px;
+  font-family: var(--ui-font);
+  color: var(--text);
+  background: var(--bg);
+  font-variant-numeric: tabular-nums;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* ---------------------------------------------------------------- page frame */
+
+body {
+  margin: 0;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: var(--header-h) minmax(0, 1fr) var(--footer-h) var(--nav-h);
+  overflow: hidden;
+  background: var(--bg);
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--grid);
+  border-radius: 4px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--cyan);
+}
+
+#clock,
+.mono,
+.value,
+pre,
+.transcript,
+#caption,
+footer,
+.readback-table {
+  font-family: var(--mono-font);
+}
+
+.section-label,
+h2 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.good {
+  color: var(--green);
+}
+
+.bad {
+  color: var(--red);
+}
+
+.pending {
+  color: var(--amber);
+}
+
+/* ---------------------------------------------------------------- header */
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 0 32px;
+  border-bottom: 1px solid var(--grid);
+  white-space: nowrap;
+}
+
+header .brand {
+  font-size: 28px;
+  letter-spacing: 0.14em;
+}
+
+#callsign {
+  font-size: 32px;
+}
+
+#services {
+  display: flex;
+  gap: 18px;
+  margin-left: auto;
+  font-size: 14px;
+}
+
+#services small {
+  font-size: 11px;
+}
+
+/* ---------------------------------------------------------------- full view */
+
+#full-view {
+  display: grid;
+  grid-template-columns: minmax(0, 62fr) minmax(0, 38fr);
+  min-height: 0;
+  padding: 20px 32px;
+  gap: 24px;
+}
+
+/* ---------------------------------------------------------------- timeline */
+
+#timeline {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#timeline > .section-label {
+  flex: none;
+  margin-bottom: 6px;
+}
+
+#connection {
+  float: right;
+}
+
+/* Lanes take the height their content needs and shrink together when the
+   story outgrows the screen; each then scrolls with the newest visible. */
+.lane {
+  flex: 0 1 auto;
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: 115px minmax(0, 1fr);
+  border-bottom: 1px solid var(--grid);
+  padding: 8px 0;
+}
+
+.lane h2 {
+  margin: 4px 0 0;
+}
+
+/* The tower call is one transmission; it never shrinks behind a scrollbar. */
+.lane.tower {
+  flex-shrink: 0;
+}
+
+.pilot h2 {
+  color: var(--pilot);
+}
+
+.unstep h2 {
+  color: var(--cyan);
+}
+
+.controller h2 {
+  color: var(--green);
+}
+
+.transmissions {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.transmission {
+  position: relative;
+  flex: none;
+  background: var(--panel);
+  border-left: 3px solid var(--muted);
+  padding: 6px 14px 8px;
+}
+
+.pilot .transmission {
+  border-color: var(--pilot);
+}
+
+.unstep .transmission {
+  border-color: var(--cyan);
+}
+
+.controller .transmission {
+  border-color: var(--green);
+}
+
+.transmission canvas {
+  display: block;
+  width: 100%;
+  height: 20px;
+}
+
+.transcript {
+  font-size: clamp(22px, 1.5vw, 28px);
+  line-height: 1.3;
+}
+
+/* Older transmissions: smaller and slightly dimmed, still readable. The
+   pilot's received bar keeps its waveform so the BLOCKED band stays visible. */
+.transmission.older {
+  padding: 2px 14px 3px;
+}
+
+.transmission.older canvas {
+  display: none;
+}
+
+.transmission.older.banded canvas {
+  display: block;
+  height: 10px;
+}
+
+.transmission.older .transcript {
+  font-size: 20px;
+  opacity: 0.82;
+}
+
+.active-word {
+  color: var(--cyan);
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+
+.blocked-word {
+  text-decoration: line-through;
+  text-decoration-color: var(--amber);
+  text-decoration-thickness: 3px;
+}
+
+.blocked-band {
+  position: absolute;
+  top: 6px;
+  height: 20px;
+  background: repeating-linear-gradient(135deg, var(--panel) 0 5px, var(--grid) 5px 8px);
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  font-family: var(--ui-font);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 18px;
+  text-align: center;
+  pointer-events: none;
+  animation: band-in 300ms ease-out;
+}
+
+.transmission.older .blocked-band {
+  top: 1px;
+  height: 14px;
+  line-height: 12px;
+  font-size: 11px;
+}
+
+.shake {
+  animation: shake 300ms ease-out;
+}
+
+.ear {
+  border: 1px solid var(--cyan);
+  padding: 2px 5px;
+  color: var(--cyan);
+  font-size: 13px;
+}
+
+/* ---------------------------------------------------------------- cards */
+
+aside {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+article {
+  flex: none;
+  min-height: 0;
+  background: var(--panel);
+  border: 1px solid var(--grid);
+  padding: 12px 22px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+article h2 {
+  margin: 0 0 10px;
+}
+
+article p {
+  margin: 6px 0;
+}
+
+article small {
+  margin-top: 6px;
+}
+
+#ground {
+  flex: 0 1 auto;
+}
+
+#hint h2 {
+  color: var(--cyan);
+}
+
+#hint.ready {
+  animation: hint-in 350ms ease-out;
+}
+
+.value {
+  font-size: clamp(26px, 2vw, 38px);
+  font-weight: 700;
+}
+
+#moss-time {
+  font-size: 16px;
+}
+
+#hint-source {
+  font-size: 16px;
+  color: var(--muted);
+}
+
+#proposal p,
+#approval {
+  font-size: 16px;
+}
+
+/* Readback attempts */
+
+.attempt + .attempt {
+  margin-top: 12px;
+}
+
+.attempt-label {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.readback-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 18px;
+}
+
+.readback-table th,
+.readback-table td {
+  text-align: left;
+  padding: 1px 10px 1px 0;
+  border-bottom: 1px solid var(--grid);
+}
+
+.readback-table th {
+  font-family: var(--ui-font);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  width: 96px;
+}
+
+.readback-table tr:first-child th {
+  width: auto;
+}
+
+.cell-ok {
+  color: var(--text);
+}
+
+.cell-bad {
+  color: var(--red);
+  font-weight: 700;
+}
+
+/* At most two flashes, under 3 per second (photosensitive safe). */
+.flash {
+  animation: flash 800ms steps(1) 2;
+}
+
+/* Analytics */
+
+#stats-rows {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 6px 0 4px;
+}
+
+.stat b {
+  display: block;
+  font-family: var(--mono-font);
+  font-size: 40px;
+  line-height: 1.05;
+}
+
+.stat span {
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+pre#esql {
+  margin: 6px 0;
+  font-size: 13px;
+  line-height: 1.4;
+  max-height: calc(13px * 1.4 * 6);
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--cyan);
+}
+
+#stats-source {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* In the analytics scene the ground card keeps only the approval line. */
+#ground.analytics #proposal {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- latency strip and nav */
+
+footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 0 24px;
+  border-top: 1px solid var(--grid);
+  font-size: 16px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+footer b {
+  color: var(--text);
+}
+
+.strip-label {
+  font-family: var(--ui-font);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 24px;
+}
+
+nav button {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+#status {
+  margin-left: auto;
+  max-width: 60%;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------------------------------------------------------------- audio mode */
+
+#audio-view {
+  display: none;
+  align-self: center;
+  justify-self: center;
+  width: min(1500px, 85vw);
+  text-align: center;
+}
+
+#caption-speaker {
+  font-size: 16px;
+  color: var(--cyan);
+}
+
+#caption {
+  font-size: 44px;
+  line-height: 1.45;
+  margin: 22px 0;
+}
+
+#audio-wave {
+  width: 85%;
+  height: 50px;
+}
+
+#start {
+  display: block;
+  margin: 30px auto;
+}
+
+#start[hidden] {
+  display: none;
+}
+
+.audio-mode {
+  grid-template-rows: var(--header-h) minmax(0, 1fr) var(--nav-h);
+}
+
+.audio-mode #full-view,
+.audio-mode footer {
+  display: none;
+}
+
+.audio-mode #audio-view {
+  display: block;
+}
+
+.audio-mode nav {
+  opacity: 0.65;
+}
+
+.audio-mode nav:hover,
+.audio-mode nav:focus-within {
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------- close */
+
+#close {
+  align-self: center;
+  text-align: center;
+}
+
+#close h1 {
+  font-size: 80px;
+  line-height: 1.15;
+}
+
+#close p {
+  font-size: 32px;
+  color: var(--cyan);
+}
+
+body.closing {
+  grid-template-rows: var(--header-h) minmax(0, 1fr) var(--nav-h);
+}
+
+body.closing #full-view,
+body.closing #audio-view,
+body.closing footer {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- help dialog */
+
+dialog {
+  max-width: 550px;
+  padding: 32px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--grid);
+}
+
+dialog::backdrop {
+  background: var(--bg);
+  opacity: 0.85;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 12px;
+}
+
+dd {
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------- motion (each runs once) */
+
+@keyframes hint-in {
+  from {
+    transform: translateX(15px);
+    border-color: var(--cyan);
+  }
+  to {
+    transform: translateX(0);
+    border-color: var(--grid);
+  }
+}
+
+@keyframes band-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes shake {
+  25% {
+    transform: translateX(-3px);
+  }
+  75% {
+    transform: translateX(3px);
+  }
+}
+
+@keyframes flash {
+  0%,
+  49% {
+    background: rgba(248, 113, 113, 0.18);
+  }
+  50%,
+  100% {
+    background: transparent;
+  }
+}
+
+/* ---------------------------------------------------------------- small screens (1280 x 720) */
+
+@media (max-height: 800px) {
+  :root {
+    --header-h: 60px;
+    --footer-h: 40px;
+    --nav-h: 38px;
+  }
+
+  header {
+    gap: 16px;
+    padding: 0 20px;
+  }
+
+  header .brand {
+    font-size: 22px;
+  }
+
+  #callsign {
+    font-size: 24px;
+  }
+
+  #services {
+    gap: 10px;
+  }
+
+  #full-view {
+    padding: 10px 20px;
+    gap: 14px;
+  }
+
+  .lane {
+    grid-template-columns: 95px minmax(0, 1fr);
+    padding: 5px 0;
+    min-height: 48px;
+  }
+
+  .transmission canvas {
+    height: 16px;
+  }
+
+  .transcript {
+    font-size: 20px;
+  }
+
+  .transmission.older .transcript {
+    font-size: 15px;
+  }
+
+  .transmission.older.banded canvas {
+    height: 6px;
+  }
+
+  .blocked-band {
+    height: 16px;
+    line-height: 14px;
+    font-size: 11px;
+  }
+
+  aside {
+    gap: 8px;
+  }
+
+  article {
+    padding: 10px 14px;
+  }
+
+  article h2 {
+    margin-bottom: 4px;
+  }
+
+  article small {
+    margin-top: 4px;
+  }
+
+  article p {
+    margin: 3px 0;
+  }
+
+  .value {
+    font-size: 24px;
+  }
+
+  #moss-time,
+  #hint-source,
+  #proposal p,
+  #approval {
+    font-size: 13px;
+  }
+
+  .readback-table {
+    font-size: 14px;
+  }
+
+  /* Short screens: the readback card gives way to the analytics and scrolls. */
+  #readback {
+    flex: 0 1 auto;
+  }
+
+  #ground.analytics {
+    flex: none;
+  }
+
+  #stats-rows {
+    margin: 2px 0;
+  }
+
+  .attempt + .attempt {
+    margin-top: 6px;
+  }
+
+  .stat b {
+    font-size: 30px;
+  }
+
+  .stat span {
+    font-size: 11px;
+  }
+
+  pre#esql {
+    font-size: 11px;
+    max-height: calc(11px * 1.4 * 6);
+  }
+
+  footer {
+    font-size: 13px;
+    gap: 12px;
+  }
+
+  #caption {
+    font-size: 34px;
+  }
+
+  #close h1 {
+    font-size: 64px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

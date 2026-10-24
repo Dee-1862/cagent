@@ -19,6 +19,24 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Demo screen polish
+
+**Type:** Changed
+**Area:** Audit | Other
+
+Speech audit payloads now carry `display_text` (readable, "Runway 33") next to
+the phonetic `spoken_text`; the screen prefers it and maps word highlights onto
+it by fraction of speech time. The controller prompt is built from the slots
+("Blocked call to Cessna 1-2-3: hold short Runway 33. Approve?"). The demo page
+shows every transmission per lane (older ones compact), the cockpit's received
+text with a BLOCKED band, a per-attempt readback table, per-step latencies only
+(labeled offline fakes in replay) and three analytics counts. `web/demo/` JS and
+CSS rewritten in readable form.
+
+**Related:** [Demo design](11-demo-design.md)
+
+---
+
 ## 2026-10-24: Demo observer, speech artifacts and tower recovery
 
 **Type:** Added

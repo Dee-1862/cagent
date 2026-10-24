@@ -261,7 +261,7 @@ class Presenter:
         await self.links["tower"].send(AuditRecord(event_id=transcript.transcript_id,
             stage="tower_audio", actor="tower", payload={"party": "tower", "spoken_text": transcript.text,
                 "words": [w.model_dump() for w in transcript.words], **save_audio(self.audio_dir, clean, 16000)}))
-        await self.edge.audit("", "radio_input", party="radio", heard_text="Received radio · listening",
+        await self.edge.audit("", "radio_input", party="radio", heard_text="Receiving radio",
                               **save_audio(self.audio_dir, received, 16000))
         if self.live and not received_real:
             self.edge.manual_stt_factory = lambda: FakeManualSTT(["Cessna 1-2-3 [static]"])

@@ -41,6 +41,7 @@ from unstep.cockpit.hint import advisory_text, derive_hint
 from unstep.cockpit.inference import Answerer, create_answerer
 from unstep.cockpit.memory import LocalMemory, Memory, airport_index, create_memory, flight_index
 from unstep.cockpit.overlap import OverlapDetector, OverlapWindow
+from unstep.cockpit.phraseology import display_text
 from unstep.cockpit.queries import answer_query, record
 from unstep.cockpit.readback import ReadbackSession
 from unstep.cockpit.seed import AIRPORT_ICAO, seed
@@ -223,6 +224,14 @@ class Line:
     latency: dict[str, float] = field(default_factory=dict)
 
 
+def readable(text: str) -> str:
+    """On-screen form of an advisory: the same words as spoken, with digits and the prefix."""
+    text = text.strip()
+    if not text.lower().startswith("advisory"):
+        text = f"Advisory. {text}"
+    return display_text(text)
+
+
 def _ms(started: float) -> float:
     return round((time.perf_counter() - started) * 1000, 3)
 
@@ -353,14 +362,14 @@ class CockpitEdge:
         if ms is not None:
             self.latency.setdefault(name, []).append(ms)
 
-    async def speak(self, text: str, event_id: str = "", **latency: float):
+    async def speak(self, text: str, event_id: str = "", display: str | None = None, **latency: float):
         spoken = await self.voice.say(text)
         first = self.tts.last_first_audio_ms
         self._measure("tts_first_audio_ms", first)
         self.out.add(spoken.stereo, self.voice.sample_rate)
         suffix = " [cut off by pilot]" if spoken.speech.cancelled else ""
         self._note("PILOT EAR", "[chime] " + spoken.text + suffix, tts_first_audio_ms=first, **latency)
-        await self.audit(event_id, "speech", first, **speech_payload(
+        await self.audit(event_id, "speech", first, display_text=readable(display or text), **speech_payload(
             spoken.text, "pilot_ear", spoken.speech, spoken.stereo, self.demo_audio_dir,
             offset=(len(spoken.stereo) - len(spoken.speech.pcm) // 2) / spoken.speech.sample_rate))
         return spoken
@@ -494,7 +503,8 @@ class CockpitEdge:
             await self.audit(event_id, "detection", None, windows=[[w.start, w.end] for w in windows], heard_text=heard, party="radio")
             await self.audit(event_id, "cockpit_stt", stt_ms, heard_text=heard, party="radio")
             await self.audit(event_id, "local_hint", hint.moss_ms, kind=hint.kind,
-                             source_doc_id=hint.source_doc_id, total_ms=hint_ms, spoken_text=advisory_text(hint))
+                             source_doc_id=hint.source_doc_id, total_ms=hint_ms, spoken_text=advisory_text(hint),
+                             display_text=readable(advisory_text(hint)))
         else:
             await self.offline()
             self._resolve(event_id, "offline")
@@ -506,7 +516,7 @@ class CockpitEdge:
             self.out.add(self.offline_alert.stereo, self.voice.sample_rate)
             self._note("PILOT EAR", "[chime] " + self.offline_alert.text + " [offline alert, gateway unreachable]")
             spoken = self.offline_alert
-            await self.audit("offline", "speech", **speech_payload(
+            await self.audit("offline", "speech", display_text=readable(msg_say_again()), **speech_payload(
                 spoken.text, "pilot_ear", spoken.speech, spoken.stereo, self.demo_audio_dir, offset=0.22))
 
     # ------------------------------------------------------------ gateway in
@@ -531,14 +541,18 @@ class CockpitEdge:
     async def _on_rejected(self, msg: RejectedDirective) -> None:
         rt = self._round_trip(msg.event_id)
         spoken = await self.speak(REQUEST_SAY_AGAIN, event_id=msg.event_id, round_trip_ms=rt)
-        await self.audit(msg.event_id, "rejected_spoken", rt, rejected_via=msg.rejected_via, spoken_text=spoken.text)
+        await self.audit(msg.event_id, "rejected_spoken", rt, rejected_via=msg.rejected_via, spoken_text=spoken.text,
+                         display_text=readable(REQUEST_SAY_AGAIN))
         self._resolve(msg.event_id, "rejected")
 
     async def _on_approved(self, msg: ApprovedDirective) -> None:
         rt = self._round_trip(msg.event_id)
-        spoken = await self.speak(msg_directive(msg.instruction_text), event_id=msg.event_id, round_trip_ms=rt)
+        display = f"{msg.instruction_text.rstrip('.')}. Read back."
+        spoken = await self.speak(msg_directive(msg.instruction_text), event_id=msg.event_id,
+                                  display=display, round_trip_ms=rt)
         await self.audit(msg.event_id, "directive_spoken", self.tts.last_first_audio_ms,
-                         round_trip_ms=rt, approved_via=msg.approved_via, spoken_text=spoken.text)
+                         round_trip_ms=rt, approved_via=msg.approved_via, spoken_text=spoken.text,
+                         display_text=readable(display))
         await self._record(f"clr-{msg.event_id}", msg.instruction_text, "clearance")
         outcome = await self.readback(msg)
         self._resolve(msg.event_id, outcome)

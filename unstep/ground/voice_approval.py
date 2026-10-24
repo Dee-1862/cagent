@@ -19,7 +19,7 @@ import websockets
 from unstep.demo_audio import DEFAULT_DEMO_AUDIO_DIR, save_audio, speech_payload
 
 from unstep.config import gateway_url, ws_url
-from unstep.cockpit.phraseology import normalize_for_speech
+from unstep.cockpit.phraseology import display_text, normalize_for_speech, spoken_callsign
 from unstep.cockpit.stt import CartesiaTurnSTT, FakeTurnSTT, ReplayTurnSTT, build_keyterms
 from unstep.cockpit.tts import CartesiaTTS, FakeTTS, TTSEngine, chime, pcm_bytes_to_array, to_left_stereo
 from unstep.contracts import ApprovedDirective, AuditRecord, ProposedDirective, RejectedDirective, VoiceApproval, unwrap, wrap
@@ -62,8 +62,16 @@ class ApprovalLoop:
             return None
         self.current = self.queue.popleft()
         self.attempt, self.deadline, self.pending = 1, None, None
-        p = self.current
-        return f"Blocked call to {p.slots.callsign}: {p.instruction_text.rstrip('. ')}. Approve?"
+        return self.prompt(self.current)
+
+    @staticmethod
+    def prompt(proposal: ProposedDirective) -> str:
+        """Short controller prompt built from the slots, for example
+        'Blocked call to Cessna 1-2-3: hold short Runway 33. Approve?'.
+        """
+        slots = proposal.slots
+        what = slots.action + (f" Runway {slots.runway}" if slots.runway else "")
+        return f"Blocked call to {spoken_callsign(slots.callsign)}: {what}. Approve?"
 
     def prompted(self) -> None:
         if self.current is not None and self.deadline is None:
@@ -147,8 +155,9 @@ class ControllerVoice:
             await self._play(pcm_bytes_to_array(result.pcm), result.sample_rate)
             ding = chime(result.sample_rate)
             audio = to_left_stereo(np.concatenate([ding, pcm_bytes_to_array(result.pcm)]))
-            return speech_payload(normalize_for_speech(text), "controller_ear", result, audio,
-                                  self.demo_audio_dir, offset=len(ding) / result.sample_rate)
+            payload = speech_payload(normalize_for_speech(text), "controller_ear", result, audio,
+                                     self.demo_audio_dir, offset=len(ding) / result.sample_rate)
+            return {**payload, "display_text": display_text(text)}
         except BaseException:
             await self.tts.cancel(self.context)
             raise
@@ -175,7 +184,9 @@ async def _answer(loop: ApprovalLoop, prompt: str, voice: ControllerVoice, stt_f
 
     async def say(text: str) -> None:
         payload = await voice.say(text)
-        await audit_utterance("controller_spoken", payload or {"spoken_text": normalize_for_speech(text), "party": "controller_ear"})
+        await audit_utterance("controller_spoken", payload or {"spoken_text": normalize_for_speech(text),
+                                                               "display_text": display_text(text),
+                                                               "party": "controller_ear"})
 
     await say(prompt)
     loop.prompted()

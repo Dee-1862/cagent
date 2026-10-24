@@ -116,6 +116,44 @@ def normalize_for_speech(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+_SPOKEN_DIGIT_WORD = r"(?:zero|one|two|tree|three|four|fife|five|six|seven|eight|niner|nine)"
+_SPOKEN_TO_DIGIT = {"zero": "0", "one": "1", "two": "2", "tree": "3", "three": "3", "four": "4",
+                    "fife": "5", "five": "5", "six": "6", "seven": "7", "eight": "8",
+                    "niner": "9", "nine": "9"}
+
+
+def _digits_of(words: str) -> str:
+    return "".join(_SPOKEN_TO_DIGIT[w.lower()] for w in words.split())
+
+
+def display_text(text: str) -> str:
+    """Readable on-screen form of a message: 'runway tree tree' -> 'Runway 33'.
+
+    The inverse of the runway and digit rewrites in `normalize_for_speech`, for
+    text that was built with spoken digits (readback corrections). Text that
+    already reads normally passes through unchanged.
+    """
+    text = re.sub(
+        rf"\b[Rr]unway((?:\s+{_SPOKEN_DIGIT_WORD}\b){{1,2}})(?:\s+(left|right|center)\b)?",
+        lambda m: "Runway " + _digits_of(m.group(1)) + ((m.group(2) or "")[:1].upper()),
+        text,
+    )
+    # Other runs of two or more spoken digits, e.g. a time "one four zero two".
+    return re.sub(
+        rf"\b{_SPOKEN_DIGIT_WORD}(?:\s+{_SPOKEN_DIGIT_WORD}\b)+",
+        lambda m: _digits_of(m.group(0)),
+        text,
+        flags=re.IGNORECASE,
+    )
+
+
+def spoken_callsign(callsign: str) -> str:
+    """How a callsign is said on frequency: the demo registration uses its type and digits."""
+    from unstep import scenario
+
+    return scenario.SPOKEN_CALLSIGN if callsign == scenario.CALLSIGN else callsign
+
+
 # ---------------------------------------------------------------- parsing input
 
 
