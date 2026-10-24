@@ -127,7 +127,22 @@ We found no winning ATC or aviation voice project. The nearest were a university
 
 - Confirm what "Slack (Grant)" means.
 - Decide whether "ATC practice" is a feature or just an idea someone mentioned.
-- Fold the accepted changes into the PRD, architecture and work split.
+- ~~Fold the accepted changes into the PRD, architecture and work split.~~ Done on 2026-10-23, see section 8.
+
+## 8. Where Each Concern Was Addressed
+
+| ID | Status | Where |
+| --- | --- | --- |
+| S-1 | Accepted | Cartesia is now the whole voice loop: [PRD 5.1](01-prd.md#51-cockpit-edge-local-reflex-layer), M-009 |
+| S-2 | Accepted | Tower STT with key terms: [PRD 5.2](01-prd.md#52-ground-and-multi-agent-atc-infrastructure-orchestration-and-compliance-layer), task B1 |
+| S-3 | Accepted | Readback check: [PRD 6](01-prd.md#6-end-to-end-workflow), task A7 |
+| S-4 | Accepted | Advisory voice and ATC numbers: FR-8, task A6 |
+| S-5 | Accepted | Moss as shared memory and local search: [Architecture](05-architecture.md), tasks A4, A5 |
+| S-6 | Open | Research RA-7, M-010 |
+| S-7 | Accepted | Single [demo flow](01-prd.md#11-demo-flow) first |
+| S-8 | Accepted | [PRD 12](01-prd.md#12-responsibility), task B8, research RB-8 |
+| S-9 | Accepted | NTSB claim flagged in the PRD summary, research RB-3 |
+| S-10 | Partly done | `.gitignore` now covers `.env` and key files. README is task S1 |
 
 ## Sources
 

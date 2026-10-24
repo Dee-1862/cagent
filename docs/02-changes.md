@@ -19,6 +19,23 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: Folded sponsor review into the plan
+
+**Type:** Changed
+**Area:** Docs
+
+- Merged Rishit's sponsor review and applied the accepted concerns S-1 to S-10.
+- PRD v0.2: Cartesia is now the whole voice loop (tower STT with key terms, cut-off detection, advisory voice with ATC numbers, readback check).
+- PRD v0.2: Moss is now the shared agent memory and local search layer, with offline indexing. Agents share context and don't chat.
+- PRD v0.2: ground agents run in Elastic Agent Builder as an Elastic Workflow. Added a demo flow, responsibility section and sponsor fit table.
+- Architecture v0.2: new diagrams with the Moss shared space, the readback loop and a WebSocket fallback.
+- Work split v0.2: one owner per sponsor (Dev A: Moss and cockpit voice, Dev B: Elastic and tower STT), new contracts, shared tasks for README and demo.
+- Research: added RA-6, RA-7 and RB-8, plus new measurement rows.
+- Mistakes: added M-009 and M-010, updated M-002 and M-003.
+- `.gitignore`: added `.env` and key files.
+
+**Related:** [Sponsor Review, section 8](07-sponsor-review.md#8-where-each-concern-was-addressed)
+
 ## 2026-10-23: Added sponsor review and benchmark
 
 **Type:** Docs

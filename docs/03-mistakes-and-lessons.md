@@ -31,6 +31,8 @@ Each entry uses this template:
 | M-006 | Certification not considered | Edge device | Open |
 | M-007 | ES\|QL described as the audit store | Audit | Open |
 | M-008 | "99% confidence" shown without a basis | Ground agents | Open |
+| M-009 | Sponsor tools used as add-ons, not as the core | Other | Open |
+| M-010 | Vendor claims written before checking the docs | Docs | Open |
 
 ---
 
@@ -55,6 +57,7 @@ Each entry uses this template:
 **Why it matters:** Without the original words, the system can only guess the instruction. Guessing a clearance is unsafe.
 **What we learned:** Trace each piece of data back to where it comes from. A step that "knows" something must have an input that carries it.
 **Action:** Add a ground-side capture of the controller's own transmission (tower audio plus speech-to-text) and make it the primary source. Local state and the rulebook only verify it.
+**Update 2026-10-23:** Design decided. Tower audio is transcribed with Cartesia STT using key terms (task B1). Stays Open until it works.
 
 ## M-003: Offline mode conflicts with ground approval
 
@@ -66,6 +69,7 @@ Each entry uses this template:
 **Why it matters:** If the aircraft is offline, the core feature does not work.
 **What we learned:** Decide which features must work offline and which need a link, and write it down.
 **Action:** Choose and document the aircraft-to-ground datalink. Define what the device does when the link is down (for example, only alert "transmission blocked, request say again").
+**Update 2026-10-23:** Following the Moss sponsor notes, the edge keeps indexing locally in Moss when offline and plays the local alert (task A8). The datalink choice is still open (RA-5).
 
 ## M-004: Cartesia placement unclear
 
@@ -121,3 +125,25 @@ Each entry uses this template:
 **Why it matters:** Controllers may trust a number that has no meaning. A wrong rule citation is worse than none.
 **What we learned:** Any number shown to a human decision maker must have a defined method behind it.
 **Action:** Define the confidence score (for example, transcript match plus retrieval score). Replace the placeholder with a real paragraph from FAA Order JO 7110.65.
+
+## M-009: Sponsor tools used as add-ons, not as the core
+
+**Date found:** 2026-10-23 (from the [Sponsor Review](07-sponsor-review.md), S-1 and S-5)
+**Status:** Open
+**Area:** Other
+
+**What happened:** The first PRD used Cartesia only for one-way speech at the very end, and Moss only for a GPS to taxiway lookup. Any TTS engine or a plain dictionary could have replaced them.
+**Why it matters:** Sponsor judges score how central their tool is. An add-on use loses that criterion even if the product is good.
+**What we learned:** Read the prize criteria before designing, and design each sponsor's tool into the core loop. Ask: "would the product break without it?"
+**Action:** PRD v0.2 makes Cartesia the whole voice loop (tower STT, cut-off detection, advisory TTS, readback check) and Moss the shared agent memory and local search layer.
+
+## M-010: Vendor claims written before checking the docs
+
+**Date found:** 2026-10-23 (from the [Sponsor Review](07-sponsor-review.md), S-6)
+**Status:** Open
+**Area:** Docs
+
+**What happened:** The PRD says Moss runs "in-process through WebAssembly/Rust." We have not checked this against the Moss docs, and we don't yet know whether one Moss space can be shared between two machines. This is the third time a vendor detail was assumed (after M-004 and M-007).
+**Why it matters:** Sponsors know their own product. A wrong detail in the pitch hurts credibility, and a wrong sharing assumption would break our transport design.
+**What we learned:** This is a pattern, not a one-off. Every vendor claim gets checked against the vendor's own docs before it goes in the PRD or pitch.
+**Action:** Research RA-7. Keep WebSocket as the fallback transport until shared Moss spaces are confirmed. Added a working rule to the [Work Split](04-work-split.md#8-working-rules).
