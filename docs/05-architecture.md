@@ -196,6 +196,6 @@ Moss does not compare readbacks. That is a slot comparison (callsign, action, ru
 | Pilot query has no match | "Advisory. No record found. Ask the controller." |
 | Low confidence or no rule match | Card is marked low confidence. Controller reissues by voice |
 | Controller rejects | Cockpit hears "request say again." The rejection is audited |
-| Readback wrong twice | Cockpit stops repeating and the dashboard flags the controller |
+| Readback still wrong after 2 repeats | Cockpit stops repeating and the dashboard flags the controller |
 | Cartesia unavailable | Pre-generated audio for fixed phrases, text on screen for the rest (M-004) |
 | Agent Builder can't reach Moss | Agents read only from Elastic, which already has every message |

@@ -1,9 +1,13 @@
 {
-  "query_id": "pq-0001",
-  "callsign": "N123AB",
-  "question": "Unstep, what was my last clearance?",
-  "answer": "Hold short Runway 33, approved by the controller",
-  "source_doc_id": "flight-N123AB/evt-0001",
-  "moss_ms": 2.9,
-  "ts": 1792771362000
+  "type": "PilotQuery",
+  "ts": 0,
+  "data": {
+    "query_id": "q-0001",
+    "callsign": "N123AB",
+    "question": "Unstep, what was my last clearance?",
+    "answer": "Hold short Runway tree tree, issued one four zero two.",
+    "source_doc_id": "flight-N123AB/clr-0008",
+    "moss_ms": 2.7,
+    "ts": 1792800030000
+  }
 }

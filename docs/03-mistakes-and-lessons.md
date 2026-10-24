@@ -37,6 +37,7 @@ Each entry uses this template:
 | M-012 | "Collision" used for two different things | Docs | Resolved |
 | M-013 | Voice was only the output, screens were the interface | Audio | Resolved |
 | M-014 | Local hint could have suggested a permissive clearance | Edge device | Resolved |
+| M-015 | Both developers built the same gateway and contracts | Other | Resolved |
 
 ---
 
@@ -200,3 +201,14 @@ Each entry uses this template:
 **Why it matters:** A wrong hold short is safe. A wrong permission to move is not. Responsibility judges will ask exactly this.
 **What we learned:** Classify every automated suggestion by what happens if it's wrong, and only automate the side where wrong is safe. Show where every suggestion came from.
 **Action:** PRD v0.4: hints for restrictive instructions only (hold short, stop, hold position, go around). Every hint shows its source Moss record. The demo seeds the flight session with the earlier taxi clearance the hint is drawn from.
+
+## M-015: Both developers built the same gateway and contracts
+
+**Date found:** 2026-10-23
+**Status:** Resolved
+**Area:** Other
+
+**What happened:** The gateway (B1) and the contracts (S1) were built twice at the same time: once on master in `unstep/`, once on the Dev B branch in `contracts/` and `ground/`. Neither side pulled or said which task they were starting.
+**Why it matters:** Half a block of work was thrown away, and the merge needed manual conflict resolution in eleven files.
+**What we learned:** Pull before starting a task, and say which task you are taking before you start it. A shared task (S1) needs one person to draft and the other to review, not both drafting.
+**Action:** Kept `unstep/` as the codebase and removed the duplicate. From now on, each task starts with a pull and a short note in the team chat or a draft PR naming the task.

@@ -1,0 +1,10 @@
+{
+  "type": "RejectedDirective",
+  "ts": 0,
+  "data": {
+    "event_id": "evt-0001",
+    "rejected_by": "controller",
+    "rejected_via": "voice",
+    "rejected_at": 1792800009100
+  }
+}

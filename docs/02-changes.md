@@ -19,20 +19,30 @@ What changed and why, in a few lines.
 
 ---
 
-## 2026-10-23: Drafted contracts and built the gateway (Dev B)
+## 2026-10-23: Merged master into the Dev B branch and removed duplicate code
 
-**Type:** Added
+**Type:** Changed
 **Area:** Ground agents
 
-- Branch `dev-b/gateway-and-contracts`.
-- Drafted every contract as a pydantic model in `contracts/models.py`, with one JSON example each in `contracts/examples/` (shared task S1, waiting on Dev A's sign-off).
-- Proposed two new contracts: `ClickApproval` (the dashboard's click fallback) and `DirectiveRejected` (so the cockpit can say "request say again").
-- Built the WebSocket gateway (task B1) in `ground/gateway/`: role-based sender checks, payload validation, one clock (`/time`), relay by the architecture routing table, storage to Elastic or a local JSONL file without blocking the live path.
-- Only the gateway can create an `ApprovedDirective`, and only from a human decision on a `ProposedDirective` (FR-6). A second "Approve" never sends twice.
-- Added `ground/mocks/demo_flow.py`, which plays the demo flow with mock clients. It passes 10 runs in a row, the M2 checkpoint, with every role mocked.
-- 30 tests in `tests/`.
+- Rishit's M0 and M2 work on master (`unstep/`) and Dev B's first draft (`contracts/models.py`, `ground/gateway/`) built the same contracts and gateway in parallel.
+- Kept `unstep/` as the one codebase, since its gateway is further along (proposal TTL, replay on reconnect, token and origin checks). Removed Dev B's duplicate `contracts/models.py`, `ground/` and their tests.
+- Dropped Dev B's proposed `ClickApproval` and `DirectiveRejected`. master already covers them: the dashboard sends `ApprovedDirective` or `RejectedDirective`, and the gateway rebuilds them from the stored proposal.
+- The Elastic events sink is still open on task B1. It comes next on this branch.
 
-**Related:** [Work Split, section 3](04-work-split.md#3-shared-contracts-both-do-first)
+**Related:** [Mistakes and Lessons, M-015](03-mistakes-and-lessons.md)
+
+## 2026-10-23: M0 contracts and M2 first wire
+
+**Type:** Added
+**Area:** Other
+
+- Python stack: FastAPI WebSocket gateway, Pydantic contracts, plain HTML dashboard.
+- `unstep/contracts.py` implements every contract from Work Split section 3, plus `RejectedDirective` (the cockpit needs it to say "request say again"). Please confirm this addition.
+- `contracts/examples/` has one JSON example per contract, generated from `unstep/scenario.py`.
+- Gateway routes messages by role, stores every message (JSON lines for now, Elastic in B1), and turns voice or click decisions into one `ApprovedDirective` or `RejectedDirective`. A second decision on the same event is refused.
+- Mock cockpit, mock agents, auto approver and mock dashboard. M2 passes 10 runs in a row live and in tests.
+
+**Related:** [Work Split, milestones](04-work-split.md#6-milestones), [README](../README.md)
 
 ## 2026-10-23: Voice first in PRD v0.4
 

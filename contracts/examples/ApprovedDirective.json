@@ -1,12 +1,16 @@
 {
-  "event_id": "evt-0001",
-  "instruction_text": "Cessna 1-2-3, hold short Runway 33",
-  "slots": {
-    "callsign": "N123AB",
-    "action": "hold_short",
-    "runway": "33"
-  },
-  "approved_by": "controller-1",
-  "approved_via": "voice",
-  "approved_at": 1792771340120
+  "type": "ApprovedDirective",
+  "ts": 0,
+  "data": {
+    "event_id": "evt-0001",
+    "instruction_text": "Cessna 1-2-3, hold short Runway 33",
+    "slots": {
+      "callsign": "N123AB",
+      "action": "hold short",
+      "runway": "33"
+    },
+    "approved_by": "controller",
+    "approved_via": "voice",
+    "approved_at": 1792800009100
+  }
 }
