@@ -356,3 +356,24 @@ def test_cartesia_tts_reconnects_once_after_idle_close(monkeypatch):
     monkeypatch.setattr(tts, "_speak_once", flaky)
     result = asyncio.run(tts.speak("Advisory. Readback correct."))
     assert len(calls) == 2 and result.pcm
+
+
+def test_cartesia_tts_never_retries_after_audio_went_out(monkeypatch):
+    import asyncio
+    import pytest
+    from websockets.exceptions import ConnectionClosedError
+    from unstep.cockpit.tts import CartesiaTTS
+
+    monkeypatch.setenv("CARTESIA_API_KEY", "test")
+    tts = CartesiaTTS()
+    calls = []
+
+    async def drops_mid_line(text, context_id=None, on_chunk=None):
+        calls.append(text)
+        on_chunk(b"\x00\x00")  # some audio was already played
+        raise ConnectionClosedError(None, None)
+
+    monkeypatch.setattr(tts, "_speak_once", drops_mid_line)
+    with pytest.raises(ConnectionClosedError):
+        asyncio.run(tts.speak("Advisory. Readback correct."))
+    assert len(calls) == 1

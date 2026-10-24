@@ -286,7 +286,7 @@ class Presenter:
                     "words": [w.model_dump() for w in transcript.words], **save_audio(self.audio_dir, clean, 16000)}))
 
         tower_task = asyncio.create_task(tower_side())
-        await self.edge.audit("", "radio_input", party="radio", heard_text="Receiving radio",
+        await self.edge.audit("", "radio_input", party="radio", heard_text="Radio input (recorded clip)",
                               **save_audio(self.audio_dir, received, 16000))
         if self.live and not received_real:
             self.edge.manual_stt_factory = lambda: FakeManualSTT(["Cessna 1-2-3 [static]"])
@@ -337,6 +337,9 @@ class Presenter:
         async with self.lock:
             if action == "reset":
                 await self.stop()
+                # Each run writes its utterances as WAV files; don't let them pile up.
+                for old_wav in self.audio_dir.glob("*.wav"):
+                    old_wav.unlink(missing_ok=True)
                 self.gateway.history.clear()
                 self.gateway.pending.clear()
                 self.gateway.decided.clear()

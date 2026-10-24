@@ -1,6 +1,7 @@
 """python -m unstep.demo [--live] [--port 8765] [--no-browser]."""
 import argparse
 import asyncio
+import socket
 import webbrowser
 
 import uvicorn
@@ -8,7 +9,20 @@ import uvicorn
 from .presenter import create_demo_app
 
 
+def port_free(port: int) -> bool:
+    with socket.socket() as s:
+        try:
+            s.bind(("127.0.0.1", port))
+            return True
+        except OSError:
+            return False
+
+
 async def serve(args):
+    if not port_free(args.port):
+        # Check before the live warm-up, which takes about 30 s.
+        raise SystemExit(f"Port {args.port} is busy: is presenter mode already running? "
+                         f"Open http://127.0.0.1:{args.port}/demo/ or pass --port.")
     server = uvicorn.Server(uvicorn.Config(create_demo_app(live=args.live),
         host="127.0.0.1", port=args.port, log_level="warning"))
     task = asyncio.create_task(server.serve())

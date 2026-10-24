@@ -153,6 +153,10 @@ class FakeTTS:
         self.cancelled.add(context_id)
 
 
+# A stalled context must never leave a scene busy forever.
+SPEAK_DEADLINE_S = 20.0
+
+
 class CartesiaTTS:
     """Cartesia Sonic over WebSocket. One connection, one context per message."""
 
@@ -208,11 +212,21 @@ class CartesiaTTS:
         idle (for example while a presenter pauses between scenes)."""
         from websockets.exceptions import ConnectionClosed
 
+        heard: list[bytes] = []
+
+        def track(pcm: bytes) -> None:
+            heard.append(pcm)
+            if on_chunk:
+                on_chunk(pcm)
+
         try:
-            return await self._speak_once(text, context_id, on_chunk)
-        except (ConnectionClosed, OSError):
+            return await asyncio.wait_for(self._speak_once(text, context_id, track), SPEAK_DEADLINE_S)
+        except (ConnectionClosed, OSError, asyncio.TimeoutError):
             self._ws = None
-            return await self._speak_once(text, context_id, on_chunk)
+            if heard:
+                # Audio already went out: retrying would say the line twice.
+                raise
+            return await asyncio.wait_for(self._speak_once(text, context_id, on_chunk), SPEAK_DEADLINE_S)
 
     async def _speak_once(self, text, context_id=None, on_chunk=None) -> SpeechResult:
         ws = await self.connect()

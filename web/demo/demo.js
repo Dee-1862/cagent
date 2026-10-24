@@ -42,6 +42,7 @@ const LATENCY_ORDER = [
   'detector frame',
   'cockpit STT finalize',
   'Moss search',
+  'local search',
   'TTS first audio',
   'readback verdict',
   'LLM first token',
@@ -471,7 +472,7 @@ function renderLatencies() {
 function latencyFromAudit(audit, payload) {
   const labels = {
     cockpit_stt: 'cockpit STT finalize',
-    local_hint: 'Moss search',
+    local_hint: view.services.Moss === 'moss' ? 'Moss search' : 'local search',
     speech: 'TTS first audio',
     readback: 'readback verdict',
   };
@@ -576,7 +577,9 @@ function renderHint(event) {
   $('#hint-status').className = 'pending';
   const source = `${hint.source_doc_id || 'No source'}${hint.source_text ? ' · ' + hint.source_text : ''}`;
   setText($('#hint-source'), source);
-  countUp($('#moss-time'), hint.moss_ms, ' ms · Moss search');
+  // Name the backend that actually answered: real Moss, or the offline stand-in.
+  const backend = view.services.Moss === 'moss' ? 'Moss search' : 'local search (offline stand-in)';
+  countUp($('#moss-time'), hint.moss_ms, ` ms · ${backend}`);
   $('#hint').classList.add('ready');
   markActive('Moss');
 }

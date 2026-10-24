@@ -346,7 +346,8 @@ class ReplayTurnSTT:
                     if ev.type == "turn.end":
                         final = ev
                         break
-                    yield ev
+                    if attempt == 1:  # a retry must not replay turn.start to the consumer
+                        yield ev
             except (RuntimeError, TimeoutError, OSError):
                 if attempt == 2:
                     raise
