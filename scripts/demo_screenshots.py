@@ -40,7 +40,7 @@ def main() -> int:
     server = subprocess.Popen(cmd, cwd=ROOT)
     try:
         url = f"http://127.0.0.1:{port}/demo/"
-        for _ in range(100):
+        for _ in range(1200):  # live mode warms up Cartesia, Moss and Moss Inference first
             try:
                 socket.create_connection(("127.0.0.1", port), timeout=0.2).close()
                 break

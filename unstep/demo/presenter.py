@@ -229,6 +229,9 @@ class Presenter:
                 approved = await self.links["cockpit"].receive("ApprovedDirective")
                 await self.edge._on_approved(approved)
             elif scene == 4:
+                # Moss Inference goes cold while the presenter talks; re-warm it while the first
+                # question (a fixed intent, no LLM) plays, so the free-form one gets a warm model.
+                rewarm = asyncio.create_task(self.warm_answerer())
                 for name, fallback in zip(["pilot_question.wav", "pilot_question_stop.wav"], QUESTIONS):
                     stt = self.turns([name], [fallback])
                     async with stt:
@@ -238,6 +241,8 @@ class Presenter:
                                 await self.edge.audit("", "pilot_input", heard_text=event.transcript,
                                     party="pilot", **save_audio(self.audio_dir,
                                         np.frombuffer(stt.last_pcm, dtype="<i2"), 16000))
+                                if fallback == QUESTIONS[1]:
+                                    await rewarm
                                 await self.edge.ask(event.transcript)
             await self.drain_monitor()
             self.completed = max(self.completed, scene)
@@ -295,6 +300,16 @@ class Presenter:
             if isinstance(msg, AnomalyEvent):
                 await agent.send(propose(msg, latest))
 
+    async def warm_answerer(self):
+        answerer = getattr(self.edge, "answerer", None)
+        if answerer is None:
+            return
+        from unstep.cockpit.memory import Doc
+        try:
+            await answerer.answer("Which runway?", [Doc(id="warm", text="Runway 33", metadata={})])
+        except Exception:
+            self.fallbacks.add("Moss Inference warm-up failed")
+
     async def warm(self):
         """Live mode: open every connection before the presenter presses Space."""
         await self.start()
@@ -302,13 +317,7 @@ class Presenter:
             await self.tts.speak("Unstep ready.")
         except Exception:
             self.fallbacks.add("Cartesia warm-up failed")
-        answerer = getattr(self.edge, "answerer", None)
-        if answerer is not None:
-            from unstep.cockpit.memory import Doc
-            try:
-                await answerer.answer("Which runway?", [Doc(id="warm", text="Runway 33", metadata={})])
-            except Exception:
-                self.fallbacks.add("Moss Inference warm-up failed")
+        await self.warm_answerer()
         self.status = "Ready. Space to start the radio."
         await self.broadcast()
 
