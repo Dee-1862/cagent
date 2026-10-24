@@ -46,6 +46,8 @@ log = logging.getLogger("unstep.live")
 
 VOICES_FILE = ROOT / "assets" / "clips" / "real" / "voices.json"
 GAP_MS = 300  # quiet time after the last transmission before a cluster is processed
+RECOVERY_STALE_MS = 30_000  # C1: a recovery line older than this is dropped, never spoken late
+RECOVERY_WAIT_GAP_MS = 10_000  # how long a recovery waits for the controller to stop talking
 TRANSCRIPT_WAIT_S = 12.0  # how long ground agents wait for the tower transcript
 READBACK_WAIT_S = 45.0  # how long a cockpit waits for the pilot's readback
 CLAIM_S = 20.0  # a seat handed out by join() stays reserved this long for its websocket
@@ -864,7 +866,55 @@ class LiveRoom:
         for t in cluster:
             if self.stations[t.station].kind == "aircraft":
                 jobs.append(self._pilot_spoke(t, clean=not mx.overlaps))
+        if towers and mx.overlaps:
+            jobs.append(self._recover_for_tower(cluster, mx))
         await asyncio.gather(*jobs, return_exceptions=False)
+
+    async def _peek_streamed(self, tx: Transmission) -> str | None:
+        """A pilot's streamed transcript without taking it from the readback path."""
+        task = self.stream_results.get(tx.tx_id)
+        if task is None:
+            return None
+        try:
+            result = await asyncio.wait_for(asyncio.shield(task), STREAM_FINAL_S)
+        except Exception:
+            return None
+        return result if isinstance(result, str) else None
+
+    async def _recover_for_tower(self, cluster: list[Transmission], mx: Mix) -> None:
+        """C1, tower side: the controller was transmitting, so they never heard the call that
+        stepped on them. Unstep tells them, in their ear, who it was and what they said."""
+        for t in cluster:
+            s = self.stations.get(t.station)
+            if s is None or s.kind != "aircraft":
+                continue
+            if not any(o.start_ms < t.end_ms and o.end_ms > t.start_ms for o in mx.overlaps):
+                continue
+            words = t.text or await self._peek_streamed(t)
+            who = s.spoken or s.callsign or s.id
+            text = (f"{who} was blocked: {words.strip().rstrip('.')}." if words and words.strip()
+                    else f"{who} was blocked. Ask them to say again.")
+            deadline = now_ms() + RECOVERY_WAIT_GAP_MS
+            while "atc" in self.key_since and now_ms() < deadline:  # speak in a gap, never over the controller
+                await asyncio.sleep(0.1)
+            if now_ms() - t.end_ms > RECOVERY_STALE_MS:
+                log.info("tower recovery for %s dropped: older than %d ms", t.station, RECOVERY_STALE_MS)
+                continue
+            audio = None
+            try:
+                speech = await self._advisory_tts().speak("Advisory. " + text)
+                audio = wav_b64(to_mono16k(speech.pcm, speech.sample_rate), SAMPLE_RATE) if speech.pcm else None
+            except Exception:
+                log.exception("tower recovery speech failed; sending text only")
+            sent_at = now_ms()
+            self.send_to({"atc"}, {"type": "recovery", "to": "atc", "from_station": t.station,
+                                   "kind": "blocked_caller", "priority": 2, "text": text, "tx_id": t.tx_id,
+                                   "ts": sent_at, "audio": audio})
+            await self.links["tower"].send(AuditRecord(
+                event_id=f"rec-{t.tx_id}", stage="recovery", actor="tower",
+                latency_ms=sent_at - t.end_ms,
+                payload={"to": "atc", "from": t.station, "kind": "blocked_caller", "priority": 2,
+                         "text": text, "delivered_ms": sent_at - t.end_ms}))
 
     async def _tower(self, tx: Transmission) -> None:
         self.flow("radio", "tower_stt", "tower audio")

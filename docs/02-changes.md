@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: The controller hears who stepped on them (C1, tower side)
+
+**Type:** Added
+**Area:** Ground agents
+
+- A controller who was transmitting never hears the call that stepped on them. After a stepped-on cluster, the room now tells the tower seat, in Unstep's own voice: "Advisory. Helicopter 4-5-6 was blocked: request transition." The words come from the blocked pilot's typed line or streamed transcript; with none, "Ask them to say again".
+- Sent only to the `atc` seat as `recovery {to, from_station, kind: "blocked_caller", priority, text, tx_id, ts, audio}`, waits for the controller to stop talking (up to 10 s), and is dropped if older than 30 s. Each one is also an `AuditRecord` (stage `recovery`, with `delivered_ms`).
+- No contract change. The ATC console needs to play `recovery.audio` (Rishit's side). The blocked caller's own notice waits for Rishit's answer on the cockpit entry point.
+- Checked: 2 room tests (delivered to the controller only, with audio and an audit; stale ones dropped). Offline voice only.
+
+**Related:** [16-sponsor-depth.md](16-sponsor-depth.md) C1, agent mail R18, D11 item 3
+
 ## 2026-10-24: Moss searches the plane's memory with what the cockpit heard (M3)
 
 **Type:** Added
