@@ -254,33 +254,60 @@ class Presenter:
         clean, clean_real = self.samples("clean_call.wav")
         received, received_real = self.samples("stepped_on_call.wav")
         tower = TowerTranscriber(runways=["33"]) if self.live and clean_real else FakeTowerTranscriber()
-        pcm = (np.clip(clean, -1, 1) * 32767).astype("<i2").tobytes()
-        transcript = await tower.transcribe(pcm, t0, t0 + round(len(clean) / 16),
-                                            scenario.FREQUENCY, scenario.CALLSIGN)
-        await self.links["tower"].send(transcript)
-        await self.links["tower"].send(AuditRecord(event_id=transcript.transcript_id,
-            stage="tower_audio", actor="tower", payload={"party": "tower", "spoken_text": transcript.text,
-                "words": [w.model_dump() for w in transcript.words], **save_audio(self.audio_dir, clean, 16000)}))
+
+        async def tower_side():
+            # The tower and the cockpit hear the same radio call at the same time.
+            pcm = (np.clip(clean, -1, 1) * 32767).astype("<i2").tobytes()
+            transcript = await tower.transcribe(pcm, t0, t0 + round(len(clean) / 16),
+                                                scenario.FREQUENCY, scenario.CALLSIGN)
+            await self.links["tower"].send(transcript)
+            await self.links["tower"].send(AuditRecord(event_id=transcript.transcript_id,
+                stage="tower_audio", actor="tower", payload={"party": "tower", "spoken_text": transcript.text,
+                    "words": [w.model_dump() for w in transcript.words], **save_audio(self.audio_dir, clean, 16000)}))
+
+        tower_task = asyncio.create_task(tower_side())
         await self.edge.audit("", "radio_input", party="radio", heard_text="Receiving radio",
                               **save_audio(self.audio_dir, received, 16000))
         if self.live and not received_real:
             self.edge.manual_stt_factory = lambda: FakeManualSTT(["Cessna 1-2-3 [static]"])
-        events = await self.edge.run_audio(ArraySource(received, t0=t0), realtime=self.realtime)
+        try:
+            events = await self.edge.run_audio(ArraySource(received, t0=t0), realtime=self.realtime)
+        finally:
+            await tower_task
         if not events:
             raise RuntimeError("no blocked transmission detected")
         frames = self.edge.latency.get("detect_frame_ms", [])
         if frames:
             await self.edge.audit(events[0].event_id, "detection", float(np.mean(frames)),
                                   measurement="mean detector frame processing", party="radio")
-        # Consume the same messages as mock_agents.run, preserving role validation.
+        # Consume the same messages as mock_agents.run, preserving role validation. The tower
+        # transcript may arrive after the cockpit's event now that both run in parallel.
         agent = self.links["agents"]
-        latest = None
+        received_msgs = []
         while not agent.queue.empty():
-            _, msg = unwrap(agent.queue.get_nowait())
-            if isinstance(msg, TowerTranscript):
-                latest = msg
-            elif isinstance(msg, AnomalyEvent):
+            received_msgs.append(unwrap(agent.queue.get_nowait())[1])
+        transcripts = [m for m in received_msgs if isinstance(m, TowerTranscript)]
+        latest = transcripts[-1] if transcripts else None
+        for msg in received_msgs:
+            if isinstance(msg, AnomalyEvent):
                 await agent.send(propose(msg, latest))
+
+    async def warm(self):
+        """Live mode: open every connection before the presenter presses Space."""
+        await self.start()
+        try:
+            await self.tts.speak("Unstep ready.")
+        except Exception:
+            self.fallbacks.add("Cartesia warm-up failed")
+        answerer = getattr(self.edge, "answerer", None)
+        if answerer is not None:
+            from unstep.cockpit.memory import Doc
+            try:
+                await answerer.answer("Which runway?", [Doc(id="warm", text="Runway 33", metadata={})])
+            except Exception:
+                self.fallbacks.add("Moss Inference warm-up failed")
+        self.status = "Ready. Space to start the radio."
+        await self.broadcast()
 
     async def control(self, action):
         async with self.lock:
@@ -395,6 +422,9 @@ def create_demo_app(*, live=False, audio_dir=DEFAULT_DEMO_AUDIO_DIR, sink=None, 
     @asynccontextmanager
     async def lifespan(application):
         async with original_lifespan(application):
+            if live:
+                presenter.status = "Warming up Cartesia, Moss and Moss Inference"
+                await presenter.warm()
             try:
                 yield
             finally:

@@ -16,7 +16,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
-SCENE_WAIT_S = {1: 9, 2: 6, 3: 18, 4: 12}  # real-time audio and pipeline per scene
+SCENE_WAIT_S = {1: 4, 2: 4, 3: 12, 4: 10}  # audio still playing after a scene is Ready
 
 
 def free_port() -> int:
@@ -64,7 +64,13 @@ def main() -> int:
                 start.click()
             for scene in range(1, 8):
                 page.keyboard.press("Space")
-                page.wait_for_timeout(int(SCENE_WAIT_S.get(scene, 3) * 1000))
+                # Like a presenter: wait until the scene reports Ready, then let audio finish.
+                page.wait_for_timeout(1000)
+                for _ in range(120):
+                    if "Ready" in page.locator("#status").inner_text():
+                        break
+                    page.wait_for_timeout(500)
+                page.wait_for_timeout(int(SCENE_WAIT_S.get(scene, 2) * 1000))
                 page.screenshot(path=str(out / f"scene{scene}.png"))
                 status = page.locator("#status").inner_text() if page.locator("#status").count() else ""
                 print(f"scene {scene}: {status}")

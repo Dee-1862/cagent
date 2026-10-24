@@ -313,46 +313,70 @@ class ReplayTurnSTT:
         while self.clips:
             pcm = self.clips.pop(0)
             self.last_pcm = pcm
-            async with self.factory() as stt:
-                sent = asyncio.get_running_loop().create_future()
+            async for ev in self._clip_events(pcm, time):
+                yield ev
 
-                async def sender():
-                    await send_paced(stt, pcm, self.sample_rate, trailing_silence_s=self.trailing_silence_s,
-                                     on_speech_sent=sent.set_result)
+    async def _clip_events(self, pcm: bytes, time) -> AsyncIterator[TurnEvent]:
+        """One clip. Cartesia occasionally ends a clear utterance with an empty turn
+        (about 2 in 25 live runs), so an empty final transcript gets one retry on a
+        fresh connection before it is passed on."""
+        for attempt in (1, 2):
+            final = None
+            try:
+                async for ev in self._clip_once(pcm, time):
+                    if ev.type == "turn.end":
+                        final = ev
+                        break
+                    yield ev
+            except RuntimeError:
+                if attempt == 2:
+                    raise
+            if final is not None and (final.transcript.strip() or attempt == 2):
+                yield final
+                return
+            log.warning("turn STT returned an empty transcript; retrying the clip once")
 
-                task = asyncio.create_task(sender())
-                last, parts = "", []
-                deadline = time.perf_counter() + self.timeout_s + len(pcm) / (2 * self.sample_rate)
-                try:
-                    it = stt.events().__aiter__()
-                    while True:
-                        try:
-                            ev = await asyncio.wait_for(it.__anext__(), max(0.1, deadline - time.perf_counter()))
-                        except (asyncio.TimeoutError, StopAsyncIteration):
-                            text = " ".join(parts + ([last] if last else []))
-                            if not text:
-                                raise RuntimeError("turn STT: no turn.end and no transcript for clip")
-                            log.warning("turn STT: no final turn.end; using partial transcript %r", text)
-                            yield TurnEvent("turn.end", text, {})
-                            break
-                        if ev.type == "error":
-                            raise RuntimeError(f"turn STT error: {ev.raw.get('title')}: {ev.raw.get('message')}")
-                        if ev.transcript:
-                            last = ev.transcript
-                        if ev.type == "turn.end":
-                            text = (ev.transcript or last).strip()
-                            if not sent.done():
-                                # A pause mid-clip ended a turn early: keep it and wait for the rest.
-                                if text:
-                                    parts.append(text)
-                                last = ""
-                                continue
-                            self.turn_end_ms.append(round((time.perf_counter() - sent.result()) * 1000, 1))
-                            yield TurnEvent("turn.end", " ".join(parts + ([text] if text else [])), ev.raw)
-                            break
-                        if ev.type == "turn.start" and parts:
+    async def _clip_once(self, pcm: bytes, time) -> AsyncIterator[TurnEvent]:
+        async with self.factory() as stt:
+            sent = asyncio.get_running_loop().create_future()
+
+            async def sender():
+                await send_paced(stt, pcm, self.sample_rate, trailing_silence_s=self.trailing_silence_s,
+                                 on_speech_sent=sent.set_result)
+
+            task = asyncio.create_task(sender())
+            last, parts = "", []
+            deadline = time.perf_counter() + self.timeout_s + len(pcm) / (2 * self.sample_rate)
+            try:
+                it = stt.events().__aiter__()
+                while True:
+                    try:
+                        ev = await asyncio.wait_for(it.__anext__(), max(0.1, deadline - time.perf_counter()))
+                    except (asyncio.TimeoutError, StopAsyncIteration):
+                        text = " ".join(parts + ([last] if last else []))
+                        if not text:
+                            raise RuntimeError("turn STT: no turn.end and no transcript for clip")
+                        log.warning("turn STT: no final turn.end; using partial transcript %r", text)
+                        yield TurnEvent("turn.end", text, {})
+                        break
+                    if ev.type == "error":
+                        raise RuntimeError(f"turn STT error: {ev.raw.get('title')}: {ev.raw.get('message')}")
+                    if ev.transcript:
+                        last = ev.transcript
+                    if ev.type == "turn.end":
+                        text = (ev.transcript or last).strip()
+                        if not sent.done():
+                            # A pause mid-clip ended a turn early: keep it and wait for the rest.
+                            if text:
+                                parts.append(text)
+                            last = ""
                             continue
-                        log.debug("turn STT %s %r", ev.type, ev.transcript)
-                        yield ev
-                finally:
-                    task.cancel()
+                        self.turn_end_ms.append(round((time.perf_counter() - sent.result()) * 1000, 1))
+                        yield TurnEvent("turn.end", " ".join(parts + ([text] if text else [])), ev.raw)
+                        break
+                    if ev.type == "turn.start" and parts:
+                        continue
+                    log.debug("turn STT %s %r", ev.type, ev.transcript)
+                    yield ev
+            finally:
+                task.cancel()

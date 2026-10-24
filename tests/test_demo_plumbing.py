@@ -295,3 +295,15 @@ def test_demo_page_never_carries_token_and_observer_is_local_only(monkeypatch):
     with pytest.raises(Exception):
         with client.websocket_connect("/ws/dashboard") as ws:
             ws.receive_text()  # a role that can approve still needs the token
+
+
+def test_stt_slip_in_tower_transcript_never_reaches_the_pilot():
+    """Live Cartesia once heard "holds short"; the correct readback must still match."""
+    from unstep.cockpit.readback import check_readback
+    from unstep.ground.mock_agents import propose
+
+    tx = scenario.tower_transcript().model_copy(update={"text": "Cessna 123 holds short runway 33."})
+    proposal = propose(scenario.anomaly_event(), tx)
+    assert proposal.instruction_text == "Cessna 1-2-3, hold short Runway 33"
+    match, _, _ = check_readback(proposal.slots, "hold short runway 33 Cessna 123.")
+    assert match

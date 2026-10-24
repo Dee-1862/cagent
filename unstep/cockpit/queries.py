@@ -29,6 +29,7 @@ log = logging.getLogger("unstep.queries")
 Intent = Literal["last_clearance", "say_again", "taxi_route", "unknown"]
 
 NO_RECORD = "Advisory. No record found. Ask the controller."
+SAY_AGAIN = "Advisory. Say again."
 
 # Order matters: "repeat the last clearance" is a last-clearance question, not a say again.
 _INTENTS: list[tuple[Intent, re.Pattern]] = [
@@ -183,6 +184,10 @@ async def answer_query(memory: Memory, flight_index: str, callsign: str, questio
                        answerer: Optional[Answerer] = None,
                        metrics: Optional[dict[str, float]] = None) -> PilotQuery:
     intent = classify_intent(question)
+    if not question.strip():
+        # Nothing was understood: ask again, never answer a question nobody asked.
+        return PilotQuery(query_id=query_id or f"q-{now_ms()}", callsign=callsign, question=question,
+                          answer=SAY_AGAIN, source_doc_id=None, moss_ms=None)
     try:
         if intent == "unknown" and answerer is not None:
             answer, source, moss_ms = await asyncio.wait_for(

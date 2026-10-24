@@ -55,7 +55,7 @@ ACTIONS: list[tuple[str, tuple[str, ...]]] = [
                              "clear for take off", "cleared takeoff")),
     ("cleared to land", ("cleared to land", "clear to land", "cleared land")),
     ("go around", ("go around", "going around")),
-    ("hold short", ("hold short", "holding short", "hold shorts")),
+    ("hold short", ("hold short", "holds short", "holding short", "hold shorts")),
     ("hold position", ("hold position", "holding position")),
     ("stop", ("stop immediately", "stop stop")),
     ("cross", ("cross runway", "crossing runway", "cross")),

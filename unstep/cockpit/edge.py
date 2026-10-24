@@ -486,9 +486,6 @@ class CockpitEdge:
         hint = await derive_hint(self.memory, self.callsign, heard, self.flight_idx, self.airport_idx)
         hint_ms = _ms(t)
         self._measure("moss_ms", hint.moss_ms)
-        # Local hint rules: advisory_text only says "Likely" for a restrictive hint with a source.
-        await self.speak(advisory_text(hint), event_id=event_id, moss_ms=hint.moss_ms)
-        await self._record(f"adv-{event_id}", advisory_text(hint), "advisory")
 
         event = AnomalyEvent(
             event_id=event_id, callsign=self.callsign, frequency=self.frequency,
@@ -499,13 +496,19 @@ class CockpitEdge:
         self.events.append(event)
         self._resolved.setdefault(event_id, asyncio.Event())
         self._sent_at[event_id] = time.perf_counter()
-        if await self.send(event):
+        # The event goes to the ground before the hint is spoken, so the controller's side
+        # starts while the pilot is still hearing the hint.
+        online = await self.send(event)
+        if online:
             await self.audit(event_id, "detection", None, windows=[[w.start, w.end] for w in windows], heard_text=heard, party="radio")
             await self.audit(event_id, "cockpit_stt", stt_ms, heard_text=heard, party="radio")
             await self.audit(event_id, "local_hint", hint.moss_ms, kind=hint.kind,
                              source_doc_id=hint.source_doc_id, total_ms=hint_ms, spoken_text=advisory_text(hint),
                              display_text=readable(advisory_text(hint)))
-        else:
+        # Local hint rules: advisory_text only says "Likely" for a restrictive hint with a source.
+        await self.speak(advisory_text(hint), event_id=event_id, moss_ms=hint.moss_ms)
+        await self._record(f"adv-{event_id}", advisory_text(hint), "advisory")
+        if not online:
             await self.offline()
             self._resolve(event_id, "offline")
         return event

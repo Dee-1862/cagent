@@ -14,7 +14,7 @@ import websockets
 from unstep.config import gateway_url, ws_url
 from unstep.contracts import AnomalyEvent, ProposedDirective, Slots, TowerTranscript, unwrap, wrap
 
-from unstep.cockpit.phraseology import parse_instruction
+from unstep.cockpit.phraseology import parse_instruction, spoken_callsign
 from unstep.ground.blocked import blocked_words
 
 
@@ -22,14 +22,19 @@ def propose(event: AnomalyEvent, transcript: TowerTranscript | None = None) -> P
     hint = event.local_hint
     if (transcript is not None and transcript.frequency == event.frequency
             and transcript.ptt_start < event.squelch_close and transcript.ptt_end > event.squelch_open):
-        slots = parse_instruction(transcript.text) or Slots(callsign=event.callsign, action=transcript.text)
-        slots = slots.model_copy(update={"callsign": event.callsign})
+        parsed = parse_instruction(transcript.text)
+        slots = (parsed or Slots(callsign=event.callsign, action=transcript.text)).model_copy(
+            update={"callsign": event.callsign})
+        # Speak canonical phraseology built from the parsed slots, so a speech-to-text slip
+        # in the tower transcript ("holds short") never reaches the pilot's ear.
+        instruction = (f"{spoken_callsign(event.callsign)}, {slots.action} Runway {slots.runway}"
+                       if parsed and slots.runway else transcript.text)
         hint_slots = parse_instruction(hint.text or "")
         agrees = (hint.kind == "restrictive" and hint_slots is not None
                   and (hint_slots.action, hint_slots.runway) == (slots.action, slots.runway))
         return ProposedDirective(
             event_id=event.event_id, transcript_id=transcript.transcript_id,
-            instruction_text=transcript.text, slots=slots,
+            instruction_text=instruction, slots=slots,
             blocked_words=blocked_words(transcript, event.overlap_start, event.overlap_end),
             confidence="high" if agrees else "medium",
             confidence_method="tower transcript match + local hint agrees" if agrees else "tower transcript match",
