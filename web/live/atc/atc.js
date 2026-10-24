@@ -218,7 +218,7 @@ function renderTraces() {
   renderMap();
   renderInbox();
   const expanded = new Set([...$("history").querySelectorAll("details[open]")].map((d) => d.dataset.event));
-  $("steps").replaceChildren(traces.length ? steps(traces[0]) : el("p", "No blocked calls yet. The evidence chain will appear here.", "empty"));
+  $("steps").replaceChildren(...(traces.length ? [steps(traces[0]), waterfall(traces[0])] : [el("p", "No blocked calls yet. The evidence chain will appear here.", "empty")]));
   $("history").replaceChildren(...traces.slice(1).map((trace) => {
     const detail = el("details"); detail.dataset.event = trace.event_id;
     detail.open = expanded.has(trace.event_id);
@@ -368,6 +368,55 @@ function steps(trace) {
   return list;
 }
 
+// Timing waterfall for one event, from the hub's per-stage `timings` (all on the hub clock).
+// Only real measurements are drawn; a stage the hub didn't report is simply absent.
+const STAGES = {
+  call_start: ["The call started", ""],
+  keys_overlap: ["Two people pressed talk", ""],
+  keys_detected: ["Unstep saw both keys down", ""],
+  stepped_on: ["The calls overlapped", ""],
+  call_end: ["The call ended", ""],
+  event_raised: ["The cockpit flagged a lost call", ""],
+  hint: ["Moss found the likely instruction", "moss"],
+  tower_transcript: ["Cartesia transcribed the tower", "cartesia"],
+  proposed: ["Ground agents proposed a resend", ""],
+  policy: ["Policy agent checked it", ""],
+  approved: ["Approved", "human"],
+  rejected: ["Rejected", "human"],
+  spoken: ["Cartesia spoke it to the pilot", "cartesia"],
+  readback: ["The pilot read it back", "cartesia"],
+  elastic_check: ["Elastic checked the readback", "elastic"],
+};
+function waterfall(trace) {
+  const rows = (trace.timings || []).filter((t) => Number.isFinite(t.at_ms)).sort((a, b) => a.at_ms - b.at_ms);
+  const box = el("div", undefined, "waterfall");
+  if (rows.length < 2) return box;
+  const start = rows[0].at_ms;
+  // "stepped_on" carries the overlap length as a duration; everything else is a point in time.
+  const end = Math.max(...rows.map((t) => t.at_ms + (t.stage === "stepped_on" && Number.isFinite(t.ms) ? t.ms : 0)));
+  const span = Math.max(1, end - start);
+  const callEnd = rows.find((t) => t.stage === "call_end");
+  const spoken = rows.find((t) => t.stage === "spoken");
+  const headline = callEnd && spoken && spoken.at_ms >= callEnd.at_ms
+    ? `From the call ending to the pilot hearing the fix: ${((spoken.at_ms - callEnd.at_ms) / 1000).toFixed(1)} s`
+    : "Timing of each step, measured on the hub";
+  box.append(el("div", headline, "waterfall-title"));
+  for (const t of rows) {
+    const [label, sponsor] = STAGES[t.stage] || [t.stage.replaceAll("_", " "), ""];
+    const row = el("div", undefined, "wf-row");
+    const track = el("div", undefined, "wf-track");
+    const bar = el("div", undefined, `wf-bar ${sponsor}`);
+    bar.style.left = `${((t.at_ms - start) / span) * 100}%`;
+    bar.style.width = `${Math.max(0.8, Number.isFinite(t.ms) && t.stage === "stepped_on" ? (t.ms / span) * 100 : 0.8)}%`;
+    track.append(bar);
+    const offset = `+${((t.at_ms - start) / 1000).toFixed(2)} s`;
+    const took = Number.isFinite(t.ms) && t.stage !== "stepped_on" ? ` · ${t.ms.toFixed(t.ms < 10 ? 1 : 0)} ms` : "";
+    row.append(el("span", label, "wf-label"), track, el("span", offset + took, "wf-time"));
+    box.append(row);
+  }
+  return box;
+}
+
 // Audio is explicitly unlocked by a gesture. Simultaneous radio clips can overlap.
 async function play(encoded) {
   if (!encoded || !state.audio || state.audio.state !== "running") return;
@@ -412,6 +461,26 @@ function showPilotLink(url) {
   $("qr").src = `/live/qr.svg?u=${encodeURIComponent(url)}`;
   $("phone-hint").hidden = !["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname);
 }
+// Safety analytics from GET /live/stats (ES|QL on Elastic, or the hub's own counts when Elastic is off).
+// Scoped to this console session so rehearsals never show up as this run's numbers.
+const statsSince = Date.now();
+async function loadStats() {
+  try {
+    const response = await fetch(`/live/stats?since_ms=${statsSince + (state.offset || 0)}`);
+    if (!response.ok) throw new Error(String(response.status));
+    const stats = await response.json();
+    $("stat-blocked").textContent = stats.blocked_calls ?? 0;
+    $("stat-readback").textContent = stats.readback_errors ?? 0;
+    $("stat-auto").textContent = stats.auto_resends ?? 0;
+    const elastic = stats.backend === "elastic";
+    $("stats-source").textContent = elastic ? `Elastic ES|QL · ${Math.round(stats.took_ms ?? 0)} ms` : "Hub counts · Elastic not connected";
+    $("stats-source").className = elastic ? "cyan" : "";
+    $("stat-esql").textContent = stats.esql || "No query: Elastic is not configured on this hub.";
+  } catch {
+    $("stats-source").textContent = "Analytics unavailable";
+  }
+}
+
 async function loadPilotLink() {
   showPilotLink(`${location.origin}/live/${window.UNSTEP_TOKEN_QUERY || ""}`);
   try {
@@ -427,3 +496,5 @@ try { state.reasons = await (await fetch("/live/static/atc/reasons.json")).json(
 catch { notice("Detailed policy wording unavailable; failed checks still require a human decision."); }
 renderRadio(); controls(); connect();
 setInterval(updateCountdowns, 250);
+loadStats();
+setInterval(loadStats, 5000);
