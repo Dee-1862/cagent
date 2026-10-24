@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 @pytest.fixture
 def console(monkeypatch):
     # Isolate these tests from all local deployment credentials.
-    for name in ("UNSTEP_ATC_PASSWORD", "UNSTEP_GATEWAY_TOKEN"):
+    for name in ("UNSTEP_ATC_PASSWORD", "UNSTEP_GATEWAY_TOKEN", "UNSTEP_PILOT_APP_URL", "UNSTEP_PUBLIC_URL", "UNSTEP_ALLOWED_ORIGINS"):
         monkeypatch.delenv(name, raising=False)
         monkeypatch.delenv(name.lower(), raising=False)
     app = create_live_app(live=False, sink=MemorySink())
@@ -172,3 +172,110 @@ def test_reason_mapping_covers_every_policy_check():
                    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                    and node.func.id == "Check" and isinstance(node.args[0], ast.Constant)}
     assert set(REASONS) == check_names
+
+
+@pytest.mark.parametrize("hosted", [False, True])
+def test_console_uses_pilot_link_and_its_qr(console, monkeypatch, hosted):
+    from urllib.parse import parse_qs, urlsplit
+    client, _ = console
+    monkeypatch.setenv("UNSTEP_GATEWAY_TOKEN", "room&token")
+    if hosted:
+        monkeypatch.setenv("UNSTEP_PILOT_APP_URL", "https://pilots.example.com")
+        monkeypatch.setenv("UNSTEP_ALLOWED_ORIGINS", "https://pilots.example.com")
+        monkeypatch.setenv("UNSTEP_PUBLIC_URL", "https://tower.example.com")
+    link = client.get("/live/pilot-link").json()
+    assert link["hosted"] is hosted
+    parts = urlsplit(link["url"])
+    assert parse_qs(parts.query)["token"] == ["room&token"]
+    if hosted:
+        assert parts.hostname == "pilots.example.com"
+        assert parse_qs(parts.query)["hub"] == ["https://tower.example.com"]
+    else:
+        assert parts.path == "/pilot/"
+    assert client.get("/live/qr.svg", params={"u": link["url"]}).status_code == 200
+    script = client.get("/live/static/atc/atc.js").text
+    assert 'fetch("/live/pilot-link")' in script
+    assert 'encodeURIComponent(url)' in script
+    assert 'location.origin}/live/' in script
+
+
+def test_console_receives_expanding_fleet(console, monkeypatch):
+    from unstep.scenario import FLEET
+    client, room = console
+    monkeypatch.setenv("UNSTEP_MAX_AIRCRAFT", "6")
+    with client.websocket_connect("/live/ws/atc") as ws:
+        ws.receive_json()  # auth_status
+        hello = ws.receive_json()
+        assert len([s for s in hello["stations"] if s["kind"] == "aircraft"]) == 2
+        ws.receive_json()  # presence
+        for expected in FLEET:
+            assert client.post("/live/join").json()["station"] == expected[0]
+        updates = [ws.receive_json() for _ in range(4)]
+        assert all(update["type"] == "stations" for update in updates)
+        fleet = [s for s in updates[-1]["stations"] if s["kind"] == "aircraft"]
+        assert [(s["id"], s["spoken"], s["name"]) for s in fleet] == [f[:3] for f in FLEET]
+
+
+def test_console_live_messages_in_javascript():
+    """Exercise actual console handlers without speech services or a browser."""
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node is needed for console message tests")
+    source = (ROOT / "web/live/atc/atc.js").read_text(encoding="utf-8")
+    harness = r"""
+const assert = require('node:assert/strict');
+class Element {
+  constructor() { this.children = []; this.dataset = {}; this.attrs = {}; }
+  append(...nodes) { this.children.push(...nodes); }
+  replaceChildren(...nodes) { this.children = nodes; }
+  setAttribute(k,v) { this.attrs[k] = v; }
+  getAttribute(k) { return this.attrs[k]; }
+  removeAttribute(k) { delete this.attrs[k]; }
+  addEventListener() {}
+  querySelectorAll() { return []; }
+  getComputedTextLength() { return 200; }
+}
+const nodes = new Map();
+global.document = {
+  getElementById: id => { if (!nodes.has(id)) nodes.set(id,new Element()); return nodes.get(id); },
+  createElement: () => new Element(), createElementNS: () => new Element(),
+  createTextNode: text => ({textContent:text}), querySelectorAll: () => []
+};
+global.sessionStorage = {getItem: () => null, removeItem() {}};
+"""
+    checks = r"""
+const fleet = Array.from({length:6}, (_,i) => ({id:`plane${i}`,kind:'aircraft',name:`Plane ${i}`,spoken:`Aircraft ${i}`}));
+receive({type:'hello',stations:fleet.slice(0,2),keyed:{},traces:[],radio:[],now_ms:Date.now()});
+receive({type:'stations',stations:fleet});
+for (let count=1;count<=6;count++) {
+  receive({type:'presence',connected:Object.fromEntries(fleet.slice(0,count).map(s=>[s.id,1]))});
+  assert.equal(nodes.get('map-planes').children.length,count);
+  assert.equal(nodes.get('radio').children.length,count+1);
+  assert.equal(nodes.get('planes').textContent,`${count} ${count===1?'plane':'planes'} connected`);
+}
+receive({type:'keyed',keyed:{plane2:100,plane3:110}});
+assert.match(nodes.get('map-planes').children[2].attrs.class,/transmitting/);
+assert.equal(nodes.get('radio').children[3].children[0].children[0].textContent,'ON AIR');
+receive({type:'stepon_live',stations:['plane2','plane3'],since_ms:110});
+assert.equal(nodes.get('happened').textContent,'Plane 2 and Plane 3 are talking at the same time. Someone will miss part of this call.');
+assert.equal(nodes.get('radio').children[3].children.at(-1).textContent,'TALKED OVER');
+receive({type:'keyed',keyed:{}});
+assert.doesNotMatch(nodes.get('map-planes').children[2].attrs.class,/transmitting/);
+const tx = [{station:'plane2',start_ms:100,end_ms:200},{station:'plane3',start_ms:110,end_ms:200}];
+receive({type:'radio',transmissions:tx,overlaps:[]});
+assert.equal(state.liveOverlap.size,0);
+assert.equal(nodes.get('radio').children[3].children.length,2);
+receive({type:'stepon_live',stations:['plane2','plane3'],since_ms:110});
+receive({type:'radio',transmissions:tx,overlaps:[{stations:['plane2','plane3'],start_ms:110,end_ms:200}]});
+assert.equal(nodes.get('radio').children[3].children.at(-1).textContent,'TALKED OVER');
+receive({type:'stepon_live',stations:['plane2','plane3'],since_ms:300});
+receive({type:'radio',transmissions:tx,overlaps:[]});
+assert.equal(state.liveOverlap.size,2);
+receive({type:'presence',connected:{}});
+assert.equal(nodes.get('map-planes').children.length,0);
+"""
+    result = subprocess.run([node, "-e", harness + source.split("// Audio is explicitly")[0] + checks],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr

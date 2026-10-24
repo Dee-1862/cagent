@@ -144,7 +144,7 @@ Every script prints `skipped: ...` and exits 0 when its keys are missing.
 
 ## Responsible use
 
-- **Human approval for every directive.** Nothing reaches the cockpit as a directive without a controller's Approve. The dashboard click always works.
+- **A human authored or approved every directive.** The policy agent may auto-resend a blocked call only when it repeats the controller's own transmitted words, is a stop/wait instruction, is fresh and high confidence; the gateway re-checks it. Every auto-resend appears on the ATC console with its checks, one switch turns auto-resend off, and everything else (anything that lets a plane move) waits for the controller's Approve.
 - **Restrictive-only hints, with sources.** Before approval the pilot only hears a "Likely" hint for instructions that make the aircraft stop or wait (hold short, go around). Permissive instructions (cleared for takeoff, cross runway) are never hinted. No source record, no hint.
 - **Only the Unstep key commands Unstep.** Speech on the radio frequency is transcribed but never obeyed.
 - **Never mistaken for ATC.** Every message starts with a chime and "Advisory", in a distinct synthetic voice. No voice cloning of controllers.

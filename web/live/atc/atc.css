@@ -28,3 +28,22 @@ header{display:flex;align-items:center;gap:26px;min-height:91px;padding:14px 30p
 }
 
 #join-qr{flex-shrink:0;line-height:0}#qr{display:block;background:white}.join{max-width:310px}.registration{display:block;margin-bottom:6px}
+
+/* Six reserved map slots leave the runway and neighbouring labels clear. */
+#airport .plane-name{font-size:18px}#airport .state-label{font-size:16px}
+#airport .map-on-air{font-size:12px;fill:var(--cyan);font-weight:800}
+.transmitting .ring{stroke:var(--cyan);stroke-width:4}
+.lane{grid-template-columns:260px 1fr auto}.lane b{font-size:13px}
+.on-air{display:block;color:var(--cyan);font-size:10px;font-weight:800;letter-spacing:.1em}
+.talked-over{animation:step-on-flash .3s ease-out 3}
+@keyframes step-on-flash{50%{background-color:#F8717160;color:white}}
+@media(max-width:1050px){.lane{grid-template-columns:180px 1fr}}
+
+.pilot-join{display:flex;flex-direction:column;align-items:center;gap:4px;max-width:310px}.pilot-join .join{text-align:center}.pilot-join .join a{font-size:11px;line-height:1.2}
+
+/* Scale the field together with its fixed label reservations. */
+#airport{height:auto;aspect-ratio:1000 / 440}
+#airport .small-map{font-size:16px}
+#airport #stop-sign text{fill:var(--amber)}
+.tower-icon{fill:#293848;stroke:var(--cyan);stroke-width:2;stroke-linejoin:round}
+.aircraft.helicopter{fill:none;stroke-linecap:round;stroke-linejoin:round}

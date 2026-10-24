@@ -1,9 +1,9 @@
 // Unstep tower console. Only received evidence changes the aircraft states.
 const $ = (id) => document.getElementById(id);
-const names = {atc: "Tower", N123AB: "Plane A · Cessna 1-2-3", H456: "Plane B · Helicopter 4-5-6"};
-const shortName = (id) => ({N123AB: "Plane A", H456: "Plane B", atc: "Tower"}[id] || id || "A plane");
+const names = {atc: "Tower"};
+const shortName = (id) => state.stations.get(id)?.name || (id === "atc" ? "Tower" : id || "A plane");
 const state = {ws: null, ready: false, offset: 0, live: false, autonomy: false,
-  traces: new Map(), lanes: new Map(), pending: new Set(), audio: null, password: null, reasons: {}};
+  stations: new Map(), connected: {}, keyed: {}, liveOverlap: new Map(), traces: new Map(), lanes: new Map(), pending: new Set(), audio: null, password: null, reasons: {}};
 const now = () => Date.now() + state.offset;
 function el(tag, text, className) {
   const node = document.createElement(tag);
@@ -50,6 +50,7 @@ function connect() {
   ws.onclose = (event) => {
     state.ready = false;
     state.pending.clear();
+    state.keyed = {}; state.liveOverlap.clear(); renderMap(); renderRadio();
     $("connection").textContent = "OFFLINE";
     $("connection").className = "connection";
     controls();
@@ -79,6 +80,8 @@ function receive(message) {
       state.pending.clear();
       state.traces = new Map(message.traces.map((trace) => [trace.event_id, trace]));
       state.lanes.clear();
+      state.keyed = message.keyed || {}; state.liveOverlap.clear();
+      state.connected = {}; setStations(message.stations);
       $("frequency").textContent = message.frequency;
       $("connection").textContent = message.live ? "LIVE" : "OFFLINE · fake speech";
       $("connection").className = "connection online";
@@ -89,11 +92,18 @@ function receive(message) {
       if (!message.traces.length) $("happened").textContent = message.radio.length ? radioSentence(message.radio.at(-1)) : "Waiting for the first radio call.";
       notice(message.insights?.at(-1)?.text || "Connected. Tower decisions are ready.");
       break;
-    case "presence": {
-      const count = ["N123AB", "H456"].filter((id) => message.connected[id] > 0).length;
-      $("planes").textContent = `${count} ${count === 1 ? "plane" : "planes"} connected`;
+    case "stations": setStations(message.stations); renderTraces(); renderRadio(); break;
+    case "presence":
+      state.connected = message.connected;
+      renderMap(); renderRadio(); break;
+    case "keyed":
+      state.keyed = message.keyed;
+      renderMap(); renderRadio(); break;
+    case "stepon_live":
+      message.stations.forEach((id) => state.liveOverlap.set(id, message.since_ms));
+      renderMap(); renderRadio();
+      $("happened").textContent = `${message.stations.map(shortName).join(" and ")} are talking at the same time. Someone will miss part of this call.`;
       break;
-    }
     case "radio": radioEvent(message); break;
     case "transcript": {
       const prior = state.lanes.get("atc");
@@ -126,6 +136,69 @@ function receive(message) {
   }
 }
 
+function setStations(stations) {
+  state.stations = new Map(stations.map((s) => [s.id, s]));
+  for (const s of stations) names[s.id] = isAircraft(s) ? `${s.name || s.id} \u00b7 ${s.spoken || s.callsign || s.id}` : "Tower";
+  renderMap();
+}
+function isHelicopter(station) {
+  return /helicopter|rotorcraft/i.test(station.kind || "") || /^H/i.test(station.callsign || station.id);
+}
+function isAircraft(station) {
+  return station.kind === "aircraft" || isHelicopter(station);
+}
+// Fixed SVG slots reserve separate rectangles for labels and radio badges.
+const groundSlots = [
+  {x:565, y:190, lx:-205, ly:-65, width:240},
+  {x:285, y:190, lx:-205, ly:-65, width:240},
+  {x:85, y:300, lx:-65, ly:46, width:145},
+  {x:240, y:300, lx:-65, ly:46, width:145},
+  {x:395, y:300, lx:-65, ly:46, width:145},
+  {x:550, y:300, lx:-65, ly:46, width:145},
+];
+const hoverSlots = Array.from({length:6}, (_, i) => ({x:750, y:30 + i * 56, lx:30, ly:-5, width:210}));
+function visibleAircraft() {
+  return [...state.stations.values()].filter((s) => isAircraft(s) && (state.connected[s.id] > 0 || s.id in state.keyed));
+}
+function svgNode(tag, attrs, text) {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value));
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+function renderMap() {
+  const aircraft = visibleAircraft().sort((a, b) =>
+    Number(b.id === "N123AB" || b.callsign === "N123AB") - Number(a.id === "N123AB" || a.callsign === "N123AB") ||
+    (a.name || a.id).localeCompare(b.name || b.id, undefined, {numeric:true}));
+  let groundIndex = 0, hoverIndex = 0;
+  $("tower-on-air").textContent = "atc" in state.keyed ? "ON AIR" : "";
+  const count = [...state.stations.values()].filter((s) => isAircraft(s) && state.connected[s.id] > 0).length;
+  $("planes").textContent = `${count} ${count === 1 ? "plane" : "planes"} connected`;
+  $("map-title").textContent = `${count} connected aircraft at Unstep airport`;
+  $("map-planes").replaceChildren(...aircraft.map((station) => {
+    const helicopter = isHelicopter(station);
+    const slot = helicopter ? hoverSlots[hoverIndex++] : groundSlots[groundIndex++];
+    if (!slot) return svgNode("g", {});
+    const id = station.id;
+    const trace = tracesNewestFirst().find((t) => t.callsign === id);
+    const view = trace ? presentation(trace) : {kind:"neutral", label:"Waiting for radio activity"};
+    const group = svgNode("g", {id:`plane-${id}`, class:`plane ${view.kind}${id in state.keyed ? " transmitting" : ""}`, transform:`translate(${slot.x} ${slot.y})`});
+    group.append(svgNode("circle", {class:"ring", r:22}), svgNode("path", {class:helicopter ? "aircraft helicopter" : "aircraft", d:helicopter ? "M-5-7Q5-12 12-3V5Q5 12-5 7ZM-5 0H-19M-19-6V6M2-7V-15M-17-15H21M-8 14H15M-4 7V14M10 7V14" : "M-16-3L-4-6L-8-18H-2L7-6L18-2V2L7 6L-2 18H-8L-4 6L-16 3Z"}));
+    const label = svgNode("text", {x:slot.lx, y:slot.ly, "data-width":slot.width, class:"plane-name"}, names[id]);
+    const status = svgNode("text", {x:slot.lx, y:slot.ly + 24, "data-width":slot.width, class:"state-label"}, view.label);
+    group.append(label, status);
+    if (id in state.keyed) group.append(svgNode("text", {x:slot.lx,y:slot.ly + 44,class:"map-on-air"}, "ON AIR"));
+    return group;
+  }));
+  // Keep every label within its reserved slot, including long recovered instructions.
+  $("map-planes").querySelectorAll(".plane-name, .state-label").forEach((label) => {
+    const width = Number(label.dataset.width);
+    if (label.getComputedTextLength() > width) {
+      label.setAttribute("textLength", width); label.setAttribute("lengthAdjust", "spacingAndGlyphs");
+    }
+  });
+}
+
 // Aircraft and the one-sentence explanation of the newest event.
 function tracesNewestFirst() { return [...state.traces.values()].sort((a,b) => b.created_ms - a.created_ms); }
 function presentation(trace) {
@@ -142,22 +215,7 @@ function presentation(trace) {
 function renderTraces() {
   const traces = tracesNewestFirst();
   if (traces.length) $("happened").textContent = presentation(traces[0]).sentence;
-  for (const id of ["N123AB", "H456"]) {
-    const trace = traces.find((t) => t.callsign === id);
-    const view = trace ? presentation(trace) : {kind:"neutral",label:"Waiting for radio activity"};
-    const plane = $(`plane-${id}`);
-    // Do not restart warning flashes for unrelated updates.
-    if (plane.getAttribute("class") !== `plane ${view.kind}`) plane.setAttribute("class", `plane ${view.kind}`);
-    const label = $(`state-${id}`);
-    label.textContent = view.label;
-    label.removeAttribute("textLength");
-    const maxWidth = id === "N123AB" ? 285 : 320;
-    if (label.getComputedTextLength() > maxWidth) {
-      label.setAttribute("textLength", maxWidth);
-      label.setAttribute("lengthAdjust", "spacingAndGlyphs");
-    }
-    if (id === "N123AB") $("stop-sign").setAttribute("visibility", trace?.status === "confirmed" && /hold short/i.test(trace.decision?.instruction_text || trace.proposal?.instruction_text || "") ? "visible" : "hidden");
-  }
+  renderMap();
   renderInbox();
   const expanded = new Set([...$("history").querySelectorAll("details[open]")].map((d) => d.dataset.event));
   $("steps").replaceChildren(traces.length ? steps(traces[0]) : el("p", "No blocked calls yet. The evidence chain will appear here.", "empty"));
@@ -177,8 +235,9 @@ function reason(trace) {
   return state.reasons[check?.name] || "The automatic safety checks did not all pass, so a human must review this instruction.";
 }
 function spokenWords(text) {
-  return text.replace(/\b(N123AB|H456)\b/g, (id) => names[id].split(" · ")[1]);
+  return text.replace(/\b[A-Z0-9]+\b/g, (id) => state.stations.get(id)?.spoken || id);
 }
+
 function towerWords(trace) {
   const paragraph = el("p", undefined, "words");
   const tower = trace.tower;
@@ -247,25 +306,30 @@ function radioSentence(radio) {
 }
 function radioEvent(radio, announce = true) {
   radio.transmissions.forEach((tx) => {
+    // An older cluster must not clear a newer live warning.
+    if (state.liveOverlap.has(tx.station) && tx.end_ms >= state.liveOverlap.get(tx.station)) state.liveOverlap.delete(tx.station);
     const blocked = (radio.overlaps || []).some((o) => o.stations.includes(tx.station) && o.start_ms < tx.end_ms && o.end_ms > tx.start_ms);
     const prior = state.lanes.get(tx.station);
     if (!prior || tx.start_ms >= prior.start_ms) state.lanes.set(tx.station, {...tx, blocked});
   });
-  if (announce) { $("happened").textContent = radioSentence(radio); renderRadio(); }
+  if (announce) { $("happened").textContent = radioSentence(radio); renderMap(); renderRadio(); }
 }
 function renderRadio() {
   const traces = tracesNewestFirst();
-  $("radio").replaceChildren(...["atc", "H456", "N123AB"].map((id) => {
+  $("radio").replaceChildren(...["atc", ...visibleAircraft().map((s) => s.id)].map((id) => {
     const tx = state.lanes.get(id);
     const row = el("div", undefined, "lane");
-    row.append(el("b", shortName(id)));
+    row.dataset.station = id;
+    const speaker = el("b", names[id] || shortName(id));
+    if (id in state.keyed) speaker.append(el("small", "ON AIR", "on-air"));
+    row.append(speaker);
     const words = el("div", tx?.text || (tx ? "Voice transmission · transcript not available" : "No transmission yet"));
     if (id !== "atc") {
       const trace = traces.find((t) => t.callsign === id && t.event);
       words.append(el("span", trace ? `Heard at ${new Date(trace.created_ms).toLocaleTimeString()}: “${trace.event.heard_text || "[no words recovered]"}”` : "Heard: no cockpit transcript received yet", "heard"));
     }
     row.append(words);
-    if (tx?.blocked) row.append(el("span", "TALKED OVER", "talked-over"));
+    if (tx?.blocked || state.liveOverlap.has(id)) row.append(el("span", "TALKED OVER", "talked-over"));
     return row;
   }));
 }
@@ -341,11 +405,24 @@ $("say").addEventListener("keydown", (event) => {
   }
 });
 document.querySelectorAll("[data-say]").forEach((button) => button.addEventListener("click", () => send({type:"say",text:button.dataset.say})));
-$("join-url").textContent = `${location.host}/live/`;
-$("join-url").href = `${location.origin}/live/`;
-$("join-qr").href = $("join-url").href;
-$("qr").src = `/live/qr.svg?u=${encodeURIComponent($("join-url").href)}`;
-$("phone-hint").hidden = !["localhost","127.0.0.1","[::1]"].includes(location.hostname);
+function showPilotLink(url) {
+  $("join-url").textContent = url;
+  $("join-url").href = url;
+  $("join-qr").href = url;
+  $("qr").src = `/live/qr.svg?u=${encodeURIComponent(url)}`;
+  $("phone-hint").hidden = !["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname);
+}
+async function loadPilotLink() {
+  showPilotLink(`${location.origin}/live/${window.UNSTEP_TOKEN_QUERY || ""}`);
+  try {
+    const response = await fetch("/live/pilot-link");
+    if (!response.ok) throw new Error("Pilot link unavailable");
+    const {url} = await response.json();
+    if (!["http:", "https:"].includes(new URL(url).protocol)) throw new Error("Invalid pilot link");
+    showPilotLink(url);
+  } catch { /* Keep the same-host seat picker available. */ }
+}
+loadPilotLink();
 try { state.reasons = await (await fetch("/live/static/atc/reasons.json")).json(); }
 catch { notice("Detailed policy wording unavailable; failed checks still require a human decision."); }
 renderRadio(); controls(); connect();
