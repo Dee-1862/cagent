@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Projector-ready Control Tower console
+
+**Type:** Added
+**Area:** Other
+
+- Added `/live/atc/` with an illustrative airport, evidence-driven aircraft states, plain-English event summary, decision cards with policy reasons and expiry, radio lanes, and numbered explanations with honest timing labels.
+- Added a three-seat picker and password dialog. `UNSTEP_ATC_PASSWORD` protects the tower socket with constant-time comparison before joining; existing plane and observer protocols are unchanged.
+- Added route, authentication, role isolation and policy wording tests in `tests/test_atc_console.py`. Tests were written but pytest was not run in this sandbox.
+- Join URL is displayed prominently; QR generation remains a TODO. Ground-agent stand-ins and missing timing measurements are disclosed on screen.
+
+**Related:** [ATC console spec](14-atc-console.md), [Live demo](11-live-demo.md)
+
 ## 2026-10-24: Live room built: pick a seat, agents in the middle, controller for edge cases
 
 **Type:** Added

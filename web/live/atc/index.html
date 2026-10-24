@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Unstep · Control Tower</title>
+  <link rel="stylesheet" href="/live/static/atc/atc.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="/live/">UNSTEP<span class="brand-mark">↗</span></a>
+    <div class="identity"><strong>Control Tower</strong><small>KUNS · Radio <span id="frequency">118.700</span></small></div>
+    <div class="presence"><b id="planes">0 planes connected</b><small id="password-state">Checking tower access…</small></div>
+    <div class="join"><small>JOIN AS A PLANE</small><a id="join-url" href="/live/"></a><small>QR code: TODO · use this address</small></div>
+    <span id="connection" class="connection">OFFLINE</span>
+    <button id="sound" class="quiet">Turn on sound</button>
+  </header>
+  <main>
+    <section class="headline" aria-live="polite">
+      <h1>What just happened</h1>
+      <p id="happened">Waiting for the first radio call.</p>
+    </section>
+    <div class="hero">
+      <section class="map-panel panel">
+        <div class="section-title"><h2>The airport</h2><small>Illustration · positions are not live tracking</small></div>
+        <svg id="airport" viewBox="0 0 800 330" role="img" aria-labelledby="map-title map-desc">
+          <title id="map-title">Two aircraft at Unstep airport</title>
+          <desc id="map-desc">Plane A waits on taxiway B before the runway stop line. Plane B hovers off the field. Status labels update from radio events.</desc>
+          <defs><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#233041" stroke-width=".5"/></pattern></defs>
+          <rect width="800" height="330" fill="url(#grid)"/>
+          <path d="M80 237H475" class="taxiway"/><path d="M80 237H475" class="taxi-center"/>
+          <rect x="475" y="25" width="110" height="280" rx="4" class="runway"/>
+          <path d="M530 45V285" class="runway-center"/>
+          <text x="545" y="70" class="runway-number">33</text><text x="545" y="288" class="runway-number">15</text>
+          <text x="602" y="165">Runway 33</text><text x="80" y="290">Taxiway B</text>
+          <path d="M423 199V273M431 199V273" class="stop-line"/>
+          <text x="374" y="322">Stop line</text><text x="470" y="322" class="muted small-map">hold short</text>
+          <g transform="translate(95 70)"><path d="M0 8H48L40 32H8ZM16 32H32V76H16Z" fill="#233041" stroke="#8B9AAB"/><text x="60" y="35">Tower</text><text x="60" y="58" class="muted">You are here</text></g>
+          <g id="plane-N123AB" class="plane neutral" transform="translate(285 237)">
+            <circle class="ring" r="35"/><path d="M-22-5L-5-8L-11-25L-3-25L9-8L26-3L26 3L9 8L-3 25L-11 25L-5 8L-22 5Z" class="aircraft"/>
+            <text x="-110" y="-64" class="plane-name">Plane A · Cessna 1-2-3</text><text id="state-N123AB" x="-110" y="-41" class="state-label">Waiting for radio activity</text>
+          </g>
+          <g id="plane-H456" class="plane neutral" transform="translate(320 76)">
+            <circle class="ring" r="31"/><path d="M-13-9H10L20 0L10 9H-13ZM-13-3H-28V-12M-23-16H23M0-16V-9" class="aircraft"/>
+            <text x="48" y="-4" class="plane-name">Plane B · Helicopter 4-5-6</text><text id="state-H456" x="48" y="20" class="state-label">Waiting for radio activity</text>
+          </g>
+          <g id="stop-sign" visibility="hidden" transform="translate(401 237)"><path d="M-10-23H10L23-10V10L10 23H-10L-23 10V-10Z" fill="#34D399"/><text text-anchor="middle" y="6" fill="#0A0E13" font-weight="800">STOP</text></g>
+        </svg>
+        <div class="legend"><span>○ Listening</span><span class="bad">◉ Missed a call</span><span class="amber">● Instruction delivered</span><span class="good">✓ Read back correctly</span></div>
+      </section>
+      <section class="decisions panel">
+        <div class="section-title"><h2>Needs your decision <span id="decision-count">0</span></h2><small>You have the final say</small></div>
+        <div id="inbox"></div>
+        <label class="switch"><input id="autonomy" type="checkbox" disabled><span>Auto-resend the tower’s own stop/wait instructions</span></label>
+      </section>
+    </div>
+    <section class="panel radio-panel">
+      <div class="section-title"><h2>Radio <small>One shared frequency</small></h2><span id="onair" class="cyan">Waiting for radio activity</span></div>
+      <div id="radio"></div>
+      <form id="say-form"><label class="sr-only" for="say">Tower radio message</label><input id="say" maxlength="300" placeholder="Say something on the tower radio…" required><button id="transmit" disabled>Transmit</button></form>
+      <div class="suggestions"><button data-say="Cessna one two three, hold short runway three three.">Tell Plane A to stop</button><button data-say="Cessna one two three, cleared for takeoff runway three three.">Clear Plane A for takeoff</button></div>
+    </section>
+    <section class="panel explanation"><div class="section-title"><h2>How Unstep handled it</h2><small id="event-label">Evidence appears as it arrives</small></div><div id="steps"></div><div id="history"></div></section>
+    <aside id="notice" role="status"></aside>
+    <footer><span id="mode">Connecting to the room…</span> · Ground agents: stand-in until Elastic Workflow · Missing timings are labeled, never estimated.</footer>
+  </main>
+  <dialog id="auth"><form id="auth-form"><h2>Control Tower access</h2><p id="auth-note">Enter the ATC password to join.</p><label for="password">ATC password</label><input id="password" type="password" autocomplete="current-password"><button>Enter Control Tower</button><a href="/live/">Choose another seat</a></form></dialog>
+  <script>window.UNSTEP_TOKEN_QUERY = "__UNSTEP_TOKEN_QUERY__";</script>
+  <script type="module" src="/live/static/atc/atc.js"></script>
+</body>
+</html>

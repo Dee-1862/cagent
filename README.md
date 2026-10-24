@@ -183,3 +183,11 @@ Every message is an envelope `{"type": "AnomalyEvent", "ts": 1792800000000, "dat
 ```bash
 python -m pytest -q   # 129 passed, 1 skipped, offline
 ```
+
+## Control Tower console
+
+Run `python -m unstep.live` and open `/live/atc/` on the server (normally `http://127.0.0.1:8765/live/atc/`). Open `/live/` on the phones to pick Plane A or Plane B. Use the server's LAN or HTTPS tunnel address on phones. The projector-only link retains the existing read-only observer seat.
+
+Set `UNSTEP_ATC_PASSWORD` in your shell or local `.env` before starting the room. Choose Control Tower in the seat picker and enter it. The server verifies the password before joining the tower socket; plane and observer seats do not need it. If unset, tower access is open and the console says **ATC password not set**. The existing gateway token and origin checks still apply. Passwords travel in the first WebSocket frame, not in URLs; use HTTPS when sharing across a network.
+
+Click **Turn on sound** once to hear the radio and controller prompts. Type a tower instruction or use the two suggested transmissions. Approve or reject escalated proposals in the decision inbox; the auto-resend switch controls only verified stop/wait instructions. The map is illustrative, not live aircraft tracking. Status, lost words, policy reasons and readbacks come from received room messages. Unreported timings say **not measured**; offline speech and ground stand-ins are labeled. QR generation remains a TODO; the header displays the join address instead.

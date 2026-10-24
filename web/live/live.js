@@ -124,10 +124,11 @@ async function showJoin() {
       return;
     }
     $("mode").textContent = data.live ? "LIVE: Cartesia speech" : "offline: fake speech";
-    $("seats").replaceChildren(...data.stations.map((sta) => h("button", {
+    const titles = { atc: "Control Tower (laptop)", N123AB: "Plane A · Cessna 1-2-3", H456: "Plane B · Helicopter 4-5-6" };
+    $("seats").replaceChildren(...data.stations.filter((sta) => sta.kind !== "observer").map((sta) => h("button", {
       class: "seat-card",
       onclick: () => { ensureAudio(); location.hash = sta.id; start(sta.id); },
-    }, h("h3", {}, sta.label), h("p", {}, SEAT_HELP[sta.kind] || ""),
+    }, h("h3", {}, titles[sta.id] || sta.label), h("p", {}, SEAT_HELP[sta.kind] || ""),
       h("div", { class: "who" }, `${data.connected[sta.id] || 0} connected`))));
   };
   await render();
@@ -135,6 +136,10 @@ async function showJoin() {
 }
 
 function start(station) {
+  if (station === "atc") {
+    $("tower-access").showModal();
+    return;
+  }
   clearInterval(showJoin.timer);
   st.station = station;
   $("join").hidden = true;
@@ -513,6 +518,18 @@ document.addEventListener("keydown", (e) => {
 document.addEventListener("keyup", (e) => { if (e.code === "Space") micUp(); });
 
 // ------------------------------------------------------------ boot
+
+$("tower-access-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  try { sessionStorage.setItem("unstep-atc-password", $("tower-password").value); } catch { /* Console asks again. */ }
+  $("tower-password").value = "";
+  location.href = "/live/atc/";
+});
+$("tower-cancel").addEventListener("click", () => {
+  $("tower-access").close(); location.hash = "";
+  if ($("join").hidden) showJoin();
+});
+$("projector-seat").addEventListener("click", () => { ensureAudio(); start("observer"); });
 
 const seat = decodeURIComponent(location.hash.slice(1));
 if (seat) start(seat);
