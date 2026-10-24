@@ -1,0 +1,41 @@
+# Started by the hub when a readback does not match (B5). Off the radio path: the
+# cockpit has already asked the pilot to read back again; this run explains the
+# mismatch for the audit log and the controller, with the FAA paragraph.
+version: "1"
+name: unstep-readback-audit
+description: Readback Auditor agent for one wrong readback
+enabled: true
+triggers:
+  - type: manual
+    inputs:
+      - name: event_id
+        type: string
+        required: true
+      - name: instruction
+        type: string
+        required: true
+      - name: readback
+        type: string
+        required: true
+      - name: attempt
+        type: number
+        required: false
+steps:
+  - name: audit
+    type: ai.agent
+    agent-id: unstep-readback-auditor
+    create-conversation: true
+    with:
+      message: |-
+        Event {{ inputs.event_id }}, attempt {{ inputs.attempt }}.
+        Instruction delivered: "{{ inputs.instruction }}"
+        Pilot read back: "{{ inputs.readback }}"
+  - name: store
+    type: elasticsearch.index
+    with:
+      index: unstep-findings
+      id: "{{ inputs.event_id }}-{{ inputs.attempt }}"
+      document:
+        event_id: "{{ inputs.event_id }}"
+        execution_id: "{{ execution.id }}"
+        audit: "{{ steps.audit.output.message }}"

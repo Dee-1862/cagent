@@ -1,0 +1,7 @@
+{
+  "id": "unstep_faa_search",
+  "type": "index_search",
+  "description": "Search FAA Order JO 7110.65 (Air Traffic Control) paragraphs in the unstep-faa index. Each document has paragraph (for example 3-7-2), title and text. Use it to find the paragraph that governs an instruction or a readback.",
+  "tags": ["unstep", "faa"],
+  "configuration": {"pattern": "unstep-faa"}
+}

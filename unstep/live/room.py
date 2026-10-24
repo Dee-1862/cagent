@@ -304,14 +304,17 @@ class LiveEdge(CockpitEdge):
 
 
 class GroundAgents:
-    """Stand-in for the Intercept and Compliance agents until the Elastic Workflow (B5).
+    """Intercept and Compliance for the live room.
 
     Matches each blocked call with the controller's own transmission and proposes
-    the directive with unstep.ground.mock_agents.propose.
+    the directive with unstep.ground.mock_agents.propose. With UNSTEP_ELASTIC_AGENTS=1
+    the Elastic Workflow's agents (B5, unstep.ground.elastic_agents) then add the FAA
+    citation and can lower the confidence; they never write the instruction.
     """
 
-    def __init__(self, send, wait_s: float = TRANSCRIPT_WAIT_S):
+    def __init__(self, send, wait_s: float = TRANSCRIPT_WAIT_S, elastic=None):
         self.send, self.wait_s = send, wait_s
+        self.elastic = elastic  # unstep.ground.elastic_agents.ElasticAgents, or None for local only
         self.transcripts: list[TowerTranscript] = []
         self._changed = asyncio.Condition()
         self._tasks: set[asyncio.Task] = set()
@@ -342,6 +345,12 @@ class GroundAgents:
                 pass
         transcript = self._match(event)
         proposal = propose(event, transcript)
+        agents = None
+        if self.elastic is not None and transcript is not None:
+            from unstep.ground.elastic_agents import merge
+
+            agents = await self.elastic.blocked_call(event, transcript, proposal)
+            proposal = merge(proposal, agents)
         await self.send(proposal)
         await self.send(AuditRecord(event_id=event.event_id, stage="ground_agents", actor="agents",
                                     latency_ms=now_ms() - started, payload={
@@ -350,7 +359,12 @@ class GroundAgents:
                                         "blocked_words": proposal.blocked_words,
                                         "confidence": proposal.confidence,
                                         "confidence_method": proposal.confidence_method,
-                                        "agents": "mock intercept + compliance (Elastic Workflow in B5)"}))
+                                        "agents": ("Elastic Workflow unstep-blocked-call" if agents
+                                                   else "local intercept + compliance"),
+                                        **({"workflow_execution_id": agents.execution_id,
+                                            "workflow_ms": agents.took_ms,
+                                            "intercept": agents.intercept, "compliance": agents.compliance,
+                                            "citation": proposal.rule_citation} if agents else {})}))
 
 
 class LiveRoom:
@@ -387,6 +401,7 @@ class LiveRoom:
         self._start_lock = asyncio.Lock()
         self.links: dict[str, InProcLink] = {}
         self.policy: PolicyAgent | None = None
+        self.elastic_agents = None  # Elastic Workflow ground agents when UNSTEP_ELASTIC_AGENTS=1 (B5)
         self.monitor: FrequencyMonitor | None = None  # writes the hub's freq-<frequency> session
         self.graph = [dict(n) for n in GRAPH_NODES]
         self.key_since: dict[str, int] = {}  # station -> hub time its radio key went down
@@ -423,7 +438,10 @@ class LiveRoom:
                 return
             gw = self.gateway
             self.links["tower"] = InProcLink(gw, "tower")
-            ground = GroundAgents(lambda m: self.links["agents"].send(m))
+            from unstep.ground.elastic_agents import elastic_agents_from_env
+
+            self.elastic_agents = elastic_agents_from_env() if self.live else None
+            ground = GroundAgents(lambda m: self.links["agents"].send(m), elastic=self.elastic_agents)
             self.links["agents"] = InProcLink(gw, "agents", ground.on_message)
             self.policy = PolicyAgent(lambda m: self.links["policy"].send(m))
             self.links["policy"] = InProcLink(gw, "policy", self.policy.on_message,
@@ -1028,6 +1046,9 @@ class LiveRoom:
             self.flow(f"cockpit:{cs}", "gateway", "ReadbackResult", event_id)
             self.flow("gateway", "monitor", "ReadbackResult", event_id)
             trace["readbacks"].append(msg.model_dump(mode="json"))
+            if not msg.match and getattr(self, "elastic_agents", None) is not None:  # B5: audit off the radio path
+                instruction = (trace.get("decision") or {}).get("instruction_text", "")
+                self._spawn(self.elastic_agents.readback_audit(event_id, instruction, msg.readback_text, msg.attempt))
             trace["status"] = "confirmed" if msg.match else "readback_wrong"
             self._step(trace, f"cockpit:{cs}", "readback",
                        f"Readback {'correct' if msg.match else 'incorrect'}: \"{msg.readback_text}\"")

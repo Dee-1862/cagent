@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Elastic ground agents as files, a deploy script and the hub client (B5)
+
+**Type:** Added
+**Area:** Ground agents
+
+- `elastic/`: three Agent Builder tools, three agents (Intercept, Compliance, Readback Auditor) and two Workflows (`unstep-blocked-call`, `unstep-readback-audit`). `scripts/deploy_elastic.py` creates them (`--dry-run` prints every request).
+- `unstep/ground/elastic_agents.py`: with `UNSTEP_ELASTIC_AGENTS=1` the live room runs the workflow per stepped-on call and reads the agents' answers back from `unstep-proposals`. The agents never write the instruction: they add the FAA citation (kept only if that paragraph exists in `unstep-faa`) and can lower the confidence. A wrong readback starts the Readback Auditor off the radio path. Slow or failing runs keep the local proposal.
+- Two short runs instead of `waitForInput`, so the gateway stays the one enforcement point (see [10-agentic-architecture.md](10-agentic-architecture.md) 4.4).
+- Checked: 8 tests with mocked Kibana and Elasticsearch, plus a consistency check of the definitions. Not deployed: our sandbox can't reach Elastic, so the live deploy runs on Deekshith's machine. `unstep-faa` (W2) is still to be filled.
+
+**Related:** PRD FR-6, [10-agentic-architecture.md](10-agentic-architecture.md), agent mail R15, D9 item 4
+
 ## 2026-10-24: Transmissions sound like a radio; Unstep's voice stays clean (R17 e)
 
 **Type:** Added
