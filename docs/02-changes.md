@@ -19,6 +19,15 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Proposed a live multi-person demo room
+
+**Type:** Docs
+**Area:** Other
+
+- Added [11-live-demo.md](11-live-demo.md), a proposal to replace the scripted presenter with a live radio room: each person joins from their own browser, picks a role (tower, pilots, observer), and talks on a shared virtual frequency, so blocked transmissions happen for real.
+- Covers roles for three or more people, a 3 minute flow plus free play, the per-event evidence chain for explainability, a controller queue with countdowns for several aircraft, a typed "say" box for noisy halls, and a build plan (L1 to L6).
+- Notes from the presenter screenshots: "Scene failed (RuntimeError)" in the controller scene is most likely a proposal expiring after 60 s while scenes wait on "Next", and one live run took 5.4 s to finalize the cockpit transcript.
+
 ## 2026-10-24: Merged Rishit's presenter mode and demo work into the Dev B branch
 
 **Type:** Changed
