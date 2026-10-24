@@ -48,6 +48,41 @@ class TowerTranscriber:
         )
 
 
+class TowerStream:
+    """Tower transcription fed while the controller is still talking (P3).
+
+    Same two Cartesia streams as TowerTranscriber (keyed text, word timings), but
+    audio goes in as it is spoken, so it arrives at real-time pace by itself and
+    both streams can finalize at key release instead of after a replay.
+    """
+
+    def __init__(self, stt_factory=CartesiaManualSTT, callsigns=(), runways=(), taxiways=()):
+        terms = build_keyterms(callsigns=callsigns, runways=runways, taxiways=taxiways)
+        self.text_stt = stt_factory(model=cartesia_stt_model(), keyterms=terms)
+        self.word_stt = stt_factory(model=cartesia_stt_timestamp_model(), timestamp_granularities=["word"])
+        self.frames = 0
+
+    async def __aenter__(self):
+        await asyncio.gather(self.text_stt.__aenter__(), self.word_stt.__aenter__())
+        return self
+
+    async def __aexit__(self, *exc):
+        await asyncio.gather(self.text_stt.__aexit__(*exc), self.word_stt.__aexit__(*exc), return_exceptions=True)
+
+    async def send_audio(self, pcm: bytes) -> None:
+        self.frames += 1
+        await asyncio.gather(self.text_stt.send_audio(pcm), self.word_stt.send_audio(pcm))
+
+    async def finish(self, ptt_start: int, ptt_end: int, frequency: str,
+                     callsign: str | None = None) -> TowerTranscript:
+        text, timing = await asyncio.gather(self.text_stt.finalize(), self.word_stt.finalize())
+        return TowerTranscript(
+            transcript_id=f"tx-{uuid.uuid4().hex}", frequency=frequency, callsign=callsign,
+            ptt_start=ptt_start, ptt_end=ptt_end, text=text.text,
+            words=[w.model_copy(update={"word": w.word.lstrip()}) for w in timing.words],
+        )
+
+
 class FakeTowerTranscriber:
     async def transcribe(self, audio: bytes, ptt_start: int, ptt_end: int,
                          frequency: str, callsign: str | None = None) -> TowerTranscript:

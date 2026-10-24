@@ -25,3 +25,23 @@ describe("phrases", () => {
     expect(sayLines("Cessna 1-2-3", false)[1].text).toContain("two three, Cessna one two three");
   });
 });
+
+import { downsample } from "./mic";
+
+describe("mic frames", () => {
+  it("keeps the remainder so 100 ms frames add up to the whole clip", () => {
+    const ratio = 44100 / 16000;
+    const input = new Float32Array(44100).fill(0.5);
+    let carry = new Float32Array(0);
+    let out = 0;
+    for (let i = 0; i < input.length; i += 4410) {
+      const all = new Float32Array(carry.length + 4410);
+      all.set(carry);
+      all.set(input.subarray(i, i + 4410), carry.length);
+      const { pcm, used } = downsample(all, ratio);
+      carry = all.slice(used);
+      out += pcm.length;
+    }
+    expect(Math.abs(out - 16000)).toBeLessThanOrEqual(1);
+  });
+});

@@ -163,9 +163,11 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
     audio();
     chirp(1400, 30);
     navigator.vibrate?.(30);
-    mic.start();
     pressAt.current = live.current!.now();
-    live.current!.send({ type: "key", down: true, at: pressAt.current });
+    const startMs = Math.round(pressAt.current);
+    live.current!.send({ type: "key", down: true, at: startMs });
+    // Stream while held, so Cartesia hears the call as it is spoken and finishes at release.
+    mic.start((pcm) => live.current?.send({ type: "mic_frame", start_ms: startMs, pcm }));
     setOnAir(true);
   };
   const up = () => {
@@ -174,9 +176,8 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
       releaseTimer.current = null;
       setOnAir(false);
       chirp(900, 30);
-      const pcm = mic.stop();
-      if (pcm) live.current!.send({ type: "mic", pcm, start_ms: Math.round(pressAt.current) });
-      else live.current!.send({ type: "key", down: false });
+      mic.finish();
+      live.current!.send({ type: "mic_end" }); // under 0.3 s the hub treats it as a tap, not a call
     }, TAIL_MS);
   };
 

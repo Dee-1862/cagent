@@ -148,3 +148,37 @@ def test_pilot_link_falls_back_to_the_copy_on_the_hub(monkeypatch):
         monkeypatch.delenv(k, raising=False)
     client = TestClient(create_live_app(live=False, sink=MemorySink()))
     assert client.get("/live/pilot-link").json() == {"url": "http://testserver/pilot/", "hosted": False}
+
+
+def test_a_moss_outage_does_not_take_the_room_down(monkeypatch):
+    class DownMoss(LocalMemory):
+        backend = "moss"
+
+        async def open(self, *indexes):
+            raise RuntimeError("The Moss service could not be reached.")
+
+        async def add_docs(self, *a, **k):
+            raise RuntimeError("The Moss service could not be reached.")
+
+    async def go():
+        monkeypatch.setattr(room_mod, "create_memory", DownMoss)
+        r = LiveRoom(create_app(MemorySink()).state.gateway, live=True, tts_factory=lambda v: FakeTTS(),
+                     advisory_tts=FakeTTS())
+        await r.start()
+        assert r.edges["N123AB"].memory.backend == "local"
+        await r.stop()
+
+    asyncio.run(go())
+
+
+def test_offline_rooms_never_use_moss(monkeypatch):
+    async def go():
+        used = []
+        monkeypatch.setattr(room_mod, "create_memory", lambda: used.append(1) or LocalMemory())
+        r = LiveRoom(create_app(MemorySink()).state.gateway, live=False, tts_factory=lambda v: FakeTTS(),
+                     advisory_tts=FakeTTS())
+        await r.start()
+        assert not used
+        await r.stop()
+
+    asyncio.run(go())

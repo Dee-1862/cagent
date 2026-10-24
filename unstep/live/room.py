@@ -49,6 +49,8 @@ GAP_MS = 300  # quiet time after the last transmission before a cluster is proce
 TRANSCRIPT_WAIT_S = 12.0  # how long ground agents wait for the tower transcript
 READBACK_WAIT_S = 45.0  # how long a cockpit waits for the pilot's readback
 CLAIM_S = 20.0  # a seat handed out by join() stays reserved this long for its websocket
+MAX_STREAM_S = 60  # longest push-to-talk stream accepted
+STREAM_FINAL_S = 10.0  # how long consumers wait for a streamed transcript before replaying the clip
 
 
 @dataclass
@@ -305,13 +307,17 @@ class GroundAgents:
 class LiveRoom:
     def __init__(self, gateway, *, live: bool, stations: list[Station] | None = None,
                  tts_factory: Callable[[str | None], Any] | None = None, advisory_tts=None,
-                 tower_transcriber=None, frequency: str = scenario.FREQUENCY):
+                 tower_transcriber=None, frequency: str = scenario.FREQUENCY,
+                 stream_stt_factory: Callable[[Station], Any] | None = None):
         self.gateway, self.live, self.frequency = gateway, live, frequency
         self.stations = {s.id: s for s in (stations or DEFAULT_STATIONS)}
         self.voices = station_voices()
         self.tts_factory = tts_factory or self._default_tts
         self.advisory_tts = advisory_tts
         self.tower_transcriber = tower_transcriber
+        self.stream_stt_factory = stream_stt_factory
+        self.streams: dict[str, dict] = {}  # station -> push-to-talk stream in progress (P3)
+        self.stream_results: dict[str, asyncio.Task] = {}  # tx_id -> streamed transcript
         self.clients: dict[str, set] = {sid: set() for sid in self.stations}
         self.edges: dict[str, LiveEdge] = {}
         self.turns: dict[str, StationTurns] = {}
@@ -388,14 +394,31 @@ class LiveRoom:
         # A Moss session indexes in memory and only reaches the cloud index on push_index(),
         # so the plan's index limit should not cap sessions. Until that is checked live,
         # UNSTEP_MOSS_AIRCRAFT (default 1) aircraft get Moss and the rest local memory.
-        memory = create_memory() if self._moss_used < int(env("UNSTEP_MOSS_AIRCRAFT") or 1) else LocalMemory()
+        use_moss = self.live and self._moss_used < int(env("UNSTEP_MOSS_AIRCRAFT") or 1)
+        memory = create_memory() if use_moss else LocalMemory()
         self._moss_used += 1
-        edge = LiveEdge(callsign=s.callsign, frequency=self.frequency,
-                        link=InProcLink(self.gateway, "cockpit"), memory=memory,
-                        tts=SerialTTS(self._advisory_tts()), turn_stt_factory=turns.factory,
-                        audio_out=BrowserAudioOut(self, s.id))
-        edge.room = self
-        await edge.start()
+
+        def build(mem):
+            e = LiveEdge(callsign=s.callsign, frequency=self.frequency,
+                         link=InProcLink(self.gateway, "cockpit"), memory=mem,
+                         tts=SerialTTS(self._advisory_tts()), turn_stt_factory=turns.factory,
+                         audio_out=BrowserAudioOut(self, s.id))
+            e.room = self
+            return e
+
+        edge = build(memory)
+        try:
+            await edge.start()
+        except Exception:
+            if memory.backend == "local":
+                raise
+            # Moss unreachable (venue network, outage): this plane flies on local memory instead of
+            # taking the room down. The graph label says which memory it has.
+            log.exception("Moss failed for %s; using local memory", s.callsign)
+            await edge.link.close()
+            memory = LocalMemory()
+            edge = build(memory)
+            await edge.start()
         self.edges[s.callsign] = edge
         self.turns[s.callsign] = turns
         node = f"cockpit:{s.callsign}"
@@ -502,6 +525,10 @@ class LiveRoom:
             await self.say(station, str(data.get("text", ""))[:300])
         elif kind == "mic":
             await self.mic(station, base64.b64decode(data["pcm"]), int(data["start_ms"]))
+        elif kind == "mic_frame":
+            await self.mic_frame(station, base64.b64decode(data["pcm"]), int(data["start_ms"]))
+        elif kind == "mic_end":
+            await self.mic_end(station)
         elif kind == "key":
             at = data.get("at")
             self._key(station, bool(data.get("down")), int(at) if isinstance(at, (int, float)) else None)
@@ -531,6 +558,88 @@ class LiveRoom:
         tx = Transmission(station, start_ms, to_mono16k(pcm, SAMPLE_RATE))
         await self.transmit(tx)
         return tx
+
+    # ------------------------------------------------------------ streamed push-to-talk (P3)
+
+    def _stream_stt(self, s: Station):
+        """Cartesia streams for one push-to-talk, or None offline (then the clip path runs as before)."""
+        if not (self.live and env("CARTESIA_API_KEY")):
+            return None
+        runways = ("33", "28L")
+        if s.kind == "atc":
+            from unstep.ground.tower import TowerStream
+
+            planes = [x for x in self.stations.values() if x.kind == "aircraft"]
+            return TowerStream(callsigns=[c for x in planes for c in (x.spoken, x.callsign) if c], runways=runways)
+        return CartesiaManualSTT(keyterms=build_keyterms(callsigns=[s.spoken or s.callsign, s.callsign],
+                                                         runways=runways))
+
+    async def mic_frame(self, station: str, pcm: bytes, start_ms: int) -> None:
+        """About 100 ms of 16 kHz PCM while the key is held. Goes to Cartesia as it arrives,
+        so speech reaches STT at real-time pace by itself and finalize can run at release."""
+        s = self.stations.get(station)
+        if s is None or s.kind == "observer" or not pcm:
+            return
+        st = self.streams.get(station)
+        if st is not None and st["start_ms"] != start_ms:  # a new press without an end: close the old one
+            await self.mic_end(station)
+            st = None
+        if st is None:
+            st = self.streams[station] = {"start_ms": start_ms, "chunks": [], "bytes": 0,
+                                          "queue": asyncio.Queue(), "pump": None}
+            stt = (self.stream_stt_factory or self._stream_stt)(s)
+            if stt is not None:
+                st["pump"] = self._spawn(self._pump(s, stt, st))
+            self._key(station, True, start_ms)
+        if st["bytes"] + len(pcm) > MAX_STREAM_S * SAMPLE_RATE * 2:
+            return
+        st["chunks"].append(pcm)
+        st["bytes"] += len(pcm)
+        st["queue"].put_nowait(pcm)
+
+    async def _pump(self, s: Station, stt, st: dict):
+        try:
+            async with stt:
+                while (pcm := await st["queue"].get()) is not None:
+                    await stt.send_audio(pcm)
+                released = now_ms()
+                if s.kind == "atc":
+                    result = await stt.finish(st["start_ms"], st["end_ms"], self.frequency)
+                else:
+                    result = (await stt.finalize()).text
+                log.info("streamed STT for %s final %d ms after release", s.id, now_ms() - released)
+                return result
+        except Exception:
+            log.exception("streamed STT failed for %s; the clip will be transcribed instead", s.id)
+            return None
+
+    async def mic_end(self, station: str) -> Transmission | None:
+        st = self.streams.pop(station, None)
+        self._key(station, False)
+        if st is None:
+            return None
+        pcm = b"".join(st["chunks"])
+        if len(pcm) < 0.3 * SAMPLE_RATE * 2:  # a tap, not a call
+            if st["pump"] is not None:
+                st["pump"].cancel()
+            return None
+        st["end_ms"] = st["start_ms"] + round(len(pcm) / 2 * 1000 / SAMPLE_RATE)
+        st["queue"].put_nowait(None)
+        tx = Transmission(station, st["start_ms"], to_mono16k(pcm, SAMPLE_RATE))
+        if st["pump"] is not None:
+            self.stream_results[tx.tx_id] = st["pump"]
+        await self.transmit(tx)
+        return tx
+
+    async def _streamed(self, tx: Transmission):
+        """The transcript streamed during the key press, or None (offline, failed or too slow)."""
+        task = self.stream_results.pop(tx.tx_id, None)
+        if task is None:
+            return None
+        try:
+            return await asyncio.wait_for(asyncio.shield(task), STREAM_FINAL_S)
+        except Exception:
+            return None
 
     async def transmit(self, tx: Transmission) -> None:
         # Everyone else hears it now; overlapping clips mix in the listener's browser.
@@ -627,7 +736,10 @@ class LiveRoom:
     async def _tower(self, tx: Transmission) -> None:
         self.flow("radio", "tower_stt", "tower audio")
         callsign = parse_callsign(tx.text) if tx.text else None
-        if self.tower_transcriber is not None or (self.live and env("CARTESIA_API_KEY")):
+        streamed = await self._streamed(tx)
+        if streamed is not None:
+            transcript = streamed
+        elif self.tower_transcriber is not None or (self.live and env("CARTESIA_API_KEY")):
             from unstep.ground.tower import TowerTranscriber
 
             transcriber = self.tower_transcriber or TowerTranscriber(runways=("33", "28L"))
@@ -660,8 +772,9 @@ class LiveRoom:
     async def _pilot_spoke(self, tx: Transmission, clean: bool) -> None:
         turns = self.turns.get(tx.station)
         if turns is None or not clean or turns.listening == 0:
+            self.stream_results.pop(tx.tx_id, None)
             return  # a stepped-on readback is lost, as it would be on the radio
-        text = tx.text
+        text = tx.text or await self._streamed(tx)
         if text is None and self.live and env("CARTESIA_API_KEY"):
             async with CartesiaManualSTT(keyterms=build_keyterms(callsigns=[tx.station], runways=["33", "28L"])) as stt:
                 for i in range(0, len(tx.pcm), 1600):
