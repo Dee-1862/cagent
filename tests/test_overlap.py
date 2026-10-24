@@ -4,6 +4,7 @@ committed assets.
 """
 
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -110,3 +111,35 @@ def test_per_frame_time_under_10ms(clip_dir):
     mean_ms = (time.perf_counter() - started) * 1000 / len(frames)
     print(f"overlap detector: {mean_ms:.3f} ms per 20 ms frame")
     assert mean_ms < 10
+
+
+# Real speech (Cartesia TTS, made by scripts/make_real_clips.py). The tower call
+# in stepped_on_call.wav has a second voice and a beat tone from 1.3 s to the end.
+REAL = Path(__file__).resolve().parent.parent / "assets" / "clips" / "real"
+REAL_TOL_MS = 250
+
+
+def _real(name):
+    path = REAL / name
+    if not path.exists():
+        pytest.skip(f"missing {path}")
+    return path
+
+
+def test_real_stepped_on_call_flags_one_window():
+    path = _real("stepped_on_call.wav")
+    frames = list(WavFileSource(path, t0=T0))
+    windows = detect(frames)
+    assert len(windows) == 1
+    w = windows[0]
+    assert abs(w.start - (T0 + 1300)) <= REAL_TOL_MS
+    assert abs(w.end - frames[-1].end_ts) <= REAL_TOL_MS
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["clean_call.wav", "wrong_readback.wav", "correct_readback.wav", "pilot_question.wav",
+     "helicopter_call.wav", "smoke_advisory.wav"],
+)
+def test_no_overlap_on_real_clean_speech(name):
+    assert windows_for(_real(name)) == []

@@ -19,6 +19,57 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: Dev A status on branch `rishit`
+
+**Type:** Added
+**Area:** Edge device
+
+| Task | Status |
+| --- | --- |
+| A1 audio input, clips | Done: synthetic clips plus real Cartesia-voiced clips in `assets/clips/real/` |
+| A2 overlap detector | Done, tuned on real speech. Only proven on clips we mixed (RA-4) |
+| A3 cockpit STT | Done: Cartesia `ink-2` manual mode, finalize on squelch close, live tested |
+| A4 Moss hint | Done and verified on real Moss: hint search 0.6 ms, pilot query 1.0 ms, numeric ts filters correct |
+| A5 Frequency Monitor | Done |
+| A6 advisory TTS | Done: `sonic-3.6`, pronunciation dictionary uploaded, chime, left ear, live tested |
+| A7 readback check | Done: live tested on real readback clips |
+| A8 offline | Done: pre-generated alert, outbox, memory fails safe |
+| A9 latency | Measured live: TTS first audio about 100 ms, manual STT 143 ms, turn end about 650 ms |
+| A10 pilot queries | Done: live tested on a real question clip |
+
+- Red team found 18 issues across the gateway and cockpit. All fixed with regression tests (130 tests pass).
+- `python scripts/run_demo.py` runs offline. `--live` runs on the real Cartesia API.
+- Cartesia feedback logged in [09-cartesia-feedback.md](09-cartesia-feedback.md).
+- **For Dev B:** tower STT must choose between `ink-2` (key terms) and `ink-whisper` (word timestamps), see CF-9. The gateway now enforces per-role senders and rebuilds directives from the stored proposal.
+
+**Related:** [README](../README.md), [Work Split](04-work-split.md)
+
+## 2026-10-23: Blue-team fixes to the Moss layer, local hint and pilot queries
+
+**Type:** Fixed
+**Area:** Edge device
+
+- `MossMemory` translates our filters into the Moss SDK form (`{"field", "condition"}`, string values, `$and`/`$or` lists) via `to_moss_filter`. Local filter semantics unchanged.
+- New `fetch()` (filter-only, unranked) on both backends. The local hint and "last clearance" now use the newest record by `ts`, so a superseded clearance can't win on score. Hints need a clearance from the last 15 minutes.
+- `likely_instruction` picks the runway the hold short applies to. A "go around" or "stop" fragment gets no hold short hint. Permissive fragment check normalizes case, hyphens and spacing and covers take off, cleared, clear, depart, cross, line up.
+- "Say again" never reads back a "Likely" hint, and repeats the newer approved clearance once one exists. "Repeat the last clearance" is a last-clearance question.
+- `record()` never overwrites an existing id (writes `<id>-v2`). Records naming another aircraft are ignored for this aircraft.
+- Memory errors give no hint or "No record found" instead of crashing. The edge opens Moss sessions at startup.
+- Regression tests in `tests/test_blue_team.py`.
+
+**Related:** [PRD section 7, local hint rules](01-prd.md)
+
+---
+
+## 2026-10-23: Overlap detector retuned for real speech
+
+**Type:** Fixed
+**Area:** Audio
+
+The old detector (peak share of in-band power over 3 frames) false-fired on Cartesia TTS speech. It now scores each bin's prominence over a local spectral median (500 to 3400 Hz), takes the minimum over the last 300 ms, and opens when a line stays 12 dB above its neighbours for 5 more frames; start is backdated 280 ms, windows under 300 ms are dropped. Real and synthetic clean clips give no window; both stepped-on clips give one window from 1.3 s to the end. About 0.07 ms per frame. Added real-clip tests (skipped when the files are missing). Limits: tones below 500 Hz are ignored, a second voice without a beat tone is not flagged, and a beat tone at level 0.07 or lower against this speech gives broken or late windows.
+
+**Related:** tests/test_overlap.py, scripts/make_real_clips.py
+
 ## 2026-10-23: Elastic settings check and Kibana data view
 
 **Type:** Added

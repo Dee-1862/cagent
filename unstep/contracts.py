@@ -7,6 +7,7 @@ agree, and log the change in docs/02-changes.md.
 
 from __future__ import annotations
 
+import re
 from typing import Literal, Optional, Union
 
 from pydantic import BaseModel, Field, model_validator
@@ -33,6 +34,9 @@ class Gps(BaseModel):
 
 # PRD local hint rules: only instructions where a wrong guess makes the aircraft wait.
 RESTRICTIVE_ACTIONS = ("hold short", "hold position", "stop", "go around")
+RESTRICTIVE_HINT = re.compile(
+    r"(hold short( of)?( runway \d{1,2}[lrc]?)?|hold position|stop|go around)", re.IGNORECASE
+)
 
 
 class LocalHint(BaseModel):
@@ -47,7 +51,9 @@ class LocalHint(BaseModel):
         if self.kind == "restrictive":
             if not self.text or not self.source_doc_id:
                 raise ValueError("a restrictive hint needs text and a source_doc_id")
-            if not any(a in self.text.lower() for a in RESTRICTIVE_ACTIONS):
+            # The whole text must be one restrictive instruction, so clearance
+            # wording like "cleared for takeoff, don't stop" can't slip through.
+            if not RESTRICTIVE_HINT.fullmatch(self.text.strip()):
                 raise ValueError(f"hint is not a restrictive instruction: {self.text!r}")
         return self
 

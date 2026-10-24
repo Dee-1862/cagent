@@ -61,6 +61,12 @@ class Memory(Protocol):
         filter: Optional[dict] = None,
     ) -> QueryResult: ...
 
+    async def fetch(self, index: str, filter: Optional[dict] = None) -> QueryResult:
+        """Every doc matching `filter`, unranked (no query text). Use for "latest by ts"."""
+        ...
+
+    async def has_doc(self, index: str, doc_id: str) -> bool: ...
+
 
 class _OwnedIndexes:
     def __init__(self) -> None:
@@ -151,6 +157,18 @@ class LocalMemory(_OwnedIndexes):
         super().__init__()
         self.indexes: dict[str, dict[str, Doc]] = {}
 
+    async def open(self, *indexes: str) -> None:
+        """Nothing to open locally; here so callers can treat both backends the same."""
+
+    async def has_doc(self, index: str, doc_id: str) -> bool:
+        return doc_id in self.indexes.get(index, {})
+
+    async def fetch(self, index, filter=None) -> QueryResult:
+        started = time.perf_counter()
+        docs = [Doc(id=d.id, text=d.text, metadata=dict(d.metadata))
+                for d in self.indexes.get(index, {}).values() if matches(d.metadata, filter)]
+        return QueryResult(docs=docs, time_taken_ms=(time.perf_counter() - started) * 1000, backend=self.backend)
+
     async def add_docs(self, index: str, docs: list[Doc], writer: str) -> int:
         self._check_writer(index, writer)
         store = self.indexes.setdefault(index, {})
@@ -194,11 +212,45 @@ class LocalMemory(_OwnedIndexes):
 # Moss
 
 
+def _moss_value(v: Any) -> Any:
+    if isinstance(v, (list, tuple, set)):
+        return [str(x) for x in v]
+    return str(v)
+
+
+def to_moss_filter(flt: Optional[dict]) -> Optional[dict]:
+    """Translate our internal Mongo-style filter into the Moss SDK format.
+
+    Internal: {"$and": [{"callsign": {"$eq": "N1"}}, {"ts": {"$gte": 5}}]}
+    Moss:     {"$and": [{"field": "callsign", "condition": {"$eq": "N1"}},
+                        {"field": "ts", "condition": {"$gte": "5"}}]}
+    Moss metadata is a string map, so every value is stringified (as in add_docs).
+    A bare value means $eq; several keys or several operators mean $and.
+    """
+    if not flt:
+        return None
+    clauses: list[dict] = []
+    for key, cond in flt.items():
+        if key in ("$and", "$or"):
+            subs = [t for t in (to_moss_filter(c) for c in cond) if t]
+            if subs:
+                clauses.append({key: subs})
+            continue
+        if not isinstance(cond, dict):
+            cond = {"$eq": cond}
+        for op, target in cond.items():
+            clauses.append({"field": key, "condition": {op: _moss_value(target)}})
+    if not clauses:
+        return None
+    return clauses[0] if len(clauses) == 1 else {"$and": clauses}
+
+
 class MossMemory(_OwnedIndexes):
     """Moss sessions, one per index. Queries run in-process; `push` hands off via Moss Cloud.
 
-    Moss metadata is a string map, so values are stored as strings. Numeric
-    filters ($gte on `ts`) compare those strings as numbers on the Moss side.
+    Moss metadata is a string map, so values are stored as strings. Filters are
+    translated by `to_moss_filter` into Moss's {"field", "condition"} form with
+    string values; numeric filters ($gte on `ts`) compare those strings as numbers.
     """
 
     backend = "moss"
@@ -232,12 +284,29 @@ class MossMemory(_OwnedIndexes):
         added, updated = await session.add_docs(infos)
         return added + updated
 
+    async def has_doc(self, index: str, doc_id: str) -> bool:
+        from moss import GetDocumentsOptions
+
+        session = await self._session(index)
+        return bool(await session.get_docs(GetDocumentsOptions(doc_ids=[doc_id])))
+
+    async def fetch(self, index, filter=None) -> QueryResult:
+        from moss import GetDocumentsOptions
+
+        session = await self._session(index)
+        started = time.perf_counter()
+        infos = await session.get_docs(GetDocumentsOptions(filter=to_moss_filter(filter)))
+        docs = [Doc(id=d.id, text=d.text, metadata=dict(d.metadata or {})) for d in infos]
+        # Belt and braces: re-check locally so a filter the SDK ignores can't widen results.
+        docs = [d for d in docs if matches(d.metadata, filter)]
+        return QueryResult(docs=docs, time_taken_ms=(time.perf_counter() - started) * 1000, backend=self.backend)
+
     async def query(self, index, text, top_k=3, alpha=0.8, filter=None) -> QueryResult:
         from moss import QueryOptions
 
         session = await self._session(index)
         started = time.perf_counter()
-        result = await session.query(text, QueryOptions(top_k=top_k, alpha=alpha, filter=filter))
+        result = await session.query(text, QueryOptions(top_k=top_k, alpha=alpha, filter=to_moss_filter(filter)))
         wall_ms = (time.perf_counter() - started) * 1000
         docs = [Doc(id=d.id, text=d.text, metadata=dict(d.metadata or {}), score=d.score) for d in result.docs]
         return QueryResult(
