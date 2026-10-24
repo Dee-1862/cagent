@@ -19,6 +19,21 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: Drafted contracts and built the gateway (Dev B)
+
+**Type:** Added
+**Area:** Ground agents
+
+- Branch `dev-b/gateway-and-contracts`.
+- Drafted every contract as a pydantic model in `contracts/models.py`, with one JSON example each in `contracts/examples/` (shared task S1, waiting on Dev A's sign-off).
+- Proposed two new contracts: `ClickApproval` (the dashboard's click fallback) and `DirectiveRejected` (so the cockpit can say "request say again").
+- Built the WebSocket gateway (task B1) in `ground/gateway/`: role-based sender checks, payload validation, one clock (`/time`), relay by the architecture routing table, storage to Elastic or a local JSONL file without blocking the live path.
+- Only the gateway can create an `ApprovedDirective`, and only from a human decision on a `ProposedDirective` (FR-6). A second "Approve" never sends twice.
+- Added `ground/mocks/demo_flow.py`, which plays the demo flow with mock clients. It passes 10 runs in a row, the M2 checkpoint, with every role mocked.
+- 30 tests in `tests/`.
+
+**Related:** [Work Split, section 3](04-work-split.md#3-shared-contracts-both-do-first)
+
 ## 2026-10-23: Voice first in PRD v0.4
 
 **Type:** Changed
