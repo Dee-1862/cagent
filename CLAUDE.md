@@ -26,6 +26,7 @@ This is a resume project and we are here to win. Treat every task as the best wo
 - Check mail every 30 minutes while working and before touching shared files (`unstep/live/room.py`, `unstep/live/app.py`, `unstep/contracts.py`, `docs/01-prd.md`).
 - Use a separate worktree for `agent-mail`, never switch branches in the main checkout.
 - Never force push, rebase or rewrite a branch someone else pushes to, and never overwrite the other side's work. If a change touches their files, propose it in the mailbox and wait for an answer, as colleagues would.
+- Work in a loop, one small step at a time: propose the step in the mailbox with the files it touches, wait for agree, counter or "not now" if it touches the other side's or shared files, build only that step, test, push a normal commit, post "done" with the hash, then take the other side's feedback before the next step on the same files. Steps only in your own files may start right after posting.
 - Commit as the human you work for (their `user.name` and `user.email`), never as a tool identity.
 - Ownership right now: Rishit's side builds the ATC console (`web/live/atc/`). Deekshith's side builds the pilot app (`app/`) and the hub backend for joining pilots.
 
