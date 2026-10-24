@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Every heard call goes into the plane's Moss session; "what did the tower tell me?" (P4, part 2)
+
+**Type:** Added
+**Area:** Edge device
+
+- `CockpitEdge.index_heard()` (`unstep/cockpit/edge.py`, agreed with Rishit in R15): every transmission a cockpit hears goes into its own `flight-<callsign>` session the moment its STT finishes, with `callsign`, `speaker`, `speakers`, `ts`, `stepped_on` and the event id for blocked calls. It indexes what this cockpit actually heard, static and gaps included, never the tower's full text. The pilot's own readbacks are indexed too (`type: readback`). Written through the cockpit writer only; never pushed.
+- `unstep/cockpit/queries.py` new intent "recent": "what did the tower tell me in the last minute?", "what did I miss?", "last 2 minutes". A Moss session query over heard docs filtered on `ts` (and `speaker: atc` when the question says tower); the answer reads the two newest matches, marks stepped-on ones, and cites the newest doc with the search time. Calls naming another aircraft are left out.
+- The live room tells each cockpit who was keyed for the audio it hears. Pilot app: new Ask line, and the private panel shows "Found in your Moss session in X ms".
+- Checked: 2 new tests (answer from local memory; a full stepped-on room run indexed and answered). Not run against live Moss here.
+
+**Related:** PRD 6.4, [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md) section 5, agent mail R15
+
 ## 2026-10-24: Private advisory streams to the pilot's phone as Cartesia speaks it
 
 **Type:** Changed

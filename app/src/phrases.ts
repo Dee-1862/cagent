@@ -26,4 +26,5 @@ export const ASK_LINES = [
   "Unstep, what was my last clearance?",
   "Unstep, which runway was I told to stop at?",
   "Unstep, say again.",
+  "Unstep, what did the tower tell me in the last minute?",
 ];

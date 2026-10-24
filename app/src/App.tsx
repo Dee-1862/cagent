@@ -232,6 +232,7 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
         <section className="ear">
           <div className="ear-head"><span>Only you can hear this</span><span>left ear</span></div>
           <p>{ear.text.replace(/^\[chime\]\s*/, "")}</p>
+          {ear.latency?.moss_ms != null && <small className="moss">Found in your Moss session in {ear.latency.moss_ms.toFixed(1)} ms</small>}
           <button className="ghost" onClick={() => playWav(earAudio.current)}>Play again</button>
         </section>
       )}

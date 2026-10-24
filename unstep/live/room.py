@@ -865,15 +865,21 @@ class LiveRoom:
                 heard = " ".join(t.text or "" for t in mx.transmissions)
             edge.manual_stt_factory = lambda h=heard: FakeManualSTT([h])
         self.flow("radio", f"cockpit:{callsign}", "what this aircraft heard")
+        edge.radio_speakers = [t.station for t in mx.transmissions]  # metadata for its Moss session (P4)
         await edge.run_audio(ArraySource(mx.pcm, t0=mx.t0, squelch=KeyedSquelch(mx.any_keyed)),
                              realtime=self.live and self.realtime_replay)
 
     async def _pilot_spoke(self, tx: Transmission, clean: bool) -> None:
         turns = self.turns.get(tx.station)
+        edge = self.edges.get(tx.station)
         if turns is None or not clean or turns.listening == 0:
             self.stream_results.pop(tx.tx_id, None)
+            if edge is not None and tx.text:  # what the pilot said, even if nobody heard it (P4)
+                await edge.index_heard(tx.text, tx.station, tx.start_ms, stepped_on=not clean, kind="readback")
             return  # a stepped-on readback is lost, as it would be on the radio
         text = tx.text or await self._streamed(tx)
+        if edge is not None and text:
+            await edge.index_heard(text, tx.station, tx.start_ms, stepped_on=False, kind="readback")
         if text is None and self.live and env("CARTESIA_API_KEY"):
             async with CartesiaManualSTT(keyterms=build_keyterms(callsigns=[tx.station], runways=["33", "28L"])) as stt:
                 for i in range(0, len(tx.pcm), 1600):

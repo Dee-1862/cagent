@@ -39,12 +39,12 @@ from unstep.config import gateway_url, ws_url
 from unstep.cockpit.audio import AudioSource, WavFileSource
 from unstep.cockpit.hint import advisory_text, derive_hint
 from unstep.cockpit.inference import Answerer, create_answerer
-from unstep.cockpit.memory import LocalMemory, Memory, airport_index, create_memory, flight_index
+from unstep.cockpit.memory import Doc, LocalMemory, Memory, airport_index, create_memory, flight_index
 from unstep.cockpit.overlap import OverlapDetector, OverlapWindow
 from unstep.cockpit.phraseology import display_text
 from unstep.cockpit.queries import answer_query, record
 from unstep.cockpit.readback import ReadbackSession
-from unstep.cockpit.seed import AIRPORT_ICAO, seed
+from unstep.cockpit.seed import AIRPORT_ICAO, COCKPIT, seed
 from unstep.cockpit.stt import FakeManualSTT, FakeTurnSTT, TurnEvent
 from unstep.cockpit.tts import (
     AdvisoryVoice,
@@ -316,6 +316,9 @@ class CockpitEdge:
 
         self.airport_idx = ""
         self.flight_idx = ""
+        # Who is on the radio for the next run_audio() call, set by whoever feeds the audio
+        # (the live room knows the keyed stations). Only used as index metadata (P4).
+        self.radio_speakers: list[str] = []
         self.offline_alert = None  # pre-generated Spoken
         self.lines: list[Line] = []
         self.latency: dict[str, list[float]] = {}
@@ -361,6 +364,33 @@ class CockpitEdge:
         self.out.save()
 
     # ------------------------------------------------------------ helpers
+
+    async def index_heard(self, text: str, speaker: str, ts: int, stepped_on: bool = False,
+                          kind: str = "heard", event_id: str | None = None,
+                          speakers: list[str] | None = None) -> str | None:
+        """Index one transmission into this plane's own flight session as it arrives (P4).
+
+        `kind` is "heard" (what this cockpit heard on the radio, static included) or
+        "readback" (the pilot's own words). Written through the cockpit writer, the only
+        writer of flight-<callsign>; the session is never pushed. Returns the doc id, or
+        None if there was nothing to index or memory failed (logged, never fatal).
+        """
+        if not text or not text.strip() or not self.flight_idx:
+            return None
+        doc_id = f"{kind}-{ts}-{speaker}"
+        meta = {"callsign": self.callsign, "type": kind, "speaker": speaker, "ts": int(ts),
+                "stepped_on": "true" if stepped_on else "false"}
+        if speakers:
+            meta["speakers"] = ",".join(speakers)
+        if event_id:
+            meta["event_id"] = event_id
+        try:
+            await self.memory.add_docs(self.flight_idx, [Doc(id=doc_id, text=text.strip(), metadata=meta)],
+                                       writer=COCKPIT)
+            return doc_id
+        except Exception:
+            log.exception("could not index %s in %s", doc_id, self.flight_idx)
+            return None
 
     async def _record(self, doc_id: str, text: str, kind: str) -> None:
         """Write to the flight session; a memory failure is logged, never fatal mid-event."""
@@ -532,6 +562,10 @@ class CockpitEdge:
             audio = clip_audio or (save_audio(self.demo_audio_dir, np.concatenate(radio_samples), source.sample_rate)
                                    if radio_samples else {})
             await self.audit(radio_id, "radio_received", heard_text=heard, party="radio", **audio)
+            speakers = list(self.radio_speakers)
+            await self.index_heard(heard, ("atc" if "atc" in speakers else speakers[0]) if speakers else "radio",
+                                   squelch_open_ts, stepped_on=bool(windows), speakers=speakers,
+                                   event_id=radio_id if windows else None)
             radio_samples = []
             if stt is not None and hasattr(stt, "__aexit__"):
                 await stt.__aexit__(None, None, None)
