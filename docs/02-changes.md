@@ -19,6 +19,19 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: First call after the hub starts is no longer lost
+
+**Type:** Fixed
+**Area:** Other
+
+- Rishit saw the tower's first line after a server start never go on air, with no error (R13 item 2).
+- `python -m unstep.live` now starts the room (cockpit agents, Moss sessions, links) when the server starts (`create_live_app(warm_start=True)`), not on the first socket. Tests keep the lazy start, so the ATC password check still runs before the room starts there.
+- A seat that connects while the room is still starting gets a `status` "Room is warming up" within 0.5 s; what it sends meanwhile waits in the socket and is handled once the room is ready (checked with a slow start in a test).
+- A typed line whose speech fails or comes back with no audio is no longer dropped quietly: the seat and the console get a `status` "Not sent: ... Try again." and the server logs it.
+- Checked: 3 new tests; not reproduced live here (no Cartesia), so the root cause of Rishit's case is not confirmed.
+
+**Related:** agent mail R13
+
 ## 2026-10-24: Live Elastic stats per frequency for the console (W4)
 
 **Type:** Added

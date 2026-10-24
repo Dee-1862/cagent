@@ -64,7 +64,7 @@ def main() -> None:
                  else "; microphones need https: add --https)"))
     if not args.no_browser:
         webbrowser.open(url)
-    uvicorn.run(create_live_app(live=live), host=args.host, port=args.port, log_level="warning", **tls)
+    uvicorn.run(create_live_app(live=live, warm_start=True), host=args.host, port=args.port, log_level="warning", **tls)
 
 
 if __name__ == "__main__":

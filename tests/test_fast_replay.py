@@ -93,3 +93,75 @@ def test_key_tells_every_cockpit_when_the_frequency_is_busy_or_free(make_room):
         await room.stop()
 
     asyncio.run(go())
+
+
+# ---------------------------------------------------------------- R13 item 2: first call after start
+
+
+def test_warm_start_starts_the_room_with_the_server(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from tests.test_live_join import room as make_join_room
+    from unstep.live.app import create_live_app
+
+    r = make_join_room(monkeypatch)
+    with TestClient(create_live_app(live=False, room=r, warm_start=True)) as client:
+        deadline = __import__("time").time() + 5
+        while not r.started and __import__("time").time() < deadline:
+            client.get("/live/stations")
+        assert r.started  # before any socket connected
+
+
+def test_slow_start_tells_the_seat_and_keeps_its_input(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from tests.test_live_join import room as make_join_room
+    from unstep.live import app as app_mod
+
+    monkeypatch.setattr(app_mod, "WARMING_NOTICE_S", 0.01)
+    r = make_join_room(monkeypatch)
+    real_start = r.start
+
+    async def slow_start():
+        await asyncio.sleep(0.3)
+        await real_start()
+
+    r.start = slow_start
+    with TestClient(app_mod.create_live_app(live=False, room=r)) as client:
+        with client.websocket_connect("/live/ws/atc") as ws:
+            ws.send_json({"type": "say", "text": "Cessna one two three, hold short runway three three"})
+            first = ws.receive_json()
+            if first["type"] == "auth_status":  # the ATC seat says first whether a password is set
+                first = ws.receive_json()
+            assert first["type"] == "status" and "warming up" in first["text"]
+            assert ws.receive_json()["type"] == "hello"
+            for _ in range(50):  # the say sent while warming still goes on air
+                if ws.receive_json()["type"] == "transmitting":
+                    break
+            else:
+                raise AssertionError("say sent during warm-up was lost")
+
+
+def test_say_with_no_audio_is_reported_not_dropped_silently(make_room):
+    from unstep.cockpit.tts import SpeechResult
+
+    class Silent:
+        async def speak(self, text, context_id=None, on_chunk=None):
+            return SpeechResult(b"", 16000, 0.0, [])
+
+    class Broken:
+        async def speak(self, text, context_id=None, on_chunk=None):
+            raise TimeoutError("tts hung")
+
+    async def go():
+        room, atc, pilot = await make_room()
+        for tts in (Silent(), Broken()):
+            room.tts_factory = lambda voice, t=tts: t
+            atc.messages.clear()
+            assert await room.say("atc", "hold short runway three three") is None
+            await asyncio.sleep(0.05)
+            assert any(m["type"] == "status" and "Not sent" in m["text"] for m in atc.messages)
+        assert not room.pending
+        await room.stop()
+
+    asyncio.run(go())

@@ -361,6 +361,10 @@ class LiveRoom:
             return CartesiaTTS()
         return FakeTTS()
 
+    @property
+    def started(self) -> bool:
+        return self._started
+
     async def start(self) -> None:
         async with self._start_lock:
             if self._started:
@@ -556,8 +560,17 @@ class LiveRoom:
         s = self.stations.get(station)
         if s is None or s.kind == "observer" or not text.strip():
             return None
-        speech = await self.tts_factory(self.voices.get(s.voice_role or "")).speak(text)
+        try:
+            speech = await self.tts_factory(self.voices.get(s.voice_role or "")).speak(text)
+        except Exception as e:
+            log.exception("TTS failed for %s's line %r", station, text)
+            self._status(f"Not sent: speech failed ({type(e).__name__}). Try again.", to={station, "atc"})
+            return None
         pcm = to_mono16k(speech.pcm, speech.sample_rate)
+        if len(pcm) < SAMPLE_RATE * 2 // 10:  # under 100 ms: nothing would go on air (R13 item 2)
+            log.warning("TTS returned %d bytes for %s's line %r; not sent", len(pcm), station, text)
+            self._status("Not sent: no audio came back for that line. Try again.", to={station, "atc"})
+            return None
         tx = Transmission(station, now_ms(), pcm, text=text, words=list(speech.words))
         await self.transmit(tx)
         return tx

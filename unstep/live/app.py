@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote, urlencode, urlsplit
 
@@ -26,14 +27,42 @@ from unstep.live.room import LiveRoom
 log = logging.getLogger("unstep.live")
 WEB = ROOT / "web" / "live"
 PILOT_APP = ROOT / "app" / "dist"
+WARMING_NOTICE_S = 0.5  # a seat waiting longer than this for the room to start is told so
 STATS_CACHE_MS = 2000  # consoles poll /live/stats every 5 s; Elastic is asked at most this often
 
 
-def create_live_app(live: bool, sink=None, room: LiveRoom | None = None) -> FastAPI:
+def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_start: bool = False) -> FastAPI:
+    """`warm_start=True` (the real server) starts the room when the server starts, so the
+    first call isn't spent starting cockpit agents and Moss sessions (R13 item 2). Tests
+    keep the lazy start on the first authenticated socket."""
     app = create_app(sink)
     room = room or LiveRoom(app.state.gateway, live=live)
     app.state.room = room
     stats_cache: dict[int, tuple[int, dict]] = {}
+
+    # Start the room (cockpit agents, Moss sessions, links) when the server starts, not on
+    # the first socket, so the first call isn't spent waiting for it (R13 item 2).
+    gateway_lifespan = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def lifespan(a):
+        async with gateway_lifespan(a) as state:
+            async def warm():
+                try:
+                    await room.start()
+                    log.info("live room ready")
+                except Exception:
+                    log.exception("live room failed to start; the first socket will retry")
+
+            task = asyncio.create_task(warm())
+            try:
+                yield state
+            finally:
+                if not task.done():
+                    task.cancel()
+
+    if warm_start:
+        app.router.lifespan_context = lifespan
 
     @app.get("/live")
     @app.get("/live/")
@@ -147,7 +176,14 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None) -> Fast
                     await ws.close(code=4003, reason="Incorrect or missing ATC password. Return to the seat picker.")
                     return
             await ws.send_json({"type": "auth_status", "password_set": bool(password)})
-        await room.start()
+        # Normally already started at server start. If not, say so instead of going quiet:
+        # anything the seat sends meanwhile waits in the socket and is handled once ready.
+        starting = asyncio.ensure_future(room.start())
+        done, _ = await asyncio.wait({starting}, timeout=WARMING_NOTICE_S)
+        if not done:
+            await ws.send_json({"type": "status", "ts": now_ms(),
+                                "text": "Room is warming up. Anything you send now goes out in a few seconds."})
+        await starting
         await room.join(station, ws)
         try:
             while True:
