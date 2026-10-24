@@ -9,7 +9,11 @@ python -m unstep.demo --live    # real Cartesia, Moss, Moss Inference; ~30 s war
 python -m unstep.demo           # same pipeline offline with labeled fakes
 ```
 
-Space runs the next scene, A toggles audio mode and full view, ? shows the keys. Scripts and storyboard: [Demo Design](11-demo-design.md), [Pitch](12-pitch.md).
+Space runs the next scene, A toggles audio mode and full view, ? shows the keys.
+
+**Before presenting:** `python scripts/preflight.py` checks keys, clips, the port, Cartesia, Moss and Moss Inference, plays a left-channel test tone, and ends with READY.
+
+**Live mic (optional):** `python -m unstep.demo --live --mic`, then hold V to speak as the controller ("Approve") or the pilot (readbacks, questions). If nobody speaks for 30 s, that turn falls back to the recorded clip, labeled on screen. **Not yet tried with a physical mic**: test it in the morning before relying on it, and use clips if the hall is loud. Scripts and storyboard: [Demo Design](11-demo-design.md), [Pitch](12-pitch.md).
 
 **Backup video:** `data/video/unstep-demo-live.mp4` (1:10, 1080p, real Cartesia audio, recorded from a live run at about 03:40). Re-record any time with `python scripts/record_demo_video.py` (or `--offline`). The folder is git-ignored; copy the MP4 to a phone too.
 
@@ -25,12 +29,14 @@ Space runs the next scene, A toggles audio mode and full view, ? shows the keys.
 | Pitch | Two-minute script, 30-second sponsor versions, honest judge Q&A ([12-pitch.md](12-pitch.md)) |
 | Backup video | `scripts/record_demo_video.py` records the screen and places each real audio clip at its playback time with ffmpeg |
 | README | Screenshots from a live run, presenter mode instructions |
+| Live mic mode | `--mic`: push-to-talk for controller and pilot, Cartesia ink-2 finalized on key release, audio accepted only while a scene waits for speech, clip fallback labeled |
+| Pre-flight | `scripts/preflight.py`: one command, READY or a list of what's missing |
 
 **Latest live measurements** (03:40 run): cockpit STT finalize 101 ms, Moss search 2.08 ms, Cartesia TTS first audio 110 ms, Moss Inference first token 328 ms, readback verdict 0.13 ms. Live scenes take about 10 s (radio), 9 s (approval), 25 to 30 s (readbacks), 15 s (questions).
 
 ## 3. Bugs found and fixed tonight
 
-Found by live runs and three red-team passes; all fixed with tests (254 passing).
+Found by live runs and three red-team passes; all fixed with tests (260 passing).
 
 - **A correct readback failed.** Cartesia heard the tower as "holds short", the directive inherited it, and "hold short runway 33" was flagged wrong. Proposals now use canonical wording from parsed slots.
 - **DNS rebinding.** A malicious page in the controller's browser could reach the local gateway and approve. The gateway now only answers local hosts (plus configured ones).
@@ -52,7 +58,7 @@ Found by live runs and three red-team passes; all fixed with tests (254 passing)
 | 1 | **Merge PR #3** into `master`. It touches `unstep/gateway/server.py` (host allowlist, observer role, `/demo` routes) and `unstep/ground/mock_agents.py`; Dev B should glance at those | Both |
 | 2 | **Elastic is still the weak track.** The ground agents are mocks ("No rule citation supplied · mock ground agents" on screen). B5 (Workflow and agents), B4 (FAA index) and B8 (ES\|QL) are the critical path. The analytics card already runs real ES\|QL as soon as `ELASTIC_*` is configured | Dev B |
 | 3 | **Cross-machine gateway.** The gateway now only answers local hosts. To run tower and cockpit on two laptops, set `UNSTEP_ALLOWED_HOSTS` to the gateway laptop's LAN IP | Dev B |
-| 4 | **Controller voice is a recorded clip.** A live mic for the controller would make the voice-first story stronger; it's labeled honestly for now | Rishit |
+| 4 | **Try `--mic` with a real microphone** in the morning. If it works in the hall, it makes the voice-first story fully live; otherwise the recorded clips are the default and labeled honestly | Rishit |
 | 5 | **Restore power settings** after the hackathon: run `restore-power.ps1` from the session scratchpad (sleep was disabled and a keep-awake helper runs until about 11:18) | Rishit |
 | 6 | **Rotate the Cartesia and Moss keys** after the hackathon (both appeared in chat) | Rishit |
 | 7 | **Codex usage** ran out at about 01:50 and resets at 04:19; the rest was built with Claude sub-agents | Info |
