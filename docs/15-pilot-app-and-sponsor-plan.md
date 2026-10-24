@@ -44,7 +44,7 @@ projector (ATC console)           ------------------>  same laptop, /live/atc/
 - `UNSTEP_OFFLINE=1` (the default in `render.yaml`) uses fake speech and no API credits. Delete it to run live on Cartesia, Moss and Elastic.
 - `UNSTEP_GATEWAY_TOKEN` is generated: only people with the QR link (it carries the token) can join and spend API credits. Set `UNSTEP_ATC_PASSWORD` for the tower seat.
 - `UNSTEP_ALLOWED_HOSTS=*.onrender.com` and `FORWARDED_ALLOW_IPS=*` make links and QR codes use https behind Render's proxy, so phone mics work.
-- One room for everyone who opens the link. The free plan sleeps when idle and takes about a minute to wake.
+- One room for everyone who opens the link. `render.yaml` uses the free plan: no card needed, but it sleeps after about 15 minutes idle, takes about a minute to wake, and has 512 MB of memory (fine offline; live mode with Moss may be tight).
 - Checked here by running the container's start command with Render-style host and proxy headers: the pilot link comes out as `https://<service>.onrender.com/pilot/?token=...`, all pages answer, a foreign host is refused. The Docker image itself was not built here (no Docker daemon in this sandbox).
 
 Vercel stays optional: it can host the pilot app only (`app/`), pointed at the Render hub with `UNSTEP_PILOT_APP_URL` and `UNSTEP_ALLOWED_ORIGINS`.

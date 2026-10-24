@@ -3,7 +3,7 @@ services:
   - type: web
     name: unstep
     runtime: docker
-    plan: starter            # free also works, but it sleeps when idle and takes about a minute to wake
+    plan: free               # sleeps after about 15 minutes idle and takes about a minute to wake; 512 MB RAM
     healthCheckPath: /live/stations
     envVars:
       - key: UNSTEP_ALLOWED_HOSTS
