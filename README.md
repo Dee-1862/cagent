@@ -6,7 +6,7 @@ Pilots and controllers share one half-duplex VHF channel, so when two stations t
 
 ![Unstep demo screen, full view, from a live run on Cartesia, Moss and Moss Inference](docs/img/demo-full-view.png)
 
-*Full view after a live run: the tower words lost under the squeal are struck out, the cockpit's local hint came from Moss in 2 ms with its source record, the controller approved by voice, the wrong readback ("23") was caught and corrected, and every number in the bottom strip was measured in that run.*
+*Full view after a live run: the tower words lost under the squeal are struck out, Moss found the cockpit's local hint in 2 ms with its source record, the controller approved by voice (a recorded clip, labeled on screen), the wrong readback ("23") was caught and corrected, and Moss Inference answered the free-form question with an exact quote of the approved clearance. Every number in the bottom strip was measured in that run.*
 
 ## Presenter mode (the live demo)
 
