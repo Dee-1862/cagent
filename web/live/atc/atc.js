@@ -3,7 +3,7 @@ const $ = (id) => document.getElementById(id);
 const names = {atc: "Tower"};
 const shortName = (id) => state.stations.get(id)?.name || (id === "atc" ? "Tower" : id || "A plane");
 const state = {ws: null, ready: false, offset: 0, live: false, autonomy: false,
-  stations: new Map(), connected: {}, keyed: {}, liveOverlap: new Map(), reports: new Map(), captions: new Map(), traces: new Map(), lanes: new Map(), pending: new Set(), audio: null, password: null, reasons: {}};
+  stations: new Map(), connected: {}, keyed: {}, liveOverlap: new Map(), reports: new Map(), captions: new Map(), recoveries: new Map(), traces: new Map(), lanes: new Map(), pending: new Set(), audio: null, password: null, reasons: {}};
 const now = () => Date.now() + state.offset;
 function el(tag, text, className) {
   const node = document.createElement(tag);
@@ -131,6 +131,7 @@ function receive(message) {
     case "recovery":
       // C1: the controller hears who was blocked, in Unstep's voice; text stays if audio is missing.
       $("happened").textContent = message.text;
+      state.recoveries.set(message.from_station, message); renderRadio();
       notice(message.text); play(message.audio); break;
     case "caption": {
       // Live words from Cartesia while someone talks; a newer caption of the same transmission replaces the older.
@@ -155,7 +156,7 @@ function receive(message) {
       break;
     case "room_reset":
       // Presenter reset: walk-up planes are gone; the board starts clean for the next group.
-      state.traces.clear(); state.lanes.clear(); state.reports.clear(); state.captions.clear(); state.pending.clear();
+      state.traces.clear(); state.lanes.clear(); state.reports.clear(); state.captions.clear(); state.recoveries.clear(); state.pending.clear();
       state.liveOverlap.clear(); state.keyed = {};
       setStations(message.stations);
       renderMap(); renderTraces(); renderRadio(); renderInbox();
@@ -358,11 +359,13 @@ function renderRadio() {
     const words = live ? captionLine(caption)
       : el("div", tx?.text || (tx ? "Voice transmission · transcript not available" : "No transmission yet"));
     const level = el("span", undefined, "level"); level.append(el("i"));
-    words.prepend(level);
+    words.append(level);
     if (id !== "atc") {
       const trace = traces.find((t) => t.callsign === id && t.event);
       words.append(el("span", trace ? `Heard at ${new Date(trace.created_ms).toLocaleTimeString()}: “${trace.event.heard_text || "[no words recovered]"}”` : "Heard: no cockpit transcript received yet", "heard"));
     }
+    const recovery = state.recoveries.get(id);
+    if (recovery) words.append(el("span", `Unstep told the tower: “${recovery.text.replace(/^Advisory\.\s*/, "")}”`, "heard recovery-line"));
     const report = state.reports.get(id);
     if (report) words.append(el("span", advisoryLine(report), `heard advisory-line${report.overlapped_ms > 0 ? " overlapped" : ""}`));
     row.append(words);
