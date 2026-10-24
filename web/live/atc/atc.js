@@ -461,6 +461,26 @@ function showPilotLink(url) {
   $("qr").src = `/live/qr.svg?u=${encodeURIComponent(url)}`;
   $("phone-hint").hidden = !["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname);
 }
+// Safety analytics from GET /live/stats (ES|QL on Elastic, or the hub's own counts when Elastic is off).
+// Scoped to this console session so rehearsals never show up as this run's numbers.
+const statsSince = Date.now();
+async function loadStats() {
+  try {
+    const response = await fetch(`/live/stats?since_ms=${statsSince + (state.offset || 0)}`);
+    if (!response.ok) throw new Error(String(response.status));
+    const stats = await response.json();
+    $("stat-blocked").textContent = stats.blocked_calls ?? 0;
+    $("stat-readback").textContent = stats.readback_errors ?? 0;
+    $("stat-auto").textContent = stats.auto_resends ?? 0;
+    const elastic = stats.backend === "elastic";
+    $("stats-source").textContent = elastic ? `Elastic ES|QL · ${Math.round(stats.took_ms ?? 0)} ms` : "Hub counts · Elastic not connected";
+    $("stats-source").className = elastic ? "cyan" : "";
+    $("stat-esql").textContent = stats.esql || "No query: Elastic is not configured on this hub.";
+  } catch {
+    $("stats-source").textContent = "Analytics unavailable";
+  }
+}
+
 async function loadPilotLink() {
   showPilotLink(`${location.origin}/live/${window.UNSTEP_TOKEN_QUERY || ""}`);
   try {
@@ -476,3 +496,5 @@ try { state.reasons = await (await fetch("/live/static/atc/reasons.json")).json(
 catch { notice("Detailed policy wording unavailable; failed checks still require a human decision."); }
 renderRadio(); controls(); connect();
 setInterval(updateCountdowns, 250);
+loadStats();
+setInterval(loadStats, 5000);
