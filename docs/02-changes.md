@@ -19,6 +19,15 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: Elastic settings check and Kibana data view
+
+**Type:** Added
+**Area:** Audit
+
+- Added `scripts/check_elastic.py`. It checks the Elasticsearch URL, the Kibana URL and the API key without printing secrets, and flags an Elasticsearch address (`.es.`) put in `KIBANA_URL`.
+- Created the Kibana data view "Unstep events" on `unstep-events` with `@timestamp` as the time field, so events show in Discover.
+- Live check: branch merges into master with no conflicts, 91 tests pass, 5 mock cockpit runs stored 20 documents in Elastic with 0 failed, and an ES\|QL count by type returns the expected rows.
+
 ## 2026-10-23: New Elastic API key checked, Kibana URL added
 
 **Type:** Changed
