@@ -47,7 +47,7 @@ projector (ATC console)           ------------------>  same laptop, /live/atc/
 - One room for everyone who opens the link. `render.yaml` uses the free plan: no card needed, but it sleeps after about 15 minutes idle, takes about a minute to wake, and has 512 MB of memory (fine offline; live mode with Moss may be tight).
 - Checked here by running the container's start command with Render-style host and proxy headers: the pilot link comes out as `https://<service>.onrender.com/pilot/?token=...`, all pages answer, a foreign host is refused. The Docker image itself was not built here (no Docker daemon in this sandbox).
 
-Vercel stays optional: it can host the pilot app only (`app/`), pointed at the Render hub with `UNSTEP_PILOT_APP_URL` and `UNSTEP_ALLOWED_ORIGINS`.
+Vercel stays optional and hosts the pilot app only. In the Vercel project: Root Directory `app`, framework Vite, Production Branch `dev-b/gateway-and-contracts` (Vercel's default is `master`, and at the repo root it tries to deploy the Python hub as a serverless function and fails). Environment variables in Vercel: `VITE_UNSTEP_HUB=https://<service>.onrender.com` and, if the hub has a room token, `VITE_UNSTEP_TOKEN` (it ends up in the public page, like the QR link). On Render add `UNSTEP_ALLOWED_ORIGINS=https://<project>.vercel.app`, `UNSTEP_PILOT_APP_URL=https://<project>.vercel.app` and `UNSTEP_PUBLIC_URL=https://<service>.onrender.com`, so the hub accepts the Vercel page and the console QR points at it.
 
 ## 3. Demo Flow for a Crowd
 
