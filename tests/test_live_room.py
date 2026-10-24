@@ -136,6 +136,7 @@ def test_stepped_on_call_runs_end_to_end(make_room):
         await wait_for(lambda: only_trace(room)["status"] in ("confirmed", "readback_wrong"))
         trace = only_trace(room)
         kinds = [s["kind"] for s in trace["steps"]]
+        kinds = [k for k in kinds if k != "moss_search"]  # M3 search evidence can land anywhere in between
         assert kinds[:3] == ["detected", "hint", "proposed"] or kinds[:2] == ["detected", "proposed"]
         assert {"approved", "delivered", "readback"} <= set(kinds)
         assert trace["tower"]["text"] == TOWER_TEXT
