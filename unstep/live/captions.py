@@ -24,13 +24,19 @@ def _norm(token: str) -> str:
     return re.sub(r"[^a-z0-9-]", "", token.lower()).strip("-")
 
 
+_NUMBER_WORDS = {"ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
+                 "eighteen", "nineteen", "twenty", "thirty"}  # runways go up to 36, written as words by ink-2
+
+
 def _is_digit(n: str, strict: bool = True) -> bool:
-    """'3', '33', '1-2-3', 'three', 'tree', 'niner'; 'to'/'for' only when strict is False."""
+    """'3', '33', '1-2-3', 'three', 'tree', 'niner', 'thirty', 'thirty-three'; 'to'/'for' only when strict is False."""
     if not n:
         return False
     if re.fullmatch(r"\d+(-\d+)*[lrc]?", n):
         return True
-    return n in SPOKEN_DIGITS and (not strict or n not in _AMBIGUOUS)
+    if "-" in n:
+        return all(_is_digit(p, strict) for p in n.split("-"))
+    return n in _NUMBER_WORDS or (n in SPOKEN_DIGITS and (not strict or n not in _AMBIGUOUS))
 
 
 def tag(text: str) -> list[dict]:

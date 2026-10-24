@@ -19,6 +19,17 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Live captions use Cartesia's streamed text as checked live
+
+**Type:** Changed
+**Area:** Audio
+
+- Rishit checked the real ink-2 manual endpoint (R26, 626a26b): no interim messages, but final-text deltas about every 0.5 to 0.7 s while audio streams, which can split a word. `CartesiaManualSTT(on_text=callback(delta, so_far))` now exposes them. The room sets `on_text` before the socket opens and captions show the whole utterance so far, never raw deltas; `TowerStream` passes it to its ink-2 stream.
+- The caption tagger reads runway numbers as ink-2 writes them ("runway thirty three", "thirty-three").
+- Checked: tests with a fake STT that streams deltas like Cartesia's.
+
+**Related:** agent mail R26
+
 ## 2026-10-24: Live captions and waveform levels from the hub
 
 **Type:** Added

@@ -12,14 +12,14 @@ from tests.test_stream_mic import FakeStream, frames
 class PartialStream(FakeStream):
     """Like Cartesia with interim results: a growing partial after every few frames."""
 
-    on_partial = None
+    on_text = None
 
     async def send_audio(self, pcm):
         await super().send_audio(pcm)
         words = self.text.split()
         n = min(len(words), len(self.frames) // 3)
-        if n and self.on_partial:
-            self.on_partial(" ".join(words[:n]))
+        if n and self.on_text and len(self.frames) % 3 == 0:
+            self.on_text(" " + words[n - 1], " ".join(words[:n]))  # (delta, so_far) like CartesiaManualSTT
 
     async def finalize(self):
         self.final_at = len(self.frames)

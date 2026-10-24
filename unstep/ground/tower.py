@@ -160,14 +160,14 @@ class TowerStream:
         self.last_alignment: dict | None = None
 
     @property
-    def on_partial(self):
-        return getattr(self.text_stt, "on_partial", None)
+    def on_text(self):
+        return getattr(self.text_stt, "on_text", None)
 
-    @on_partial.setter
-    def on_partial(self, callback) -> None:
-        """Live captions: interim text comes from the keyed ink-2 stream."""
+    @on_text.setter
+    def on_text(self, callback) -> None:
+        """Live captions: streamed text comes from the keyed ink-2 stream (`on_text(delta, so_far)`)."""
         try:
-            self.text_stt.on_partial = callback
+            self.text_stt.on_text = callback
         except AttributeError:
             pass
 

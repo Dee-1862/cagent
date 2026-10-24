@@ -27,3 +27,8 @@ def test_every_token_comes_back_once_in_order():
     assert [w["text"] for w in tag(text)] == text.split()
     assert kinds("going to the ramp for fuel") == [] and tag("") == []
     assert tag("Cessna")[0]["kind"] is None  # a type word alone is not a callsign
+
+
+def test_runway_digits_as_ink2_writes_them():
+    assert ("runway thirty three", "runway") in kinds("Cessna one two three, hold short runway thirty three.")
+    assert ("runway thirty-three", "runway") in kinds("hold short runway thirty-three")

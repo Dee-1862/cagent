@@ -918,13 +918,15 @@ class LiveRoom:
         stream_id = f"{s.id}-{st['start_ms']}"
         st["sent_end_ms"] = st["start_ms"]
 
-        def partial(text: str) -> None:  # Cartesia interim transcript, while the key is still held
-            self._caption(s.id, stream_id, text, final=False, source="stt", lag_ms=now_ms() - st["sent_end_ms"])
+        def on_text(delta: str, so_far: str) -> None:
+            # ink-2 streams final-text deltas while the key is still held (Rishit's live check, R26);
+            # show the whole utterance so far, never the raw delta (deltas can split a word).
+            if so_far:
+                self._caption(s.id, stream_id, so_far, final=False, source="stt",
+                              lag_ms=now_ms() - st["sent_end_ms"])
 
-        try:
-            stt.on_partial = partial  # STT classes without interim results simply never call it
-        except AttributeError:
-            pass
+        if hasattr(stt, "on_text"):  # read before the socket opens, so set it before `async with`
+            stt.on_text = on_text
         try:
             async with stt:
                 sent = 0
