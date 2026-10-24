@@ -1,13 +1,24 @@
 """Streaming overlap detector (task A2): finds the heterodyne squeal of a
 stepped-on call and the window it covers, in epoch ms.
 
-Two carriers on one frequency beat against each other and leave a strong,
-steady narrowband tone in the audio band. Per frame we look at the last 512
-samples, take the share of in-band power held by the strongest peak, and call
-the frame "tonal" when that share is high and the peak frequency holds still
-from frame to frame. A window opens after `open_frames` tonal frames (start
-backdated to the first) and closes after `close_frames` non-tonal frames or
-when the squelch closes. Only counts while the squelch is open.
+Two carriers on one frequency beat against each other and leave a narrowband
+tone in the audio band that is present in every frame and drifts only slowly.
+Speech also has narrowband lines (pitch harmonics), but they glide with
+intonation and vanish at every consonant and pause.
+
+Per 20 ms frame we take the last 512 samples, compute the log power spectrum
+and subtract a running local median across frequency (about +-330 Hz), which
+gives each bin's prominence in dB over its neighbourhood. Each frame's
+prominence is max-pooled over a few neighbouring bins (so a slow drift stays
+in the same pooled bin) and kept in a ring of the last `persist_frames`
+frames (300 ms). The persistence score is the best bin's *minimum* over that
+ring: it is high only when one line stood out in every frame for 300 ms.
+
+A frame is a hit when that score is at least `prominence_db`. A window opens
+after `open_frames` consecutive hits, its start backdated by the persistence
+span (the tone had to be there all along), and closes after `close_frames`
+misses or when the squelch closes. Windows shorter than `min_window_ms` are
+dropped. Only counts while the squelch is open.
 """
 
 from __future__ import annotations
@@ -16,8 +27,11 @@ from dataclasses import dataclass
 from typing import Iterable, Optional
 
 import numpy as np
+from scipy.ndimage import maximum_filter1d, median_filter
 
-from unstep.cockpit.audio import SAMPLE_RATE, Frame
+from unstep.cockpit.audio import FRAME_MS, SAMPLE_RATE, Frame
+
+_FLOOR_DB = -200.0
 
 
 @dataclass
@@ -35,43 +49,50 @@ class OverlapDetector:
         self,
         sample_rate: int = SAMPLE_RATE,
         n_fft: int = 512,
-        band_hz: tuple[float, float] = (300.0, 3400.0),
-        peak_ratio: float = 0.5,
-        max_drift_hz: float = 100.0,
-        open_frames: int = 3,
-        close_frames: int = 3,
+        band_hz: tuple[float, float] = (500.0, 3400.0),
+        prominence_db: float = 12.0,
+        persist_frames: int = 15,
+        median_bins: int = 21,
+        pool_bins: int = 5,
+        open_frames: int = 5,
+        close_frames: int = 5,
+        min_window_ms: int = 300,
+        frame_ms: int = FRAME_MS,
     ):
         self.sample_rate = sample_rate
         self.n_fft = n_fft
-        self.peak_ratio = peak_ratio
+        self.prominence_db = prominence_db
+        self.persist_frames = persist_frames
+        self.median_bins = median_bins
+        self.pool_bins = pool_bins
         self.open_frames = open_frames
         self.close_frames = close_frames
+        self.min_window_ms = min_window_ms
+        self.frame_ms = frame_ms
         self._window = np.hanning(n_fft).astype(np.float32)
         freqs = np.fft.rfftfreq(n_fft, 1 / sample_rate)
         self._band = np.nonzero((freqs >= band_hz[0]) & (freqs <= band_hz[1]))[0]
-        self._bin_hz = sample_rate / n_fft
-        self._max_drift_bins = max(1, round(max_drift_hz / self._bin_hz))
+        self._freqs = freqs[self._band]
         self.reset()
 
     def reset(self) -> None:
         self._buf = np.zeros(self.n_fft, dtype=np.float32)
-        self._prev_peak: Optional[int] = None
+        self._ring = np.full((self.persist_frames, len(self._band)), _FLOOR_DB, dtype=np.float32)
+        self._ring_i = 0
         self._hits = 0
         self._misses = 0
         self._run_start: Optional[int] = None
         self._last_hit_end: Optional[int] = None
         self._active = False
         self.last_score = 0.0
+        self.last_peak_hz = 0.0
 
-    def _score(self) -> tuple[float, int]:
+    def _prominence(self) -> np.ndarray:
         spec = np.abs(np.fft.rfft(self._buf * self._window)) ** 2
-        band = spec[self._band]
-        total = float(band.sum())
-        if total <= 1e-12:
-            return 0.0, -1
-        k = int(np.argmax(band))
-        peak = float(band[max(0, k - 2) : k + 3].sum())
-        return peak / total, k
+        logp = 10 * np.log10(spec + 1e-12)
+        # Median over the full spectrum so band edges see real neighbours.
+        prom = logp - median_filter(logp, self.median_bins, mode="nearest")
+        return maximum_filter1d(prom[self._band], self.pool_bins).astype(np.float32)
 
     def process(self, frame: Frame) -> list[OverlapWindow]:
         """Feed one frame. Returns windows that closed on this frame (usually none)."""
@@ -84,24 +105,23 @@ class OverlapDetector:
             self._buf[-n:] = x
 
         if not frame.squelch_open:
-            self._prev_peak = None
+            self._ring.fill(_FLOOR_DB)
             self.last_score = 0.0
             return self._close()
 
-        score, peak = self._score()
-        self.last_score = score
-        steady = self._prev_peak is not None and peak >= 0 and abs(peak - self._prev_peak) <= self._max_drift_bins
-        tonal = score >= self.peak_ratio
-        self._prev_peak = peak if tonal else None
+        self._ring[self._ring_i] = self._prominence()
+        self._ring_i = (self._ring_i + 1) % self.persist_frames
+        persist = self._ring.min(axis=0)
+        k = int(np.argmax(persist))
+        self.last_score = float(persist[k])
+        self.last_peak_hz = float(self._freqs[k])
 
-        if tonal:
-            if self._hits == 0:
-                self._run_start = frame.ts
-            if steady or self._hits == 0:
-                self._hits += 1
-            else:
-                self._hits = 1
-                self._run_start = frame.ts
+        if self.last_score >= self.prominence_db:
+            if self._hits == 0 and not self._active:
+                # The line had to be present for the whole persistence span.
+                span = (self.persist_frames - 1) * (frame.end_ts - frame.ts or self.frame_ms)
+                self._run_start = frame.ts - span
+            self._hits += 1
             self._misses = 0
             self._last_hit_end = frame.end_ts
             if not self._active and self._hits >= self.open_frames:
@@ -119,7 +139,9 @@ class OverlapDetector:
     def _close(self) -> list[OverlapWindow]:
         out = []
         if self._active and self._run_start is not None and self._last_hit_end is not None:
-            out.append(OverlapWindow(start=self._run_start, end=self._last_hit_end))
+            w = OverlapWindow(start=self._run_start, end=self._last_hit_end)
+            if w.duration_ms >= self.min_window_ms:
+                out.append(w)
         self._active = False
         self._hits = 0
         self._misses = 0
