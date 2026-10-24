@@ -163,7 +163,8 @@ def test_every_message_starts_with_advisory():
 
 def test_directive_message_text():
     assert msg_directive("Cessna 1-2-3, hold short Runway 33") == \
-        "Advisory. Cessna one two tree, hold short runway tree tree. Read back."
+        "Advisory. From Tower: Cessna one two tree, hold short runway tree tree. Read back."
+    assert msg_directive("Cessna 1-2-3, hold short Runway 33", source=None) ==         "Advisory. Cessna one two tree, hold short runway tree tree. Read back."
 
 
 def test_left_channel_only():
