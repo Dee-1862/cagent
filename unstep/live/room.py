@@ -1334,9 +1334,10 @@ class LiveRoom:
             found = (f"top hit \"{p.get('top_hit_text')}\" (score {p.get('score')})" if p.get("top_hit_text")
                      else "no matching clearance")
             agree = {True: ", the newest clearance", False: ", older than the newest clearance"}.get(p.get("agrees"), "")
+            no_hint = f". No hint: {p['no_hint']}" if p.get("no_hint") else ""
             self._step(trace, f"cockpit:{cs}", "moss_search",
                        f"Moss searched this plane's session for \"{p.get('query')}\": {found}{agree}, "
-                       f"in {p.get('search_ms')} ms", **p)
+                       f"in {p.get('search_ms')} ms{no_hint}", **p)
             self._time(trace, "moss_search", env_.ts, ms=p.get("search_ms"), by="moss")
         elif isinstance(msg, AuditRecord) and msg.stage == "ground_agents":
             self.flow("ground", "elastic", "audit", event_id)
