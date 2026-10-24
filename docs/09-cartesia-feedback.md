@@ -4,7 +4,7 @@ Feedback from building Unstep on Cartesia (Sonic TTS, Ink STT). Everything under
 
 | Field | Value |
 | --- | --- |
-| Last updated | 2026-10-23 |
+| Last updated | 2026-10-24 |
 | API version | `cartesia_version` 2026-08-14 |
 | Models | `sonic-3.6`, `ink-2`, `ink-whisper` |
 
@@ -35,6 +35,27 @@ Seen while running our demo repeatedly between about 2 and 3 AM PT on 2026-10-24
 - **STT WebSocket handshakes sometimes hang.** Opening `wss://api.cartesia.ai/stt/websocket` or `/stt/turns/websocket` occasionally timed out during the opening handshake (10 s default timeout). It happened several times in about 30 minutes; an immediate retry always connected.
 - **Manual STT `finalize` latency varied widely** for the same 4 s clip: 76 ms, 91 ms, 143 ms, about 1.3 s, 3.4 s, 6.8 s and 7.4 s across runs within the same hour.
 - **Turns endpoint occasionally returns an empty `turn.end`** for a clear utterance: about 2 in 25 paced runs of the same clip, with or without key terms (8 of 8 succeeded each way in a controlled comparison).
+
+## Measured re-test, 2026-10-24 (scripts/cartesia_repro.py)
+
+Run by Rishit on his laptop at about 12:30 PT with `python scripts/cartesia_repro.py --runs 15`, one 16 kHz clip of "hold short runway 33", `ink-2` with key terms unless noted. Only results that reproduced are listed. Full JSON stays local in `data/cartesia-repro/`.
+
+### Observed
+
+- **Manual finalize endpoint does not need real-time pacing.** On `wss://api.cartesia.ai/stt/websocket`, sending the clip as fast as possible then `finalize` gave 15/15 correct transcripts, 0 empty, finalize p50 901 ms, total p50 1080 ms. Paced at real time the same clip takes about 4 s before finalize can start.
+- **Word timestamps depend on the model (item 2 confirmed).** `ink-2` returned 0 words, `ink-whisper` with `timestamp_granularities=word` returned 6 words.
+- **Handshake:** 15/15 opened, p50 198 ms, p95 446 ms, 0 failures in this run.
+- **Finalize after paced audio:** p50 162 ms, p95 547 ms, 0 of 15 over 800 ms, 0 empty.
+
+### Request
+
+- Say on the STT reference page whether the manual endpoint accepts audio faster than real time. It worked for us, which saves seconds when replaying recorded audio, but we only found out by testing.
+- Note which models return `words`, next to the field (same as item 2 and request A).
+
+### Checked
+
+- Racing a second, already open socket when finalize passes 800 ms (our planned workaround) never won: 0 of 15, and one slow run (1689 ms) was not saved by it. We are not building it.
+- Empty `turn.end` on fast input (item 1) did not reproduce: fast 15/15 and paced 15/15 correct.
 
 ## Feature requests
 

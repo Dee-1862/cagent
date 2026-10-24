@@ -25,7 +25,11 @@ import statistics
 import time
 from pathlib import Path
 
+import sys
+
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # run without PYTHONPATH=.
 
 from unstep.cockpit.audio import read_wav
 from unstep.cockpit.stt import CartesiaManualSTT, CartesiaTurnSTT, build_keyterms, send_paced

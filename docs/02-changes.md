@@ -19,6 +19,17 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Cartesia re-test written up, repro script runs without PYTHONPATH
+
+**Type:** Docs
+**Area:** Audio
+
+- [09-cartesia-feedback.md](09-cartesia-feedback.md): new "Measured re-test" section from Rishit's 15-run `scripts/cartesia_repro.py` results, only what reproduced: the manual endpoint accepts fast (not real-time) audio, word timestamps only on `ink-whisper`, handshake and finalize numbers. The hedged-finalize workaround (P7a) never won, so it is dropped.
+- `scripts/cartesia_repro.py` adds the repo root to `sys.path`, so it runs from anywhere.
+- Earlier today, not logged before: P1 per-stage `timings` on every live trace (e040a1a), P2 Elastic percolator readback check (453c396), P3 mic frames streamed to STT while the key is held (d3e183b), P7c the repro script itself (08ce979).
+
+**Related:** agent mail R9, D7
+
 ## 2026-10-24: Pilot app, join on demand, and a sponsor plan
 
 **Type:** Added
