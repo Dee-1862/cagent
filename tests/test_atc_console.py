@@ -276,6 +276,7 @@ assert.equal(state.liveOverlap.size,2);
 receive({type:'presence',connected:{}});
 assert.equal(nodes.get('map-planes').children.length,0);
 """
-    result = subprocess.run([node, "-e", harness + source.split("// Audio is explicitly")[0] + checks],
-                            capture_output=True, text=True)
+    # stdin, not -e: Windows caps a command line at about 32 KB and atc.js is larger
+    result = subprocess.run([node, "-"], input=harness + source.split("// Audio is explicitly")[0] + checks,
+                            capture_output=True, text=True, encoding="utf-8")
     assert result.returncode == 0, result.stderr
