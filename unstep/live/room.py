@@ -27,7 +27,7 @@ import soundfile as sf
 
 from unstep import scenario
 from unstep.clock import now_ms
-from unstep.config import ROOT, env, moss_aircraft, realtime_replay
+from unstep.config import ROOT, env, moss_aircraft, radio_sound, realtime_replay
 from unstep.contracts import (AnomalyEvent, ApprovedDirective, AuditRecord, Insight, PilotQuery,
                               ProposedDirective, ReadbackResult, RejectedDirective, TowerTranscript,
                               VoiceApproval, Word, unwrap, wrap)
@@ -40,7 +40,7 @@ from unstep.cockpit.stt import CartesiaManualSTT, FakeManualSTT, TurnEvent, buil
 from unstep.cockpit.tts import SAMPLE_RATE as TTS_SAMPLE_RATE, FakeTTS, chime
 from unstep.ground.mock_agents import propose
 from unstep.ground.policy import PolicyAgent
-from unstep.live.radio import KeyedSquelch, Mix, Transmission, clusters, heard_text, mix, to_mono16k
+from unstep.live.radio import KeyedSquelch, Mix, Transmission, clusters, heard_text, mix, radio_voice, to_mono16k
 
 log = logging.getLogger("unstep.live")
 
@@ -371,6 +371,7 @@ class LiveRoom:
         self.alignments: dict[str, dict] = {}  # transcript_id -> tower word alignment report (P7b)
         # W3: replays to the manual STT endpoint go as fast as possible unless UNSTEP_REALTIME_REPLAY=1
         self.realtime_replay = realtime_replay()
+        self.radio_sound = radio_sound()  # listeners hear VHF-shaped audio; STT gets the clean mix
         self.clients: dict[str, set] = {sid: set() for sid in self.stations}
         self.edges: dict[str, LiveEdge] = {}
         self.turns: dict[str, StationTurns] = {}
@@ -733,8 +734,9 @@ class LiveRoom:
         # Everyone else hears it now; overlapping clips mix in the listener's browser.
         listeners = {sid for sid, s in self.stations.items() if sid != tx.station}
         self.send_to(listeners, {"type": "onair", "station": tx.station, "tx_id": tx.tx_id,
-                                 "start_ms": tx.start_ms, "end_ms": tx.end_ms,
-                                 "audio": wav_b64(tx.pcm, SAMPLE_RATE)})
+                                 "start_ms": tx.start_ms, "end_ms": tx.end_ms, "radio": self.radio_sound,
+                                 "audio": wav_b64(radio_voice(tx.pcm) if self.radio_sound else tx.pcm,
+                                                  SAMPLE_RATE)})
         self.send_to({tx.station}, {"type": "transmitting", "tx_id": tx.tx_id, "text": tx.text,
                                     "end_ms": tx.end_ms})
         self.flow(tx.station if tx.station == "atc" else f"pilot:{tx.station}", "radio", "voice")

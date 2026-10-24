@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from math import gcd
 
 import numpy as np
-from scipy.signal import resample_poly
+from scipy.signal import butter, resample_poly, sosfilt
 
 from unstep.cockpit.audio import FRAME_MS, SAMPLE_RATE
 
@@ -25,6 +25,32 @@ OVERLAP_VOICE_GAIN = 0.5
 BEAT_LEVEL = 0.35
 BEAT_F0, BEAT_F1 = 1600.0, 1900.0
 RAMP_MS = 20
+
+
+# What people in the room hear: an aircraft VHF voice channel, about 300 to 3400 Hz, with a
+# little hiss while the carrier is up and a short squelch tail at the end. Only for the
+# audio sent to listeners; STT and the overlap detector get the clean mix. Unstep's own
+# private voice is never shaped, so it can't be mistaken for a radio call.
+RADIO_BAND_HZ = (300.0, 3400.0)
+RADIO_HISS = 0.012
+SQUELCH_TAIL_MS = 90
+_RADIO_SOS = butter(4, RADIO_BAND_HZ, btype="bandpass", fs=SAMPLE_RATE, output="sos")
+
+
+def radio_voice(pcm: np.ndarray, seed: int | None = 0) -> np.ndarray:
+    """Clean 16 kHz float mono -> how it sounds on the frequency (band-limited, hiss, squelch tail)."""
+    x = np.asarray(pcm, dtype=np.float32)
+    if not len(x):
+        return x
+    rng = np.random.default_rng(seed)
+    y = sosfilt(_RADIO_SOS, x).astype(np.float32)
+    y = np.tanh(1.6 * y) / np.tanh(1.6)  # mild clipping, like a speech-processed transmitter
+    y += (RADIO_HISS * rng.standard_normal(len(y))).astype(np.float32)
+    tail = int(SAMPLE_RATE * SQUELCH_TAIL_MS / 1000)
+    burst = (2.5 * RADIO_HISS * rng.standard_normal(tail) * np.linspace(1, 0, tail)).astype(np.float32)
+    peak = float(np.max(np.abs(x))) or 1.0
+    y *= min(1.0, peak / (float(np.max(np.abs(y))) or 1.0))  # never louder than the clean clip
+    return np.clip(np.concatenate([y, burst]), -1.0, 1.0)
 
 
 @dataclass

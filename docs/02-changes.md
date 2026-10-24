@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Transmissions sound like a radio; Unstep's voice stays clean (R17 e)
+
+**Type:** Added
+**Area:** Audio
+
+- People in the room now hear every transmission the way an aircraft VHF radio sounds: band-limited to about 300 to 3400 Hz, mild clipping, a little hiss, a short squelch tail (`radio_voice()` in `unstep/live/radio.py`). Unstep's private advisory is never shaped, so the contrast itself says "this is not ATC".
+- Only the audio sent to listeners (`onair`, now with `radio: true`) is shaped. Cartesia STT, the overlap detector and the tower transcript still get the clean mix.
+- `UNSTEP_RADIO_SOUND=0` turns it off. This is local signal processing, not Cartesia's voice changer.
+- Checked: 2 tests (band limits, tail, never louder, room sends shaped audio while the mix stays clean). Not listened to on real speakers yet.
+
+**Related:** [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md) section 5 (Cartesia), agent mail R17
+
 ## 2026-10-24: Every heard call goes into the plane's Moss session; "what did the tower tell me?" (P4, part 2)
 
 **Type:** Added
