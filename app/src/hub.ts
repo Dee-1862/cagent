@@ -70,6 +70,8 @@ export class Live {
   private closed = false;
   private retry = 0;
   private timers: number[] = [];
+  /** Close code (4003 = the hub refused: unknown seat, wrong room code or origin) and retry count. */
+  onClose?: (code: number, attempt: number) => void;
 
   constructor(private hub: Hub, private station: string, private on: (m: Msg) => void,
               private onState: (s: "connecting" | "open" | "closed") => void) {}
@@ -94,10 +96,11 @@ export class Live {
       if (m.type === "hello" && !this.sync) this.offset = m.now_ms - Date.now(); // rough until pongs arrive
       this.on(m);
     };
-    ws.onclose = () => {
+    ws.onclose = (e) => {
       this.timers.forEach((t) => clearTimeout(t));
       this.timers = [];
       this.onState("closed");
+      this.onClose?.(e.code, this.retry);
       if (!this.closed) window.setTimeout(() => this.open(), Math.min(5000, 500 * 2 ** this.retry++));
     };
   }

@@ -121,6 +121,7 @@ function Join({ hub, onSeat }: { hub: Hub; onSeat: (s: Seat) => void }) {
 
 function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: () => void }) {
   const [conn, setConn] = useState<"connecting" | "open" | "closed">("connecting");
+  const [why, setWhy] = useState<string | null>(null); // why the radio isn't connected, in plain words
   const [stations, setStations] = useState<Station[]>([]);
   const [keyed, setKeyed] = useState<Record<string, number>>({});
   const keyedRef = useRef<Record<string, number>>({});
@@ -236,7 +237,25 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
           return;
         case "status": return void say(m.text);
       }
-    }, setConn);
+    }, (st) => { setConn(st); if (st === "open") setWhy(null); });
+    l.onClose = async (code, attempt) => {
+      if (code !== 4003 && attempt < 2) return;
+      const seats = await fetch(`${hub.http}/live/stations`).then((r) => r.json()).catch(() => null);
+      if (seats && !seats.stations.some((x: Station) => x.id === station)) {
+        setWhy("This seat was freed while you were away. Join again for a new plane.");
+        l.close();
+        window.setTimeout(onLeave, 2500);
+      } else if (seats) {
+        setWhy(code === 4003
+          ? "The tower refused this plane: the room code is wrong, or this site isn't allowed on the hub (UNSTEP_ALLOWED_ORIGINS)."
+          : "The tower is up; reconnecting the radio...");
+      } else {
+        const up = await fetch(`${hub.http}/live/stations`, { mode: "no-cors" }).then(() => true, () => false);
+        setWhy(up
+          ? `The tower at ${hub.http} refuses this page. Add ${location.origin} to UNSTEP_ALLOWED_ORIGINS on the hub.`
+          : `Can't reach the tower at ${hub.http}: it may be waking up (free Render takes about a minute) or down. Retrying...`);
+      }
+    };
     live.current = l;
     setSpeaker((phrase) => l.send({ type: "cue", name: phrase })); // spoken cue lines, in Unstep's voice
     l.open();
@@ -340,6 +359,7 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
             : <>
                 <span className="ptt-main">{pttText}</span>
                 {pttState === "busy" && <span className="ptt-sub">You can still talk. Real radios don't stop you.</span>}
+                {pttState === "off" && why && <span className="ptt-sub">{why}</span>}
               </>}
         </button>
       </div>
