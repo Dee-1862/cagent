@@ -19,6 +19,15 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Sponsor depth plan agreed
+
+**Type:** Docs
+**Area:** Docs
+
+- [16-sponsor-depth.md](16-sponsor-depth.md): one real moment per sponsor with a measured number on the console, each item labelled built (with commit), agreed or proposed. The three demo moments picked with Rishit's side (R18): three-way recovery (Cartesia), Moss recovering the instruction from the garbled fragment, Elastic agents citing the FAA paragraph.
+
+**Related:** agent mail D10, R18
+
 ## 2026-10-24: Pilots pick a language for Unstep's private repeat when they join
 
 **Type:** Added
