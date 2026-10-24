@@ -160,6 +160,16 @@ class LocalMemory(_OwnedIndexes):
     async def open(self, *indexes: str) -> None:
         """Nothing to open locally; here so callers can treat both backends the same."""
 
+    async def push(self, index: str, writer: str):
+        """Offline stand-in for Moss Cloud: remembers what was pushed (tests check nothing else is)."""
+        self._check_writer(index, writer)
+        self.pushed = [*getattr(self, "pushed", []), index]
+        return {"job": f"local-{len(self.pushed)}", "index": index}
+
+    def drop(self, index: str) -> None:
+        self.indexes.pop(index, None)
+        self.owners.pop(index, None)
+
     async def has_doc(self, index: str, doc_id: str) -> bool:
         return doc_id in self.indexes.get(index, {})
 
@@ -336,10 +346,16 @@ class MossMemory(_OwnedIndexes):
             backend=self.backend,
         )
 
-    async def push(self, index: str, writer: str) -> None:
-        """Hand off a session to Moss Cloud (end of event or flight). Owner only."""
+    async def push(self, index: str, writer: str):
+        """Hand off a session to Moss Cloud (end of event or flight). Owner only. Returns what the SDK returns
+        (the push job, if any), so callers can log it."""
         self._check_writer(index, writer)
-        await (await self._session(index)).push_index()
+        return await (await self._session(index)).push_index()
+
+    def drop(self, index: str) -> None:
+        """Forget a session in this client (its memory is freed); the owner can register it again later."""
+        self.sessions.pop(index, None)
+        self.owners.pop(index, None)
 
 
 def create_memory() -> Memory:

@@ -441,7 +441,8 @@ class LiveRoom:
         self.links: dict[str, InProcLink] = {}
         self.policy: PolicyAgent | None = None
         self.elastic_agents = None  # Elastic Workflow ground agents when UNSTEP_ELASTIC_AGENTS=1 (B5)
-        self.monitor: FrequencyMonitor | None = None  # writes the hub's freq-<frequency> session
+        self.monitor: FrequencyMonitor | None = None
+        self.flight_log = None  # unstep.live.flightlog.FlightLog, created in start()  # writes the hub's freq-<frequency> session
         self.graph = [dict(n) for n in GRAPH_NODES]
         self.key_since: dict[str, int] = {}  # station -> hub time its radio key went down
         self.stepons: list[dict] = []  # live two-keys-down detections, matched to events for timings
@@ -492,6 +493,10 @@ class LiveRoom:
             if self.live and self._shared_moss is None:
                 self._shared_moss = create_memory()  # one client for the monitor and every plane
             monitor = self.monitor = FrequencyMonitor(self._shared_moss if self.live else LocalMemory())
+            from unstep.live.flightlog import FlightLog
+
+            # Flight log: each plane's memory is copied here when its flight ends; the only session we push
+            self.flight_log = FlightLog(self._shared_moss if self.live else LocalMemory(), self.frequency)
 
             async def monitor_on(msg):
                 try:
@@ -740,6 +745,16 @@ class LiveRoom:
     async def stop(self) -> None:
         for task in list(self._tasks):
             task.cancel()
+        if self.flight_log is not None and self.edges:  # every flight ends with the hub: archive, push once
+            for callsign, edge in list(self.edges.items()):
+                try:
+                    await self.flight_log.archive(callsign, edge.memory, edge.flight_idx, "hub stopped")
+                except Exception:
+                    log.exception("archiving %s at stop failed", callsign)
+            try:
+                await asyncio.wait_for(self.flight_log.push(), 10)
+            except Exception:
+                log.warning("flight log push at stop did not finish; the log stays local")
         for edge in self.edges.values():
             await edge.stop()
         for link in self.links.values():
@@ -792,7 +807,13 @@ class LiveRoom:
         if not self.clients.get(station) and not claimed:
             await self.free_seat(station, "phone gone for 20 s")
 
-    async def free_seat(self, station: str, reason: str) -> bool:
+    async def _push_flight_log(self) -> None:
+        if self.flight_log is None:
+            return
+        await self.flight_log.push()  # in the background: never on the radio path
+        self.send_to(None, self.flight_log.status())
+
+    async def free_seat(self, station: str, reason: str, push: bool = True) -> bool:
         """Give a walk-up plane back to the fleet: its key, stream, cockpit agent and open
         events end cleanly and it leaves /live/stations. The team planes are never freed."""
         if not self.is_walk_up(station):
@@ -810,6 +831,10 @@ class LiveRoom:
                 self._step(trace, "room", "cancelled", f"{s.name or s.callsign} left: {reason}. Nothing was sent")
                 self.send_to(None, {"type": "trace", "trace": trace})
         edge = self.edges.pop(s.callsign, None)
+        if edge is not None and self.flight_log is not None:
+            await self.flight_log.archive(s.callsign, edge.memory, edge.flight_idx, reason)
+            if push:
+                self._spawn(self._push_flight_log())
         if edge is not None:
             try:
                 await edge.stop()
@@ -836,7 +861,8 @@ class LiveRoom:
         """Presenter "reset room" (atc only): free every walk-up seat and clear traces, lanes,
         reports and the stats window. The team planes (N123AB, H456) stay."""
         for station in [sid for sid in list(self.stations) if self.is_walk_up(sid)]:
-            await self.free_seat(station, "room reset by the presenter")
+            await self.free_seat(station, "room reset by the presenter", push=False)
+        self._spawn(self._push_flight_log())  # one push for every flight the reset ended
         self.traces.clear()
         self.transcripts.clear()
         self.radio_log.clear()
@@ -855,7 +881,8 @@ class LiveRoom:
                 "graph": self.graph, "autonomy": self.policy.enabled if self.policy else True,
                 "traces": list(self.traces.values()), "radio": self.radio_log[-30:],
                 "insights": self.insights[-20:], "mic": self.live and bool(env("CARTESIA_API_KEY")),
-                "recording": self.recorder.status() if self.recorder else {"on": False}}
+                "recording": self.recorder.status() if self.recorder else {"on": False},
+                "flightlog": self.flight_log.status() if self.flight_log else None}
 
     def presence(self) -> None:
         self.send_to(None, {"type": "presence", "connected": {k: len(v) for k, v in self.clients.items()}})

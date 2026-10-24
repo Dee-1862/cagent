@@ -30,6 +30,7 @@ Every sponsor gets one moment in the demo that only that sponsor makes possible,
 | M2 | Every call a plane hears (static and gaps included) and every readback indexed into its own session as it arrives, with callsign, speaker, ts, stepped_on | Built (0b62b64), reviewed in R18 | Deekshith's side (in Rishit's `edge.py` with his yes) |
 | M3 | **Hint as real search:** hybrid query of the plane's session with the garbled fragment, filtered on callsign and the last minutes. A ranked hit becomes a hint only if no newer clearance supersedes it, restrictive only, source shown | Agreed (R18) | Deekshith's side builds, Rishit's side reviews (`hint.py` is theirs) |
 | M4 | "What did the tower tell me in the last minute?" as a session search filtered on ts | Built (0b62b64) | Deekshith's side |
+| M6 | Flight log: when a flight ends (seat freed, reset, hub stop) the plane's session is copied into one shared `flightlog-<frequency>` session (writer "archive"), pushed once to Moss Cloud in the background, and the plane's session is dropped from the shared client. Per-aircraft sessions are still never pushed. `GET /live/flightlog?q=&callsign=` searches past flights | Built (this commit), offline with fakes; live push needs keys | Deekshith's side |
 | M5 | Moss Inference answers may only quote records (`quoted_source`); it also translates the private repeat with a glossary | Built (Rishit's side, d711e89 for translation) | Rishit's side |
 
 ## 4. Elastic: "Elastic Decides and Remembers"

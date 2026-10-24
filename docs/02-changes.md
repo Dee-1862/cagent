@@ -19,6 +19,20 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Plane memory saved to Moss Cloud through one flight log
+
+**Type:** Added
+**Area:** Edge device
+
+- When a flight ends (a walk-up seat is freed, the presenter resets the room, or the hub stops), the plane's session docs are copied into one shared session, `flightlog-<frequency>` (writer "archive"). Each doc carries `callsign`, `flight_id`, `ended_at` and `kind`. The flight log is then pushed to Moss Cloud once, in the background (one push per end event, never on the radio path).
+- **Failures and memory:** a failed push stays local and is retried at the next end. The plane's session is dropped from the shared client, so its memory is freed (`drop()` added to both memory backends, and `MossMemory.push` now returns the SDK's push result for the log).
+- **The agreed rule still holds:** per-aircraft sessions are never pushed; the flight log is the only session we push besides the airport index.
+- **Limitation:** a push replaces the cloud index, and the session holds the flights since the hub started, so a hub restart starts a new log. Loading the old index back first depends on the Moss SDK (check).
+- **Search:** `GET /live/flightlog?q=&callsign=&since_ms=` searches past flights and returns the status ("Flight log: N flights saved to Moss Cloud"), which also goes to every seat as a `flightlog` message.
+- Checked: 4 tests with a fake shared client (copy on end, a single push, session dropped, no per-aircraft push, retry after a failed push, the route). The live push needs Moss keys.
+
+**Related:** [16-sponsor-depth.md](16-sponsor-depth.md) M6, agent mail R3, R4
+
 ## 2026-10-24: Benchmark report against the status quo and published work
 
 **Type:** Docs

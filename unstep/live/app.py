@@ -147,6 +147,14 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
         stats_cache[key] = (now, result)
         return result
 
+    @app.get("/live/flightlog")
+    async def flightlog(q: str = "", callsign: str = "", since_ms: int = 0):
+        """Search past flights saved to the flight log (Moss Cloud when live), with its status."""
+        if room.flight_log is None:
+            return {"status": None, "results": None}
+        results = await room.flight_log.search(q, callsign or None, since_ms or None)
+        return {"status": room.flight_log.status(), "results": results}
+
     @app.post("/live/join")
     async def live_join(request: Request):
         """"Join as a pilot": hands out a free aircraft, adding one from the fleet if needed."""
