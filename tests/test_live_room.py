@@ -176,3 +176,33 @@ def test_clean_call_creates_no_event(make_room):
         await room.stop()
 
     asyncio.run(go())
+
+
+# ---------------------------------------------------------------- web app
+
+
+def test_app_serves_seats_and_joins(monkeypatch):
+    from fastapi.testclient import TestClient
+    from unstep.live.app import create_live_app
+
+    monkeypatch.setattr(room_mod, "create_memory", LocalMemory)
+    monkeypatch.delenv("UNSTEP_GATEWAY_TOKEN", raising=False)
+    app = create_live_app(live=False, sink=MemorySink())
+    client = TestClient(app)
+    assert "Pick your seat" in client.get("/live/").text
+    assert client.get("/live/static/live.js").status_code == 200
+    seats = client.get("/live/stations").json()
+    assert [s["id"] for s in seats["stations"]] == ["atc", "N123AB", "H456", "observer"]
+    with client.websocket_connect("/live/ws/atc") as ws:
+        hello = ws.receive_json()
+        assert hello["type"] == "hello" and hello["you"] == "atc" and hello["autonomy"] is True
+        assert {n["id"] for n in hello["graph"]} >= {"radio", "gateway", "policy", "controller", "elastic"}
+        ws.send_json({"type": "autonomy", "on": False})
+        while (m := ws.receive_json())["type"] != "autonomy":
+            pass
+        assert m["on"] is False
+    import pytest as _pytest
+    from starlette.websockets import WebSocketDisconnect
+    with _pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect("/live/ws/nobody") as ws:
+            ws.receive_json()
