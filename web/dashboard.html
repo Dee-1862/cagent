@@ -42,7 +42,8 @@ const statusEl = document.getElementById("status");
 let ws;
 
 function connect() {
-  ws = new WebSocket(`ws://${location.host}/ws/dashboard`);
+  const scheme = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${scheme}://${location.host}/ws/dashboard__UNSTEP_TOKEN_QUERY__`);
   ws.onopen = () => statusEl.textContent = "connected to gateway";
   ws.onclose = () => { statusEl.textContent = "disconnected, retrying…"; setTimeout(connect, 1000); };
   ws.onmessage = (e) => {

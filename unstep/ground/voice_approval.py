@@ -12,10 +12,10 @@ from collections import deque
 from contextlib import aclosing
 from pathlib import Path
 from typing import Callable, Literal
-from urllib.parse import urlsplit, urlunsplit
 
 import websockets
 
+from unstep.config import gateway_url, ws_url
 from unstep.cockpit.phraseology import normalize_for_speech
 from unstep.cockpit.stt import CartesiaTurnSTT, FakeTurnSTT, ReplayTurnSTT, build_keyterms
 from unstep.cockpit.tts import CartesiaTTS, FakeTTS, TTSEngine, chime, pcm_bytes_to_array, to_left_stereo
@@ -201,9 +201,7 @@ async def run(url: str, tts: TTSEngine, stt_factory) -> None:
     """Listen only to the injected controller-key STT source, never radio audio."""
     loop, voice, ready = ApprovalLoop(), ControllerVoice(tts), asyncio.Event()
     active: asyncio.Task | None = None
-    parts = urlsplit(url)
-    endpoint = urlunsplit(parts._replace(path=parts.path.rstrip("/") + "/ws/controller_voice"))
-    async with websockets.connect(endpoint) as ws:
+    async with websockets.connect(ws_url("controller_voice", url)) as ws:
         async def worker() -> None:
             nonlocal active
             while True:
@@ -238,7 +236,7 @@ async def run(url: str, tts: TTSEngine, stt_factory) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url", default="ws://127.0.0.1:8765")
+    parser.add_argument("--url", default=None, help="gateway URL (default: UNSTEP_GATEWAY_URL)")
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--answer-clip", type=Path)
     args = parser.parse_args()
@@ -260,7 +258,7 @@ def main() -> None:
 
     async def go() -> None:
         try:
-            await run(args.url, tts, factory)
+            await run(args.url or gateway_url(), tts, factory)
         finally:
             if isinstance(tts, CartesiaTTS):
                 await tts.close()

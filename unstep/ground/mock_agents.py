@@ -11,6 +11,7 @@ import asyncio
 
 import websockets
 
+from unstep.config import gateway_url, ws_url
 from unstep.contracts import AnomalyEvent, ProposedDirective, Slots, unwrap, wrap
 
 
@@ -37,7 +38,7 @@ def propose(event: AnomalyEvent) -> ProposedDirective:
 
 
 async def run(url: str) -> None:
-    async with websockets.connect(f"{url}/ws/agents") as ws:
+    async with websockets.connect(ws_url("agents", url)) as ws:
         print("mock agents connected")
         async for raw in ws:
             env, msg = unwrap(raw)
@@ -50,5 +51,5 @@ async def run(url: str) -> None:
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--url", default="ws://127.0.0.1:8765")
-    asyncio.run(run(p.parse_args().url))
+    p.add_argument("--url", default=None, help="gateway URL (default: UNSTEP_GATEWAY_URL)")
+    asyncio.run(run(p.parse_args().url or gateway_url()))

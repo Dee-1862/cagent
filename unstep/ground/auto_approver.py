@@ -9,11 +9,12 @@ import asyncio
 
 import websockets
 
+from unstep.config import gateway_url, ws_url
 from unstep.contracts import ProposedDirective, VoiceApproval, unwrap, wrap
 
 
 async def run(url: str) -> None:
-    async with websockets.connect(f"{url}/ws/controller_voice") as ws:
+    async with websockets.connect(ws_url("controller_voice", url)) as ws:
         print("auto approver connected")
         async for raw in ws:
             _, msg = unwrap(raw)
@@ -23,5 +24,5 @@ async def run(url: str) -> None:
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--url", default="ws://127.0.0.1:8765")
-    asyncio.run(run(p.parse_args().url))
+    p.add_argument("--url", default=None, help="gateway URL (default: UNSTEP_GATEWAY_URL)")
+    asyncio.run(run(p.parse_args().url or gateway_url()))

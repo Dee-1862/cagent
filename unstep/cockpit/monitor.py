@@ -12,7 +12,7 @@ wall clock, so they replay deterministically:
 - TowerTranscript: `ptt_start`
 - ReadbackResult: has no timestamp of its own, so the envelope `ts` the gateway stamped.
 
-Run: python -m unstep.cockpit.monitor --url ws://127.0.0.1:8765
+Run: python -m unstep.cockpit.monitor [--url <gateway>]  (default: UNSTEP_GATEWAY_URL)
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 from unstep.clock import now_ms
+from unstep.config import gateway_url, ws_url
 from unstep.contracts import AnomalyEvent, Insight, ReadbackResult, TowerTranscript, unwrap, wrap
 from unstep.cockpit.memory import Doc, Memory, create_memory
 
@@ -202,7 +203,7 @@ async def run(url: str) -> None:
     import websockets
 
     monitor = FrequencyMonitor(create_memory())
-    async with websockets.connect(f"{url}/ws/monitor") as ws:
+    async with websockets.connect(ws_url("monitor", url)) as ws:
         print("frequency monitor connected")
         async for raw in ws:
             try:
@@ -226,5 +227,5 @@ async def run(url: str) -> None:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     p = argparse.ArgumentParser()
-    p.add_argument("--url", default="ws://127.0.0.1:8765")
-    asyncio.run(run(p.parse_args().url))
+    p.add_argument("--url", default=None, help="gateway URL (default: UNSTEP_GATEWAY_URL)")
+    asyncio.run(run(p.parse_args().url or gateway_url()))

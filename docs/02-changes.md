@@ -50,6 +50,13 @@ could not start. No live inference or ingestion calls were run.
 
 **Related:** [PRD 6.2, 6.4 and FR-14](01-prd.md)
 
+## 2026-10-24: Demo view added to the main architecture doc
+
+**Type:** Docs
+**Area:** Docs
+
+- Added an "At a Glance (demo view)" section at the top of [05-architecture.md](05-architecture.md) with the same six-step, sponsor-colored picture as [10-agentic-architecture.md](10-agentic-architecture.md), so both architecture docs open with the simple flow.
+
 ## 2026-10-23: Controller voice approval (B10)
 
 **Type:** Added
@@ -75,6 +82,49 @@ Built by Dev A so Dev B can focus on B5. Code: `unstep/ground/voice_approval.py`
 **Process note:** written by OpenAI Codex under Rishit's direction, then reviewed line by line against the PRD voice approval rules and tested with the full suite (168 passed).
 
 **Related:** [PRD section 7, voice approval rules](01-prd.md#7-end-to-end-workflow), [Work Split B10](04-work-split.md#5-dev-b-gateway-tower-and-elastic)
+
+## 2026-10-23: Simple demo view added to the agentic architecture
+
+**Type:** Docs
+**Area:** Docs
+
+- Added section 2 "Demo View: One Picture" to [10-agentic-architecture.md](10-agentic-architecture.md): six boxes left to right, one color per sponsor, plus a table of what the audience sees or hears at each step.
+- The detailed diagrams moved down one section number (3 to 7).
+
+## 2026-10-23: One config for every connection, gateway token fixed
+
+**Type:** Fixed
+**Area:** Ground agents
+
+- Accepted Rishit's latest commit by fast-forwarding master to `rishit`, then merged master into the Dev B branch (no conflicts).
+- Connection bug: `UNSTEP_GATEWAY_URL` was in `.env.example` but nothing read it, and every client had `ws://127.0.0.1:8765` written in. All clients (edge, monitor, mock cockpit, mock agents, auto approver, demo runner) now take the address from `unstep/config.py`, with `--url` as an override.
+- Token bug: when `UNSTEP_GATEWAY_TOKEN` was set the gateway rejected every client and the dashboard, because none of them sent it. Clients now add it through `ws_url()`, the gateway serves the dashboard page with it, and the gateway reads it on each connection.
+- No more hardcoded Cartesia version, STT model, TTS model or Elastic index: each has a default in `unstep/config.py` and an override in `.env`. Cartesia endpoint URLs stay as constants because they are Cartesia's fixed API addresses.
+- `.env` is now loaded when `unstep.config` is imported, so every entry point sees the keys.
+- Live check on port 8766 with a token: clients without it are rejected, all roles connected from `UNSTEP_GATEWAY_URL` alone, real Moss and Cartesia, 12 documents in Elastic with 0 failed. 145 tests pass.
+- Found, not fixed: the live Moss frequency index is `freq-118.300`, but the code and contracts use `118.700`, so the monitor would create a fourth index on a three-index plan. Needs Rishit's decision.
+
+## 2026-10-23: Proposed agentic architecture for ground, cockpit and the link
+
+**Type:** Docs
+**Area:** Ground agents
+
+- Added [10-agentic-architecture.md](10-agentic-architecture.md), a proposal for Dev A to review.
+- Ground: no LLM supervisor agent. An Elastic Workflow orchestrates narrow Agent Builder agents (`ai.agent` steps) and pauses for the controller (`waitForInput`). The gateway stays the only place a directive is created (FR-6). Step types checked against the Elastic Workflows docs.
+- Cockpit: the edge agent is a state machine with Cartesia and Moss on local compute, plus an optional "Unstep, why?" explanation built from a per-event evidence bundle.
+- Link: radio stays the fallback, a live link carries only ATC-style messages, and Moss carries context handoff after the event. CPDLC (bounded at 120 s at 95%, RA-5) and Moss handoff (push replaces the index, 300 s polling) are both too slow for a live correction.
+- Proposed dropping `gps` from `AnomalyEvent` (contract change, needs both developers).
+- Noted from Rishit's handoff: B10 controller voice approval is being built by Rishit, and the stray Moss index was removed so `freq-118.300` is live.
+
+## 2026-10-23: Cockpit edge and monitor load .env, live stack verified
+
+**Type:** Fixed
+**Area:** Edge device
+
+- `python -m unstep.cockpit.edge` and `python -m unstep.cockpit.monitor` did not load `.env`, so run on their own they fell back to fake Cartesia and local memory even with keys set. Both now call `load_env()` at start. `scripts/run_demo.py` was not affected because it loads `.env` itself.
+- Accepted Rishit's PR by fast-forwarding master to the `rishit` branch (130 tests passed on it), then merged master into the Dev B branch.
+- Live check on the standalone stack: Moss memory on the real project, Cartesia STT final 384 ms, Cartesia TTS first audio 79 to 97 ms, 12 documents stored in Elastic with 0 failed.
+- `CARTESIA_VOICE_ID` (the advisory voice, task A6) is still not chosen. Live runs used Zander (`aa2cafe9-97ba-4052-ac3c-875000f95212`, "measured and calm") as a stand-in.
 
 ## 2026-10-23: Dev A status on branch `rishit`
 
@@ -127,6 +177,49 @@ The old detector (peak share of in-band power over 3 frames) false-fired on Cart
 
 **Related:** tests/test_overlap.py, scripts/make_real_clips.py
 
+## 2026-10-23: Elastic settings check and Kibana data view
+
+**Type:** Added
+**Area:** Audit
+
+- Added `scripts/check_elastic.py`. It checks the Elasticsearch URL, the Kibana URL and the API key without printing secrets, and flags an Elasticsearch address (`.es.`) put in `KIBANA_URL`.
+- Created the Kibana data view "Unstep events" on `unstep-events` with `@timestamp` as the time field, so events show in Discover.
+- Live check: branch merges into master with no conflicts, 91 tests pass, 5 mock cockpit runs stored 20 documents in Elastic with 0 failed, and an ES\|QL count by type returns the expected rows.
+
+## 2026-10-23: New Elastic API key checked, Kibana URL added
+
+**Type:** Changed
+**Area:** Ground agents
+
+- Checked the new `ELASTIC_API_KEY` (name "lolo"): it authenticates on Elasticsearch and has create, write, read and manage rights on `unstep-*`.
+- The same key works on Kibana, and the Agent Builder API answers, so task B5 is unblocked without a second key.
+- Added `kibana_url()` to `unstep/config.py`. It uses `KIBANA_URL` if set, otherwise the Elasticsearch URL with `.es.` replaced by `.kb.`.
+- `.env.example` now lists `KIBANA_URL` and notes that the key must work on both Elasticsearch and Kibana.
+- Live Elastic round-trip test passes with the new key.
+
+## 2026-10-23: Gateway stores every message in Elastic (task B1)
+
+**Type:** Added
+**Area:** Audit
+
+- `ElasticSink` in `unstep/gateway/sink.py` writes every gateway message to the `unstep-events` index with the `_bulk` API.
+- `write` never waits on the network. Documents go on a bounded queue and a background task sends them, retries a failed request once, and counts sent, failed and dropped documents (shown on `/health`).
+- The index has a strict mapping. Query fields (`type`, `source`, `event_id`, `callsign`, `frequency`, `decision`, `approved_via`, `match`, `kind`, `stage`) are promoted to the top for ES\|QL (task B8). The full message is kept in `data` but not indexed, so no message type can cause a mapping conflict.
+- The gateway loads `.env` through `unstep/config.py` and picks the Elastic sink when the URL and key are set, otherwise the JSONL file. It accepts `ELASTIC_API_KEY` or `ELASTIC_CLOUD_KEY`.
+- Verified on the real Elastic Serverless project: 10 mock cockpit runs stored 40 documents, 0 failed.
+- 8 new tests with a fake Elastic, plus a live round-trip test that runs with `UNSTEP_LIVE_ELASTIC=1`.
+
+## 2026-10-23: Merged master into the Dev B branch and removed duplicate code
+
+**Type:** Changed
+**Area:** Ground agents
+
+- Rishit's M0 and M2 work on master (`unstep/`) and Dev B's first draft (`contracts/models.py`, `ground/gateway/`) built the same contracts and gateway in parallel.
+- Kept `unstep/` as the one codebase, since its gateway is further along (proposal TTL, replay on reconnect, token and origin checks). Removed Dev B's duplicate `contracts/models.py`, `ground/` and their tests.
+- Dropped Dev B's proposed `ClickApproval` and `DirectiveRejected`. master already covers them: the dashboard sends `ApprovedDirective` or `RejectedDirective`, and the gateway rebuilds them from the stored proposal.
+- The Elastic events sink is still open on task B1. It comes next on this branch.
+
+**Related:** [Mistakes and Lessons, M-015](03-mistakes-and-lessons.md)
 
 ## 2026-10-23: M0 contracts and M2 first wire
 

@@ -36,6 +36,7 @@ import uvicorn  # noqa: E402
 import websockets  # noqa: E402
 
 from unstep.cockpit.audio import WavFileSource, read_wav  # noqa: E402
+from unstep.config import ws_url  # noqa: E402
 from unstep.cockpit.edge import AudioOut, CockpitEdge, GatewayLink, Line  # noqa: E402
 from unstep.cockpit.memory import LocalMemory, create_memory  # noqa: E402
 from unstep.cockpit.inference import FakeAnswerer  # noqa: E402
@@ -75,7 +76,7 @@ def live_engines():
         raise SystemExit(f"--live needs {', '.join(missing)} in .env")
     terms = build_keyterms(callsigns=[scenario.SPOKEN_CALLSIGN, scenario.CALLSIGN], runways=["33", "28L"])
     tts = CartesiaTTS()  # voice and pronunciation dict ids from .env
-    manual = lambda: CartesiaManualSTT(model="ink-2", keyterms=terms)  # noqa: E731
+    manual = lambda: CartesiaManualSTT(keyterms=terms)  # noqa: E731
     turns = lambda: CartesiaTurnSTT(keyterms=terms)  # noqa: E731
     readbacks = ReplayTurnSTT(turns, [clip_pcm("wrong_readback.wav"), clip_pcm("correct_readback.wav")])
     question = ReplayTurnSTT(turns, [clip_pcm("pilot_question.wav")])
@@ -137,7 +138,7 @@ async def start_gateway(sink) -> tuple[uvicorn.Server, asyncio.Task, str, object
 
 async def controller_view(url: str, lines: list[Line]) -> None:
     """What the controller hears/says, read from the dashboard feed."""
-    async with websockets.connect(f"{url}/ws/dashboard") as ws:
+    async with websockets.connect(ws_url("dashboard", url)) as ws:
         async for raw in ws:
             _, msg = unwrap(raw)
             if isinstance(msg, ProposedDirective):

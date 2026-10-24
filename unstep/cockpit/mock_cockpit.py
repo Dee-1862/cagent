@@ -13,6 +13,7 @@ import websockets
 
 from unstep import scenario
 from unstep.clock import now_ms
+from unstep.config import gateway_url, ws_url
 from unstep.contracts import ApprovedDirective, RejectedDirective, unwrap, wrap
 
 
@@ -40,7 +41,7 @@ async def one_run(ws, run: int, timeout_s: float) -> bool:
 
 async def main(url: str, runs: int, timeout_s: float) -> int:
     ok = 0
-    async with websockets.connect(f"{url}/ws/cockpit") as ws:
+    async with websockets.connect(ws_url("cockpit", url)) as ws:
         for run in range(1, runs + 1):
             try:
                 ok += await one_run(ws, run, timeout_s)
@@ -52,8 +53,8 @@ async def main(url: str, runs: int, timeout_s: float) -> int:
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--url", default="ws://127.0.0.1:8765")
+    p.add_argument("--url", default=None, help="gateway URL (default: UNSTEP_GATEWAY_URL)")
     p.add_argument("--runs", type=int, default=1)
     p.add_argument("--timeout", type=float, default=60.0, help="seconds to wait for a decision (gateway TTL)")
     a = p.parse_args()
-    raise SystemExit(asyncio.run(main(a.url, a.runs, a.timeout)))
+    raise SystemExit(asyncio.run(main(a.url or gateway_url(), a.runs, a.timeout)))
