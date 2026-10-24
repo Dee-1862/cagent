@@ -19,6 +19,16 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Cartesia feedback: the "niner" respelling lesson
+
+**Type:** Docs
+**Area:** Audio
+
+- [09-cartesia-feedback.md](09-cartesia-feedback.md) new section: our own pronunciation entry `niner -> NY-ner` made Sonic say "N-one-er" and broke ink-2 on every runway with a 9. Found by the TTS to STT eval; before and after numbers (runway 0.852 to 1.0, readback precision 0.882 to 1.0). Mild request to Cartesia: document the respelling format or validate entries.
+- Action for Deekshith: upload the new dictionary (`python scripts/upload_pronunciation_dict.py --name unstep-atc-v2`) and set `CARTESIA_PRONUNCIATION_DICT_ID` to the printed id.
+
+**Related:** agent mail R22
+
 ## 2026-10-24: Seats for walk-up pilots: freed when the phone is gone, presenter reset, full-room answer
 
 **Type:** Added

@@ -57,6 +57,29 @@ Run by Rishit on his laptop at about 12:30 PT with `python scripts/cartesia_repr
 - Racing a second, already open socket when finalize passes 800 ms (our planned workaround) never won: 0 of 15, and one slow run (1689 ms) was not saved by it. We are not building it.
 - Empty `turn.end` on fast input (item 1) did not reproduce: fast 15/15 and paced 15/15 correct.
 
+## Lesson: a pronunciation respelling silently broke our own STT (2026-10-24)
+
+Not a Cartesia bug; our mistake, found by closing the loop from TTS to STT in an evaluation (`scripts/eval_unstep.py --live`).
+
+### Observed
+
+- Our pronunciation dictionary respelled "niner" as `NY-ner`. With it, Sonic said something like "N-one-er", and ink-2 heard "N1er", "N one er" or "and liner". Every runway miss in our first live eval was this word, and both correct readbacks that were wrongly flagged were the same lines.
+- A/B on Rishit's laptop, 3 runs each: with the entry, "niner" was lost 3 of 3; without it, heard as "niner" 3 of 3; "nine" was fine either way (3 of 3).
+- Live eval, 40 instruction and readback pairs (80 lines, line length p50 3.68 s):
+
+| | Callsign | Runway | Readback-error precision / recall | Finalize p50 / p95 |
+| --- | --- | --- | --- | --- |
+| With the `niner` entry | 0.95 | 0.852 | 0.882 / 1.0 | 598.5 / 1514 ms |
+| Entry dropped | 1.0 | 1.0 | 1.0 / 1.0 | 519.8 / 1176.2 ms |
+
+### Request
+
+- Document the respelling format for pronunciation dictionary entries (what a hyphen or capitals mean), or warn when an entry makes the word unrecognizable. A one-line "test your entries through STT" note would have saved us the debugging.
+
+### Checked
+
+- Sonic says "niner" correctly with no dictionary entry, so we dropped it (Rishit's 7ff40c1, 8f60753). A new dictionary has to be uploaded with `scripts/upload_pronunciation_dict.py`; the old one still has the bad entry.
+
 ## Feature requests
 
 - **A. Word timestamps on `ink-2`, and on the turns endpoint.** `turn.update` and `turn.end` only carry text. Word times would let a readback checker point at the exact word that was wrong.
