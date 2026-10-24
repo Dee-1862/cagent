@@ -201,7 +201,7 @@ The local hint is the only thing the pilot hears before a controller approves. T
 | FR-3 | The system must show which tower words were blocked. |
 | FR-4 | The cockpit must give a labeled local hint from Moss search, for restrictive instructions only, with its source record shown, following the local hint rules. |
 | FR-5 | The ground must propose a directive with a defined confidence and a real FAA citation. |
-| FR-6 | No directive may reach the cockpit without explicit human approval. |
+| FR-6 | No directive may reach the cockpit unless a human authored or approved it. Auto-resend (policy agent) is allowed only for the controller's own transmitted stop/wait words, fresh and high confidence, re-checked by the gateway, shown on the ATC console with its checks, and switchable off. Decided by Rishit 2026-10-24. |
 | FR-7 | Directives must be spoken in the pilot headset only, in the left ear, never on VHF. |
 | FR-8 | The advisory voice must be clearly distinct from ATC, start with "Advisory" and use ATC number pronunciation. |
 | FR-9 | The cockpit must check readbacks, repeat on a mismatch, and flag the controller after two failures. |
