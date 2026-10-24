@@ -39,7 +39,7 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
     app = create_app(sink)
     room = room or LiveRoom(app.state.gateway, live=live)
     app.state.room = room
-    stats_cache: dict[int, tuple[int, dict]] = {}
+    stats_cache: dict[tuple, tuple[int, dict]] = {}
 
     # Start the room (cockpit agents, Moss sessions, links) when the server starts, not on
     # the first socket, so the first call isn't spent waiting for it (R13 item 2).
@@ -133,16 +133,18 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
                 "languages": dict(LANGUAGES)}  # offered for the private repeat; English always first
 
     @app.get("/live/stats")
-    async def live_stats(since_ms: int = 0):
+    async def live_stats(since_ms: int = 0, include_simulated: bool = False):
         """Per-frequency counts for the console (W4): Elastic ES|QL when configured, else the room's traces."""
         from unstep.ground.stats import frequency_stats
 
         now = now_ms()
-        if (cached := stats_cache.get(since_ms)) and now - cached[0] < STATS_CACHE_MS:
+        key = (since_ms, include_simulated)
+        if (cached := stats_cache.get(key)) and now - cached[0] < STATS_CACHE_MS:
             return cached[1]
-        result = await frequency_stats(room.frequency, max(since_ms, room.reset_at), room.traces)
-        stats_cache.clear()  # one console polls one since_ms; keep the cache tiny
-        stats_cache[since_ms] = (now, result)
+        result = await frequency_stats(room.frequency, max(since_ms, room.reset_at), room.traces,
+                                       include_simulated=include_simulated)
+        stats_cache.clear()  # one console polls one window; keep the cache tiny
+        stats_cache[key] = (now, result)
         return result
 
     @app.post("/live/join")

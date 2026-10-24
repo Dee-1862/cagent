@@ -230,9 +230,10 @@ class SerialTTS:
         self.engine = engine
         self._lock = asyncio.Lock()
 
-    async def speak(self, text, context_id=None, on_chunk=None):
+    async def speak(self, text, context_id=None, on_chunk=None, **options):
+        # options: the cockpit voice's language and speed (Rishit's d711e89), passed through untouched
         async with self._lock:
-            return await self.engine.speak(text, context_id=context_id, on_chunk=on_chunk)
+            return await self.engine.speak(text, context_id=context_id, on_chunk=on_chunk, **options)
 
     def __getattr__(self, name):
         return getattr(self.engine, name)
@@ -252,7 +253,7 @@ class StreamingTTS(SerialTTS):
         super().__init__(engine)
         self.room, self.station = room, station
 
-    async def speak(self, text, context_id=None, on_chunk=None):
+    async def speak(self, text, context_id=None, on_chunk=None, **options):
         async with self._lock:
             sample_rate = getattr(self.engine, "sample_rate", TTS_SAMPLE_RATE)
             stream_id = context_id or uuid.uuid4().hex
@@ -282,7 +283,7 @@ class StreamingTTS(SerialTTS):
                 original_chunk(pcm)
 
             try:
-                result = await self.engine.speak(text, context_id=context_id, on_chunk=counted)
+                result = await self.engine.speak(text, context_id=context_id, on_chunk=counted, **options)
                 cancelled = bool(getattr(result, "cancelled", False))
                 return result
             finally:

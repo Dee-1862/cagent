@@ -117,3 +117,24 @@ def test_a_real_advisory_sends_a_report(make_room):
         await room.stop()
 
     asyncio.run(go())
+
+
+def test_voice_options_reach_the_engine():
+    """The cockpit asks for a slower correction (speed) and a language; the room's wrappers must pass them on."""
+    from unstep.live.room import SerialTTS
+
+    seen = {}
+
+    class Engine:
+        sample_rate = 24000
+
+        async def speak(self, text, context_id=None, on_chunk=None, **options):
+            seen.update(options)
+            from unstep.cockpit.tts import SpeechResult
+            return SpeechResult(b"\x00\x00" * 10, 24000, 0.0, [])
+
+    asyncio.run(StreamingTTS(Engine(), Room(), "N123AB").speak("x", speed=0.85, language="es"))
+    assert seen == {"speed": 0.85, "language": "es"}
+    seen.clear()
+    asyncio.run(SerialTTS(Engine()).speak("x", speed=0.85))
+    assert seen == {"speed": 0.85}

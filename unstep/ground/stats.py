@@ -84,13 +84,23 @@ def local_stats(traces: dict, since_ms: int) -> dict:
     return combine(events, outcomes)
 
 
+SIM_INDEX = "unstep-sim-events"
+
+
 async def frequency_stats(frequency: str, since_ms: int, traces: dict, *, settings=None,
-                          transport: httpx.AsyncBaseTransport | None = None, timeout_s: float = 3.0) -> dict:
-    """Stats for the console: from Elastic when configured and answering, else from the room."""
+                          transport: httpx.AsyncBaseTransport | None = None, timeout_s: float = 3.0,
+                          include_simulated: bool = False) -> dict:
+    """Stats for the console: from Elastic when configured and answering, else from the room.
+
+    `include_simulated` adds the simulator's index (scripts/simulate_traffic.py) to the counts and
+    lists its run ids in `simulated_runs`, so the console can badge the panel "Simulated traffic".
+    Real stats never include simulated records unless asked.
+    """
     since_ms = max(0, int(since_ms))
-    events_q, outcomes_q = esql_queries(frequency, since_ms)
+    index = f"{elastic_events_index()},{SIM_INDEX}" if include_simulated else None
+    events_q, outcomes_q = esql_queries(frequency, since_ms, index)
     out = {"frequency": frequency, "since_ms": since_ms, "window_s": round((now_ms() - since_ms) / 1000, 1),
-           "esql": events_q + "\n\n" + outcomes_q}
+           "esql": events_q + "\n\n" + outcomes_q, "simulated_runs": []}
     settings = settings if settings is not None else elastic_settings()
     if settings:
         url, key = settings
@@ -103,6 +113,11 @@ async def frequency_stats(frequency: str, since_ms: int, traces: dict, *, settin
                     r = await client.post(f"{url.rstrip('/')}/_query", json={"query": q})
                     r.raise_for_status()
                     bodies.append(r.json())
+                if include_simulated:
+                    runs_q = f"FROM {SIM_INDEX}\n| WHERE ts >= {since_ms}\n| STATS n = COUNT(*) BY run_id\n| LIMIT 100"
+                    r = await client.post(f"{url.rstrip('/')}/_query", json={"query": runs_q})
+                    if r.is_success:
+                        out["simulated_runs"] = sorted(row["run_id"] for row in _rows(r.json()) if row.get("run_id"))
             return {**out, "backend": "elastic", "took_ms": round((time.perf_counter() - started) * 1000, 1),
                     **combine(_rows(bodies[0]), _rows(bodies[1]))}
         except (httpx.HTTPError, ValueError, KeyError) as exc:

@@ -42,6 +42,9 @@ MAPPINGS = {
         "match": {"type": "boolean"},
         "kind": {"type": "keyword"},
         "stage": {"type": "keyword"},
+        # Only on simulated traffic (scripts/simulate_traffic.py), which goes to its own index.
+        "simulated": {"type": "boolean"},
+        "run_id": {"type": "keyword"},
         "data": {"type": "object", "enabled": False},
     },
 }
@@ -59,6 +62,9 @@ def to_document(record: dict) -> dict:
     for field in PROMOTED:
         if data.get(field) is not None:
             document[field] = data[field]
+    if record.get("simulated"):  # simulated traffic is labelled on every record, machine-readable
+        document["simulated"] = True
+        document["run_id"] = record.get("run_id")
     if record["type"] == "ApprovedDirective":
         document["decision"] = "approve"
     elif record["type"] == "RejectedDirective":

@@ -19,6 +19,20 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Traffic simulator, labelled simulated, and a fix it found
+
+**Type:** Added
+**Area:** Other
+
+- `scripts/simulate_traffic.py`: scripted synthetic traffic through the real room code (offline voice, local memory).
+  - **What it simulates:** several planes, restrictive and permissive instructions, step-ons at a set rate, a simulated controller deciding, and readbacks that are wrong on purpose at a set rate. The seed is fixed. Calls are back-dated so 500 calls run in about 10 minutes: counts and rates are meaningful, timings are not.
+  - **Labelling:** every call row and every gateway record carries `simulated: true` and the `run_id`. With `--elastic`, records go to their own `unstep-sim-events` index, never the real events index.
+- `/live/stats?include_simulated=1` adds that index and returns `simulated_runs`, so the console can show a "Simulated traffic" badge (asked from Rishit's side). Real stats never include simulated records unless asked.
+- **Fixed, found by the simulator:** Rishit's cockpit voice now passes `speed` and `language` to the TTS engine (d711e89). The live room's TTS wrappers (`SerialTTS`, `StreamingTTS`) didn't accept them, so every wrong-readback correction crashed in the live room. They now pass the options through.
+- Checked: 4 simulator and report tests, 1 test for the voice options, and a 500-call run with no errors (summary feeds docs/18).
+
+**Related:** agent mail D20, D21
+
 ## 2026-10-24: Recording-session mode: a real dataset of us talking over each other
 
 **Type:** Added
