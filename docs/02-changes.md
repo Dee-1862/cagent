@@ -19,6 +19,13 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Demo view added to the main architecture doc
+
+**Type:** Docs
+**Area:** Docs
+
+- Added an "At a Glance (demo view)" section at the top of [05-architecture.md](05-architecture.md) with the same six-step, sponsor-colored picture as [10-agentic-architecture.md](10-agentic-architecture.md), so both architecture docs open with the simple flow.
+
 ## 2026-10-23: Controller voice approval (B10)
 
 **Type:** Added

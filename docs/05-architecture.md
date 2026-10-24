@@ -10,6 +10,29 @@ How data flows through Unstep, from a stepped-on or misheard instruction to the 
 
 > **Current scope:** Raspberry Pi integration is on hold. The cockpit edge runs as a software simulator on a laptop, using recorded radio audio and a simulated PTT/squelch signal. The data flow stays the same when we move to the Pi later.
 
+## At a Glance (demo view)
+
+The simple picture for the pitch: one blocked call, left to right, one color per sponsor. The sections below have the detail, and [Agentic Architecture](10-agentic-architecture.md#2-demo-view-one-picture) has the same picture with what the audience sees or hears at each step.
+
+```mermaid
+flowchart LR
+    A["1. Tower says<br/>hold short Runway 33<br/>but another call blocks it"]:::problem
+    B["2. Cockpit Unstep notices<br/>Likely hold short<br/>found in memory"]:::moss
+    C["3. Ground Unstep checks<br/>what the tower said<br/>and the FAA rule"]:::elastic
+    D["4. Controller says<br/>Approve"]:::human
+    E["5. Pilot hears it<br/>and reads it back<br/>wrong readback caught"]:::cartesia
+    F["6. Dashboard and<br/>live stats"]:::elastic
+
+    A --> B --> C --> D --> E
+    E -.-> F
+
+    classDef problem fill:#ffebee,stroke:#c62828,color:#1b1b1b
+    classDef moss fill:#e8f5e9,stroke:#2e7d32,color:#1b1b1b
+    classDef elastic fill:#e3f2fd,stroke:#1565c0,color:#1b1b1b
+    classDef human fill:#f3e5f5,stroke:#6a1b9a,color:#1b1b1b
+    classDef cartesia fill:#fff3e0,stroke:#ef6c00,color:#1b1b1b
+```
+
 ## 1. Design Principles
 
 - **Voice first.** The pilot and the controller both talk to Unstep on a separate Unstep key. Screens are backup and audit.
