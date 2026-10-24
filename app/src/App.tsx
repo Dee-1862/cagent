@@ -165,8 +165,9 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
   const nameOf = useCallback((id: string) => (id === "atc" ? "Tower" : stations.find((s) => s.id === id)?.name ?? id), [stations]);
   nameRef.current = nameOf;
   useEffect(() => {
-    const t = setInterval(() => { setLyrics((s) => L.tick(s, Date.now())); setWave((w) => W.prune(w, live.current?.now() ?? Date.now())); }, 250);
-    return () => clearInterval(t);
+    const t = setInterval(() => setLyrics((s) => L.tick(s, Date.now())), 50); // waiting text shows within 50 ms
+    const t2 = setInterval(() => setWave((w) => W.prune(w, live.current?.now() ?? Date.now())), 250);
+    return () => { clearInterval(t); clearInterval(t2); };
   }, []);
   useEffect(() => { card.current?.scrollTo?.({ top: card.current.scrollHeight, behavior: "smooth" }); }, [lyrics]);
   const hubNow = useCallback(() => live.current?.now() ?? Date.now(), []);
@@ -395,9 +396,17 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
           <p key={l.id} className={`line ${l.kind} ${i === lyrics.lines.length - 1 ? "now" : "past"} ${l.final ? "final" : "interim"}`}>
             {l.kind === "advisory" && <span className="only-you">Only you</span>}
             {l.who && l.kind === "radio" && <span className="who">{l.who}:</span>}
-            {l.words.map((w, k) => <span key={k} className={w.kind ? `kw ${w.kind}` : undefined}>{w.text} </span>)}
+            {l.words.map((w, k) => {
+              const delay = L.revealDelay(l, k);
+              return <span key={k} className={`w${w.kind ? ` kw ${w.kind}` : ""}${delay !== null ? " enter" : ""}`}
+                style={delay ? { animationDelay: `${delay}ms` } : undefined}>{w.text}
+                {k === l.words.length - 1 && l.kind === "radio" && !l.final && <span className="caret" aria-hidden="true" />}{" "}</span>;
+            })}
           </p>
         ))}
+        {onAir && hubLive && !lyrics.lines.some((l) => l.mine && !l.final) && (
+          <p className="line listening now" aria-label="Listening">Listening<span className="dots" aria-hidden="true"><i /><i /><i /></span></p>
+        )}
       </div>
       <p className="lag">{L.lagLabel(lyrics) ?? "\u00a0"}</p>
 
