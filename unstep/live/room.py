@@ -329,6 +329,7 @@ class LiveRoom:
         self.policy: PolicyAgent | None = None
         self.graph = [dict(n) for n in GRAPH_NODES]
         self.key_since: dict[str, int] = {}  # station -> hub time its radio key went down
+        self.stepons: list[dict] = []  # live two-keys-down detections, matched to events for timings
         self.claims: dict[str, float] = {}  # station -> hub time join() handed it out
         self._join_lock = asyncio.Lock()
         self._moss_used = 0
@@ -569,9 +570,11 @@ class LiveRoom:
         self.send_to(None, {"type": "keyed", "station": station, "down": down,
                             "keyed": dict(self.key_since), "ts": received})
         if down and len(self.key_since) >= 2:
-            self.send_to(None, {"type": "stepon_live", "stations": sorted(self.key_since),
-                                "since_ms": max(self.key_since.values()), "detected_ms": received,
-                                "uplink_ms": received - self.key_since[station]})
+            alert = {"type": "stepon_live", "stations": sorted(self.key_since),
+                     "since_ms": max(self.key_since.values()), "detected_ms": received,
+                     "uplink_ms": received - self.key_since[station]}
+            self.stepons = [*self.stepons[-19:], alert]
+            self.send_to(None, alert)
 
     async def decide(self, event_id: str, approve: bool) -> None:
         trace = self.traces.get(event_id)
@@ -686,10 +689,18 @@ class LiveRoom:
         if trace is None:
             trace = self.traces[event_id] = {"event_id": event_id, "callsign": callsign, "status": "detected",
                                              "created_ms": now_ms(), "steps": [], "proposal": None,
-                                             "policy": None, "readbacks": []}
+                                             "policy": None, "readbacks": [], "timings": []}
         if callsign and not trace.get("callsign"):
             trace["callsign"] = callsign
         return trace
+
+    @staticmethod
+    def _time(trace: dict, stage: str, at_ms: int | None, ms: float | None = None, by: str | None = None) -> None:
+        """One mark on the event's timeline, hub clock. `ms` is a measured duration where there is one
+        (Moss search, TTS first audio, Elastic's own time); the console draws these as a waterfall."""
+        if at_ms is None:
+            return
+        trace.setdefault("timings", []).append({"stage": stage, "at_ms": int(at_ms), "ms": ms, "by": by})
 
     @staticmethod
     def _step(trace: dict, actor: str, kind: str, text: str, **data) -> None:
@@ -728,10 +739,22 @@ class LiveRoom:
             self._step(trace, f"cockpit:{msg.callsign}", "detected",
                        f"Stepped-on call detected. Heard: \"{msg.heard_text}\"",
                        overlap_ms=msg.overlap_end - msg.overlap_start)
+            self._time(trace, "call_start", msg.squelch_open, by="radio")
+            keys = next((k for k in reversed(self.stepons)
+                         if msg.squelch_open - 1000 <= k["since_ms"] <= msg.squelch_close), None)
+            if keys is not None:  # only push-to-talk keys give this; typed lines have no key press
+                self._time(trace, "keys_overlap", keys["since_ms"], by="radio")
+                self._time(trace, "keys_detected", keys["detected_ms"],
+                           ms=keys["detected_ms"] - keys["since_ms"], by="hub")
+            self._time(trace, "stepped_on", msg.overlap_start, ms=msg.overlap_end - msg.overlap_start,
+                       by=f"cockpit:{msg.callsign}")
+            self._time(trace, "call_end", msg.squelch_close, by="radio")
+            self._time(trace, "event_raised", env_.ts, ms=env_.ts - msg.squelch_close, by=f"cockpit:{msg.callsign}")
             if hint.kind == "restrictive":
                 self._step(trace, f"cockpit:{msg.callsign}", "hint",
                            f"Local hint \"{hint.text}\" from Moss record {hint.source_doc_id} "
                            f"in {hint.moss_ms} ms", source_text=hint.source_text, moss_ms=hint.moss_ms)
+                self._time(trace, "hint", env_.ts, ms=hint.moss_ms, by="moss")
         else:
             # Only a detected blocked call starts a trace; speech, radio and query audits do not.
             trace = self.traces.get(event_id)
@@ -745,6 +768,8 @@ class LiveRoom:
             tower = self.transcripts.get(msg.transcript_id or "")
             if tower is not None:
                 trace["tower"] = tower.model_dump(mode="json")
+                self._time(trace, "tower_transcript", tower.ptt_end, by="cartesia")
+            self._time(trace, "proposed", env_.ts, by="ground")
             trace["status"] = "proposed"
             self._step(trace, "ground", "proposed",
                        f"Proposed \"{msg.instruction_text}\" ({msg.confidence}: {msg.confidence_method})",
@@ -752,6 +777,7 @@ class LiveRoom:
         elif isinstance(msg, AuditRecord) and msg.stage == "policy":
             trace["policy"] = msg.payload
             auto = msg.payload.get("decision") == "auto_relay"
+            self._time(trace, "policy", env_.ts, ms=msg.latency_ms, by="policy")
             if auto:
                 self._step(trace, "policy", "auto_relay",
                            "Auto-relay: every check passed, this repeats the controller's own words")
@@ -769,12 +795,14 @@ class LiveRoom:
             trace["status"] = "auto_relayed" if msg.approved_via == "auto" else "approved"
             trace["decision"] = msg.model_dump(mode="json")
             self._step(trace, src, "approved", f"Approved by {msg.approved_by} ({msg.approved_via})")
+            self._time(trace, "approved", env_.ts, by=src)
         elif isinstance(msg, RejectedDirective):
             self.flow("controller", "gateway", "Rejected", event_id)
             self.flow("gateway", f"cockpit:{cs}", "RejectedDirective", event_id)
             trace["status"] = "rejected"
             trace["decision"] = msg.model_dump(mode="json")
             self._step(trace, "controller", "rejected", f"Rejected by {msg.rejected_by}: cockpit asks to say again")
+            self._time(trace, "rejected", env_.ts, by="controller")
         elif isinstance(msg, ReadbackResult):
             self.flow(f"cockpit:{cs}", "gateway", "ReadbackResult", event_id)
             self.flow("gateway", "monitor", "ReadbackResult", event_id)
@@ -782,10 +810,20 @@ class LiveRoom:
             trace["status"] = "confirmed" if msg.match else "readback_wrong"
             self._step(trace, f"cockpit:{cs}", "readback",
                        f"Readback {'correct' if msg.match else 'incorrect'}: \"{msg.readback_text}\"")
+            self._time(trace, "readback", env_.ts, by=f"cockpit:{cs}")
         elif isinstance(msg, AuditRecord) and msg.stage == "directive_spoken":
             trace["status"] = "delivered" if trace["status"] in ("approved", "auto_relayed") else trace["status"]
             self._step(trace, f"cockpit:{cs}", "delivered", "Directive spoken in the pilot's left ear",
                        first_audio_ms=msg.latency_ms)
+            self._time(trace, "spoken", env_.ts, ms=msg.latency_ms, by="cartesia")
+        elif isinstance(msg, AuditRecord) and msg.stage == "readback_percolate":
+            self.flow("gateway", "elastic", "percolate readback", event_id)
+            agrees = msg.payload.get("match") == msg.payload.get("slot_check_match")
+            self._step(trace, "elastic", "percolate",
+                       f"Elastic {'matched' if msg.payload.get('match') else 'did not match'} the readback against "
+                       f"the stored directive ({msg.actor}, {msg.latency_ms} ms): "
+                       f"{'agrees with' if agrees else 'disagrees with'} the slot check", **msg.payload)
+            self._time(trace, "elastic_check", env_.ts, ms=msg.latency_ms, by=msg.actor)
         elif isinstance(msg, AuditRecord) and msg.stage == "ground_agents":
             self.flow("ground", "elastic", "audit", event_id)
         else:
