@@ -110,6 +110,16 @@ def cartesia_stt_timestamp_model() -> str:
     return env("CARTESIA_STT_TIMESTAMP_MODEL", default=DEFAULT_CARTESIA_STT_TIMESTAMP_MODEL)
 
 
+def realtime_replay() -> bool:
+    """Pace replayed audio to the manual STT endpoint at real time (UNSTEP_REALTIME_REPLAY=1).
+
+    Off by default: a 15-run re-test showed /stt/websocket transcribes audio sent as
+    fast as possible just as well (docs/09-cartesia-feedback.md, "Measured re-test"),
+    which saves about the clip's length per replay. The turns endpoint is always paced.
+    """
+    return env("UNSTEP_REALTIME_REPLAY", default="0").lower() in ("1", "true", "yes", "on")
+
+
 def cartesia_tts_model() -> str:
     return env("CARTESIA_TTS_MODEL", default=DEFAULT_CARTESIA_TTS_MODEL)
 

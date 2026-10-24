@@ -112,8 +112,9 @@ def alignment_audit(transcript: TowerTranscript, report: dict) -> AuditRecord:
 
 
 class TowerTranscriber:
-    def __init__(self, stt_factory=CartesiaManualSTT, runways=(), taxiways=()):
+    def __init__(self, stt_factory=CartesiaManualSTT, runways=(), taxiways=(), realtime: bool = True):
         self.stt_factory = stt_factory
+        self.realtime = realtime  # False: send the clip as fast as possible (manual endpoint accepts it)
         self.runways = runways
         self.taxiways = taxiways
         self.last_alignment: dict | None = None  # report from the latest transcribe(), see align_words
@@ -131,8 +132,10 @@ class TowerTranscriber:
                 for offset in range(0, len(audio), 3200):
                     chunk = audio[offset:offset + 3200]
                     await asyncio.gather(text_stt.send_audio(chunk), word_stt.send_audio(chunk))
-                    await asyncio.sleep(max(0, started + (offset + len(chunk)) / 32000 - time.monotonic()))
-                await asyncio.sleep(max(0, started + (ptt_end - ptt_start) / 1000 - time.monotonic()))
+                    if self.realtime:
+                        await asyncio.sleep(max(0, started + (offset + len(chunk)) / 32000 - time.monotonic()))
+                if self.realtime:
+                    await asyncio.sleep(max(0, started + (ptt_end - ptt_start) / 1000 - time.monotonic()))
                 text, timing = await asyncio.gather(text_stt.finalize(), word_stt.finalize())
         words, self.last_alignment = align_words(text.text, timing.words, (ptt_end - ptt_start) / 1000)
         return TowerTranscript(

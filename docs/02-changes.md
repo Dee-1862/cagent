@@ -19,6 +19,19 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Live room sends replays to Cartesia fast, not at real time (W3)
+
+**Type:** Changed
+**Area:** Audio
+
+- Rishit's 15-run re-test showed the manual endpoint (`/stt/websocket`) transcribes audio sent as fast as possible just as well, so waiting a clip's length before finalize was wasted time (about 3 s per call).
+- The room no longer paces the tower clip fallback (`TowerTranscriber(realtime=False)`), the cockpit hearing the radio mix (`run_audio(realtime=False)`), or the readback clip fallback. Streamed push-to-talk (P3) is unchanged; the turns endpoint keeps real-time pacing.
+- `UNSTEP_REALTIME_REPLAY=1` brings back real-time pacing if Cartesia ever starts returning empty transcripts again. `TowerTranscriber` still paces by default, so presenter mode is unchanged.
+- The room now forwards the P7b word alignment report as an `AuditRecord` (stage `tower_word_alignment`) after each tower transcript.
+- Checked with fake STT (3 new tests); not run against live Cartesia here.
+
+**Related:** [09-cartesia-feedback.md](09-cartesia-feedback.md) "Measured re-test", agent mail R9, R10 (W3)
+
 ## 2026-10-24: Tower words from ink-2 now carry ink-whisper's times (P7b)
 
 **Type:** Fixed

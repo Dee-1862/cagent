@@ -27,7 +27,7 @@ import soundfile as sf
 
 from unstep import scenario
 from unstep.clock import now_ms
-from unstep.config import ROOT, env
+from unstep.config import ROOT, env, realtime_replay
 from unstep.contracts import (AnomalyEvent, ApprovedDirective, AuditRecord, Insight, PilotQuery,
                               ProposedDirective, ReadbackResult, RejectedDirective, TowerTranscript,
                               VoiceApproval, Word, unwrap, wrap)
@@ -318,6 +318,9 @@ class LiveRoom:
         self.stream_stt_factory = stream_stt_factory
         self.streams: dict[str, dict] = {}  # station -> push-to-talk stream in progress (P3)
         self.stream_results: dict[str, asyncio.Task] = {}  # tx_id -> streamed transcript
+        self.alignments: dict[str, dict] = {}  # transcript_id -> tower word alignment report (P7b)
+        # W3: replays to the manual STT endpoint go as fast as possible unless UNSTEP_REALTIME_REPLAY=1
+        self.realtime_replay = realtime_replay()
         self.clients: dict[str, set] = {sid: set() for sid in self.stations}
         self.edges: dict[str, LiveEdge] = {}
         self.turns: dict[str, StationTurns] = {}
@@ -605,6 +608,8 @@ class LiveRoom:
                 released = now_ms()
                 if s.kind == "atc":
                     result = await stt.finish(st["start_ms"], st["end_ms"], self.frequency)
+                    if getattr(stt, "last_alignment", None):
+                        self.alignments[result.transcript_id] = stt.last_alignment
                 else:
                     result = (await stt.finalize()).text
                 log.info("streamed STT for %s final %d ms after release", s.id, now_ms() - released)
@@ -742,15 +747,23 @@ class LiveRoom:
         elif self.tower_transcriber is not None or (self.live and env("CARTESIA_API_KEY")):
             from unstep.ground.tower import TowerTranscriber
 
-            transcriber = self.tower_transcriber or TowerTranscriber(runways=("33", "28L"))
+            transcriber = self.tower_transcriber or TowerTranscriber(runways=("33", "28L"),
+                                                                     realtime=self.realtime_replay)
             transcript = await transcriber.transcribe(pcm16(tx.pcm), tx.start_ms, tx.end_ms,
                                                       self.frequency, callsign)
+            if getattr(transcriber, "last_alignment", None):
+                self.alignments[transcript.transcript_id] = transcriber.last_alignment
         else:
             transcript = known_transcript(tx, self.frequency, callsign)
         if transcript.callsign is None:
             transcript = transcript.model_copy(update={"callsign": parse_callsign(transcript.text)})
         self.transcripts[transcript.transcript_id] = transcript
         await self.links["tower"].send(transcript)
+        report = self.alignments.pop(transcript.transcript_id, None)
+        if report is not None:
+            from unstep.ground.tower import alignment_audit
+
+            await self.links["tower"].send(alignment_audit(transcript, report))
 
     async def _cockpit_hears(self, callsign: str, mx: Mix, towers: list[Transmission]) -> None:
         edge = self.edges[callsign]
@@ -767,7 +780,7 @@ class LiveRoom:
             edge.manual_stt_factory = lambda h=heard: FakeManualSTT([h])
         self.flow("radio", f"cockpit:{callsign}", "what this aircraft heard")
         await edge.run_audio(ArraySource(mx.pcm, t0=mx.t0, squelch=KeyedSquelch(mx.any_keyed)),
-                             realtime=self.live)
+                             realtime=self.live and self.realtime_replay)
 
     async def _pilot_spoke(self, tx: Transmission, clean: bool) -> None:
         turns = self.turns.get(tx.station)
@@ -779,7 +792,8 @@ class LiveRoom:
             async with CartesiaManualSTT(keyterms=build_keyterms(callsigns=[tx.station], runways=["33", "28L"])) as stt:
                 for i in range(0, len(tx.pcm), 1600):
                     await stt.send_audio(pcm16(tx.pcm[i:i + 1600]))
-                    await asyncio.sleep(0.1)
+                    if self.realtime_replay:
+                        await asyncio.sleep(0.1)
                 text = (await stt.finalize()).text
         if text:
             await turns.queue.put((text, pcm16(tx.pcm)))
