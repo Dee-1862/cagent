@@ -19,6 +19,17 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Loader for FAA JO 7110.65 into Elastic (W2)
+
+**Type:** Added
+**Area:** Ground agents
+
+- `scripts/ingest_faa.py` splits the Order's chapter pages (HTML or text downloaded from faa.gov; we don't ship the text) into one document per numbered paragraph and indexes them into `unstep-faa` with id = paragraph number, `text` as `semantic_text` for hybrid search and `body` for BM25. `--dry-run` shows what it found. `UNSTEP_FAA_INFERENCE_ID` pins the inference endpoint.
+- The Compliance agent's `unstep_faa_search` tool searches this index, and the hub keeps a citation only if `unstep-faa/_doc/<paragraph>` exists (B5).
+- Checked: 3 tests on a made-up fixture page. Needs Deekshith to download the chapters and run it against the cluster.
+
+**Related:** [10-agentic-architecture.md](10-agentic-architecture.md) 4.4, agent mail R10 (W2)
+
 ## 2026-10-24: Eyes-free cues use the agreed wording and never talk over the pilot (C2)
 
 **Type:** Changed
