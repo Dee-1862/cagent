@@ -1,166 +1,179 @@
 # Architecture
 
-How data flows through Unstep, from the moment a transmission is stepped on to the final audit record.
+How data flows through Unstep, from a stepped-on or misheard instruction to the final audit record.
 
 | Field | Value |
 | --- | --- |
-| Status | Draft v0.2 |
+| Status | Draft v0.3 |
 | Last updated | 2026-10-23 |
-| Related | [PRD](01-prd.md), [Work Split](04-work-split.md), [Research](06-research.md), [Sponsor Review](07-sponsor-review.md) |
+| Related | [PRD](01-prd.md), [Work Split](04-work-split.md), [Research](06-research.md), [Sponsor Review](07-sponsor-review.md), [Advice](08-advice.md) |
 
-> **Current scope:** Raspberry Pi integration is on hold. The cockpit edge runs as a software simulator on a laptop, using recorded radio audio and a simulated PTT/squelch signal. The data flow below stays the same when we move to the Pi later.
+> **Current scope:** Raspberry Pi integration is on hold. The cockpit edge runs as a software simulator on a laptop, using recorded radio audio and a simulated PTT/squelch signal. The data flow stays the same when we move to the Pi later.
 
 ## 1. Design Principles
 
-- **Agents share context, they don't chat.** Every agent reads and writes a shared Moss space. No agent sends conversational messages to another.
-- **Voice runs the whole loop.** Cartesia transcribes the tower, detects cut-offs, speaks the directive and checks the readback.
-- **Elastic orchestrates and remembers.** An Elastic Workflow runs the ground agents. Elastic holds the FAA rulebook and the audit trail.
-- **A human approves every directive.**
+- **Live messages go over WebSocket.** One gateway on the ground. Moss is not a message bus: handoff goes through Moss Cloud, `push_index()` replaces the whole index, and auto-refresh polls every 300 seconds.
+- **Moss is local memory.** Each agent keeps its own Moss session. One writer per index. Handoff at clear points (end of an event, end of a flight).
+- **Elastic is the ground's memory and orchestrator.** The gateway writes every message to an Elastic events index, so Agent Builder agents read from Elastic, not from Moss.
+- **Voice runs both ways.** Cartesia transcribes tower and cockpit, speaks directives and listens to readbacks.
+- **A human approves every directive.** The local hint is labeled "Likely" and is never a clearance.
 - **Audit never blocks the live path.**
 
 ## 2. System Overview
 
 ```mermaid
 flowchart LR
-    subgraph Air["Cockpit edge simulator (Dev A)"]
-        RADIO[Recorded radio audio<br/>and simulated PTT/squelch]
-        DET[Collision detector]
-        CUT[Cartesia<br/>cut-off detection]
+    subgraph Cockpit["Cockpit edge simulator (Dev A)"]
+        RADIO[Recorded radio audio<br/>and simulated PTT]
+        DET[Overlap detector]
+        CSTT[Cartesia STT<br/>cockpit transcript]
         EDGE[Edge agent]
-        LOCAL[(Moss local index<br/>NOTAMs, taxiways,<br/>recent clearances)]
+        MA[(Moss airport index)]
+        MF[(Moss flight session)]
         TTS[Cartesia TTS<br/>advisory voice]
-        EAR[Pilot headset<br/>left ear]
+        EAR[Headset left ear]
         MIC[Pilot mic]
-        RB[Cartesia STT<br/>readback check]
+        RSTT[Cartesia turn STT<br/>readback]
     end
 
-    SHARED[(Moss shared<br/>context space)]
-
-    subgraph Ground["Ground (Dev B)"]
-        TOWER[Tower audio]
-        TSTT[Cartesia STT<br/>with key terms]
-        WF[Elastic Workflow<br/>trigger]
+    subgraph Ground["Ground"]
+        TOWER[Tower audio and PTT]
+        TSTT[Cartesia STT<br/>key terms, word timestamps]
+        GW[WebSocket gateway]
+        MQ[(Moss frequency session)]
+        MON[Frequency Monitor]
+        WF[Elastic Workflow]
         INT[Intercept Agent]
-        REG[Compliance Agent]
-        FAA[(Elastic index<br/>FAA JO 7110.65)]
+        CMP[Compliance Agent]
+        RBA[Readback Auditor]
+        FAA[(Elastic FAA JO 7110.65)]
+        EV[(Elastic events and audit)]
         UI[Controller dashboard]
-        AUD[(Elastic audit indices)]
     end
 
     RADIO --> DET --> EDGE
-    RADIO --> CUT --> EDGE
-    LOCAL <--> EDGE
-    EDGE -- AnomalyContext --> SHARED
-    EDGE -- trigger --> WF
-    TOWER --> TSTT -- TowerTranscript --> SHARED
-    WF --> INT
-    SHARED <--> INT
-    INT --> REG
-    FAA --> REG
-    REG -- ProposedDirective --> UI
-    UI -- ApprovedDirective --> SHARED
-    SHARED --> EDGE
+    RADIO --> CSTT --> EDGE
+    MA <--> EDGE
+    MF <--> EDGE
+    EDGE -- AnomalyEvent --> GW
+    TOWER --> TSTT -- TowerTranscript --> GW
+    TSTT --> MQ
+    GW --> EV
+    GW -- trigger --> WF
+    WF --> INT --> CMP
+    EV --> INT
+    FAA --> CMP
+    CMP -- ProposedDirective --> UI
+    UI -- ApprovedDirective --> GW -- ApprovedDirective --> EDGE
     EDGE --> TTS --> EAR
-    MIC --> RB --> EDGE
-    EDGE -- ReadbackResult --> SHARED
-
-    EDGE -. AuditRecord .-> AUD
-    INT -. AuditRecord .-> AUD
-    REG -. AuditRecord .-> AUD
-    UI -. AuditRecord .-> AUD
+    MIC --> RSTT --> EDGE
+    EDGE -- ReadbackResult --> GW
+    WF --> RBA
+    MQ --> MON
+    EV --> MON
+    MON -- Insight --> GW
+    GW --> UI
 ```
 
-Solid lines are the live path. Dotted lines are audit writes, which never block the live path.
-
-**Fallback transport:** if Moss can't share one space between the edge and the ground machine (M-010), the same messages go over a WebSocket. The message formats don't change, only the transport.
+Ownership: the cockpit box, the Moss frequency session and the Frequency Monitor belong to Dev A (all Moss). Everything else on the ground belongs to Dev B (all Elastic plus tower STT). See [Work Split](04-work-split.md#2-owners).
 
 ## 3. Data Flow, Start to Finish
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant ATC as Controller (voice)
-    participant TS as Tower STT (Cartesia)
-    participant E as Cockpit edge (laptop sim)
-    participant ML as Moss local index
-    participant MS as Moss shared space
+    participant ATC as Tower (voice)
+    participant TS as Tower STT
+    participant GW as Gateway
+    participant E as Cockpit edge
+    participant M as Moss (cockpit)
     participant WF as Elastic Workflow
-    participant AG as Intercept + Compliance agents
-    participant UI as Controller dashboard
-    participant C as Cartesia TTS/STT
+    participant AG as Agents
+    participant UI as Dashboard
     participant P as Pilot
 
-    Note over E,ML: Pre-flight: edge pulls NOTAMs and taxiway data from Elastic and indexes them in Moss
+    Note over E,M: Pre-flight: load airport index, open flight session. Ground opens frequency session
 
-    ATC->>TS: "Hold short of Runway 33"
-    TS->>MS: TowerTranscript (key terms applied)
-    ATC--xE: Transmission blocked by overlap
-    E->>E: Collision signature plus cut-off detected (under 10 ms)
-    E->>ML: Search position, runway, NOTAMs, recent clearances (under 5 ms)
-    ML-->>E: Local context
-    E->>MS: AnomalyContext
-    E->>WF: Trigger with event_id
-    WF->>AG: Run agents
-    AG->>MS: Read AnomalyContext and TowerTranscript
-    AG->>AG: Hybrid search FAA JO 7110.65 and cite paragraph
-    AG->>UI: ProposedDirective (text, confidence, citation)
-    UI->>UI: Controller reviews and approves
-    UI->>MS: ApprovedDirective
-    MS-->>E: ApprovedDirective
-    E->>C: Directive text, advisory voice, ATC numbers
-    C-->>P: "Advisory. Hold short Runway tree tree. Read back." (under 90 ms)
-    P->>C: Readback
-    C-->>E: Readback transcript
-    E->>E: Compare with directive
+    ATC->>TS: "Cessna 1-2-3, hold short Runway 33" (finalize on PTT release)
+    TS->>GW: TowerTranscript with word timestamps
+    ATC--xE: Stepped on by a second transmission
+    E->>E: Overlap window found, cockpit hears "Cessna 1-2-3 [static]"
+    E->>M: Search flight session and airport index with the fragment
+    M-->>E: Likely "hold short Runway 33" (time_taken_ms shown)
+    E->>P: "Advisory. Transmission blocked. Likely hold short Runway 33. Awaiting controller."
+    E->>GW: AnomalyEvent (overlap window, fragment, hint)
+    GW->>WF: Trigger with event_id (event also written to Elastic)
+    WF->>AG: Intercept matches transcript, marks blocked words
+    AG->>AG: Compliance cites FAA paragraph
+    AG->>UI: ProposedDirective
+    UI->>GW: ApprovedDirective (controller clicked Approve)
+    GW->>E: ApprovedDirective
+    E->>P: "Advisory. Cessna one two tree, hold short runway tree tree. Read back."
+    P->>E: Readback (turn STT, interrupts voice on turn.start)
+    E->>E: Compare callsign, action, runway
     alt Readback matches
-        E->>MS: ReadbackResult (correct)
+        E->>GW: ReadbackResult (correct)
     else Mismatch
-        E->>C: "Readback incorrect" and repeat (max 2, then flag controller)
+        E->>P: "Readback incorrect" and repeat (max 2, then flag controller)
     end
-    Note over E,UI: Every stage also writes an AuditRecord to Elastic
+    GW->>WF: Readback Auditor records outcome
+    Note over GW,UI: Frequency Monitor posts insights. Every stage is stored in Elastic for live queries
 ```
 
 ## 4. Stage by Stage
 
-| # | Stage | Where | Input | Output | Owner | Target |
-| --- | --- | --- | --- | --- | --- | --- |
-| 0 | Pre-flight index | Edge sim (Moss) | Elastic: NOTAMs, taxiway graph | Moss local index | A | Before pushback |
-| 1 | Audio capture | Edge sim | Recorded radio audio, simulated PTT/squelch | Audio frames | A | Continuous |
-| 2 | Collision detection | Edge sim | Audio frames | Collision flag, duration | A | Under 10 ms |
-| 3 | Cut-off detection | Edge sim (Cartesia) | Audio frames | Cut-off flag | A | TBD |
-| 4 | Local search | Edge sim (Moss) | Aircraft ID, GPS | Runway, taxiway node, NOTAMs, recent clearances | A | Under 5 ms |
-| 5 | Context handoff | Moss shared space | Collision plus local context | `AnomalyContext` | A | TBD |
-| 6 | Tower transcript | Ground (Cartesia STT) | Controller audio | `TowerTranscript` | B | TBD |
-| 7 | Workflow trigger | Elastic Workflow | `event_id` | Agents start | B | TBD |
-| 8 | Intercept | Elastic agent | `AnomalyContext`, `TowerTranscript` | Matched event | B | TBD |
-| 9 | Compliance check | Elastic agent | Matched event | `ProposedDirective` | B | TBD |
-| 10 | Human approval | Dashboard | `ProposedDirective` | `ApprovedDirective` | B | Human-paced |
-| 11 | Directive delivery | Moss shared space | `ApprovedDirective` | Directive on edge | Both | TBD |
-| 12 | Speech | Edge sim (Cartesia TTS) | Directive text | Advisory audio in left ear | A | Under 90 ms to first audio |
-| 13 | Readback check | Edge sim (Cartesia STT) | Pilot speech | `ReadbackResult` | A | TBD |
-| 14 | Audit | Elastic | Every stage | `AuditRecord` | Both | Async |
+| # | Stage | Where | Output | Owner | Target |
+| --- | --- | --- | --- | --- | --- |
+| 0 | Pre-flight | Cockpit, ground | Moss airport index loaded, flight and frequency sessions open | A | Before pushback |
+| 1 | Tower transcript | Ground (Cartesia STT) | `TowerTranscript` with word timestamps | B | TBD after PTT release |
+| 2 | Frequency indexing | Ground (Moss) | Transcript added to `freq-<frequency>` | A | Under 10 ms |
+| 3 | Overlap detection | Cockpit | Overlap window | A | Under 10 ms |
+| 4 | Cockpit transcript | Cockpit (Cartesia STT) | What the cockpit heard | A | TBD |
+| 5 | Local hint | Cockpit (Moss) | "Likely ..." hint and search time | A | Under 10 ms |
+| 6 | Event | Cockpit to gateway | `AnomalyEvent` | A | TBD |
+| 7 | Store and trigger | Gateway, Elastic | Event in Elastic, Workflow started | B | TBD |
+| 8 | Intercept | Elastic agent | Matched transcript, blocked words | B | TBD |
+| 9 | Compliance | Elastic agent | `ProposedDirective` with FAA citation | B | TBD |
+| 10 | Approval | Dashboard | `ApprovedDirective` | B | Human-paced |
+| 11 | Delivery | Gateway to cockpit (Cartesia TTS) | Advisory audio in left ear | A | Measure first audio |
+| 12 | Readback | Cockpit (Cartesia turn STT) | `ReadbackResult` | A | TBD |
+| 13 | Readback audit | Elastic agent | Audit outcome | B | Async |
+| 14 | Monitoring | Ground (Moss and Elastic) | `Insight` | A | Async |
+| 15 | Audit | Elastic | ES\|QL audit and stats | B | Async |
 
 ## 5. Message Contracts
 
-See [Work Split, section 3](04-work-split.md#3-shared-contracts-both-do-first) for the fields.
+Fields are in [Work Split, section 3](04-work-split.md#3-shared-contracts-both-do-first). Every message goes over the WebSocket gateway, and the gateway writes it to the Elastic events index.
 
-| Message | Written by | Read by |
+| Message | From | To |
 | --- | --- | --- |
-| `AnomalyContext` | Edge agent | Intercept Agent |
-| `TowerTranscript` | Tower STT | Intercept Agent |
-| `ProposedDirective` | Compliance Agent | Controller dashboard |
-| `ApprovedDirective` | Controller dashboard | Edge agent |
-| `ReadbackResult` | Edge agent | Dashboard, audit |
-| `AuditRecord` | Every component | Elastic audit indices |
+| `TowerTranscript` | Tower STT | Gateway, Moss frequency session |
+| `AnomalyEvent` | Cockpit | Gateway, Workflow |
+| `ProposedDirective` | Compliance Agent | Dashboard |
+| `ApprovedDirective` | Dashboard | Cockpit |
+| `ReadbackResult` | Cockpit | Gateway, Readback Auditor, dashboard |
+| `Insight` | Frequency Monitor | Dashboard, Elastic |
+| `AuditRecord` | Every component | Elastic |
 
-## 6. Failure Paths
+## 6. Moss Indexes
+
+| Index | Kind | Writer | Readers | Handoff |
+| --- | --- | --- | --- | --- |
+| `airport-<ICAO>` | Long-term | Pre-flight setup | Cockpit, ground | Loaded with `load_index` before flight |
+| `flight-<callsign>` | Cockpit session | Cockpit only | Ground and audit | `push_index()` at end of each event and end of flight |
+| `freq-<frequency>` | Ground session | Ground only | Frequency Monitor, ground services | Local only |
+
+Moss does not compare readbacks. That is a slot comparison (callsign, action, runway) in our own code.
+
+## 7. Failure Paths
 
 | Failure | Behavior |
 | --- | --- |
-| No link to ground | Edge keeps indexing in Moss and plays a local alert: "Advisory. Transmission blocked, request say again" (M-003) |
+| No link to ground | Cockpit plays the pre-generated "Advisory. Transmission blocked, request say again" and keeps its local Moss session (M-003) |
 | No tower transcript | No directive is proposed. Dashboard shows "blocked transmission, content unknown" (M-002) |
-| Low confidence or no rule match | Card is marked low confidence. The controller must reissue by voice |
-| Controller rejects | Nothing is sent to the cockpit. The rejection is audited |
-| Readback wrong twice | Edge stops repeating and the dashboard flags the controller to reissue by voice |
-| Cartesia unavailable | Fall back to local TTS or pre-recorded phrases (M-004) |
-| Moss can't share across machines | Same messages over WebSocket (M-010) |
+| No local hint found | Cockpit says "Advisory. Transmission blocked. Awaiting controller." |
+| Low confidence or no rule match | Card is marked low confidence. Controller reissues by voice |
+| Controller rejects | Cockpit hears "request say again." The rejection is audited |
+| Readback wrong twice | Cockpit stops repeating and the dashboard flags the controller |
+| Cartesia unavailable | Pre-generated audio for fixed phrases, text on screen for the rest (M-004) |
+| Agent Builder can't reach Moss | Agents read only from Elastic, which already has every message |

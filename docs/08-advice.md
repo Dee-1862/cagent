@@ -1,10 +1,10 @@
 # Advice: What Unstep Is, How to Win the Tracks, and How to Use Moss and Cartesia
 
-Rishit's recommendations after reviewing PRD v0.2, the sponsor notes and the Moss and Cartesia docs. Each section says what we think and why. Nothing here changes the PRD yet. We agree on it first, then fold it in.
+Rishit's recommendations after reviewing PRD v0.2, the sponsor notes and the Moss and Cartesia docs. Each section says what we think and why. Both of us agreed to this advice, and it is now folded into [PRD v0.3](01-prd.md), the [Architecture](05-architecture.md), the [Work Split](04-work-split.md) and [Research](06-research.md). Section 9 shows how.
 
 | Field | Value |
 | --- | --- |
-| Status | Proposal v0.1 |
+| Status | Accepted, folded into PRD v0.3 on 2026-10-23 |
 | Last updated | 2026-10-23 |
 | Related | [PRD](01-prd.md), [Architecture](05-architecture.md), [Work Split](04-work-split.md), [Sponsor Review](07-sponsor-review.md), [Mistakes and Lessons](03-mistakes-and-lessons.md) |
 
@@ -298,6 +298,20 @@ Never cut: the readback check, the blocked-word highlight, the Moss search time 
 | 5 | Verify `$near` syntax and Agent Builder to Moss access | Dev A, Dev B |
 | 6 | Build the ATC key term list and pronunciation dictionary | Dev A |
 | 7 | Replace "under 90 ms" with measured numbers once we have them | Both |
+
+## 9. How This Was Folded In
+
+| Step from section 8 | Status |
+| --- | --- |
+| 1. Agree on A + B + monitoring | Done |
+| 2. Fold sections 1, 3 and 4 into the docs | Done in PRD v0.3, Architecture v0.3 and Work Split v0.3 |
+| 3. Switch M2 transport to WebSocket | Done in the Work Split milestones |
+| 4. Monitoring agent and Readback Auditor | Readback Auditor is task B6 (Elastic). **The Frequency Monitor moved to Dev A** (task A5), because it is mostly Moss work and Dev A owns Moss. This keeps both workloads equal |
+| 5. Verify `$near` and Agent Builder to Moss | Research RA-8 (Dev A) and RB-9 (Dev B) |
+| 6. ATC key terms and pronunciation dictionary | Split: key term list with tower STT (B2), pronunciation dictionary with advisory TTS (A6) |
+| 7. Measured numbers instead of "under 90 ms" | PRD section 9 and Research section 4 |
+
+The local hint is spoken before approval, as proposed in section 3.4. To keep it consistent with FR-6, PRD v0.3 adds local hint rules: it always says "Likely" and "Awaiting controller," is never phrased as a clearance, and never asks for a readback.
 
 ## Sources
 

@@ -2,241 +2,276 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Draft v0.2 |
+| Status | Draft v0.3 |
 | Last updated | 2026-10-23 |
-| Related | [Changes](02-changes.md), [Mistakes and Lessons](03-mistakes-and-lessons.md), [Work Split](04-work-split.md), [Architecture](05-architecture.md), [Research](06-research.md), [Sponsor Review](07-sponsor-review.md) |
+| Related | [Changes](02-changes.md), [Mistakes and Lessons](03-mistakes-and-lessons.md), [Work Split](04-work-split.md), [Architecture](05-architecture.md), [Research](06-research.md), [Sponsor Review](07-sponsor-review.md), [Advice](08-advice.md) |
+
+**One line:** Unstep: no ATC instruction lost or misheard.
 
 ## 1. Executive Summary
 
-Air Traffic Control (ATC) and aircraft still talk over analog VHF half-duplex radio, a design from the 1950s. When two people key their microphones at the same moment, the transmissions collide and turn into unreadable static. Pilots call this getting "stepped on."
+Air Traffic Control (ATC) and aircraft still talk over analog VHF half-duplex radio, a design from the 1950s. When two stations transmit at the same moment, both calls turn into a squeal or static. Pilots call this getting "stepped on." Even when a call does get through, the pilot can mishear it and read back something different.
 
-In February 2026 the NTSB reportedly found that, seconds before a fatal collision, a life-saving ATC command was erased by a 0.8-second static overlap. (Source still needed, see M-005. Do not lead the pitch with this until it is cited.) Today neither the tower nor the pilot knows for sure what was blocked.
+Voice communication between tower and pilot fails in two ways:
 
-Unstep fixes this with two parts:
+1. **Not heard.** The instruction was stepped on and never arrived.
+2. **Misheard.** The pilot reads back something different from what was said.
 
-- An **edge AI safety box** in the cockpit. The target hardware is a Raspberry Pi 5. For now it runs as a laptop simulator.
-- A **multi-agent supervisory grid** on the ATC ground side, built on Elastic.
+Unstep catches both. It transcribes the tower and the cockpit, finds exactly which words were lost or misheard, has the correction checked against the FAA rulebook and approved by a human controller, then speaks it into the pilot's headset and checks the readback.
 
-When a transmission is stepped on, the system:
+Unstep does not avoid aircraft collisions. It prevents the **communication failure** that can lead to one. The NTSB has reportedly linked a February 2026 fatal collision to a blocked ATC call (source still needed, M-005). We only use that story once it is cited.
 
-1. Detects the collision from the audio, backed up by Cartesia's end-of-speech detection.
-2. Recovers the controller's original words with Cartesia speech-to-text on the tower audio.
-3. Hands context between agents through a shared Moss memory space, which also keeps working offline.
-4. Verifies the correct procedure against the FAA rulebook with Elastic hybrid search.
-5. Shows the drafted directive to a human controller for approval.
-6. Speaks the approved directive into the pilot's headset in a distinct advisory voice.
-7. Listens to the pilot's readback and checks it matches, repeating the instruction if not.
+**Vision:** the first step toward an AI co-controller that keeps humans in charge.
 
-Voice runs through the whole loop: transcription in, speech out, and a readback check that closes it.
+## 2. Terms
 
-## 2. Problem Statement
+| Term | Meaning |
+| --- | --- |
+| Stepped-on / blocked transmission | Two radio transmissions overlap and one or both are lost. We never call this a "collision" |
+| Collision | Aircraft hitting each other or an obstacle. Only used in this sense |
+| Readback | The pilot repeating an instruction back to the controller |
+| Advisory voice | Unstep's synthetic voice in the pilot's headset. Always starts with "Advisory" |
+| Local hint | The cockpit's own best guess at a blocked instruction, from Moss search. Always labeled "Likely" |
+| Directive | An instruction approved by a human controller |
+
+## 3. Problem Statement
 
 | Aspect | Today |
 | --- | --- |
 | Channel | Shared half-duplex VHF, one speaker at a time |
-| Failure | Simultaneous transmissions produce a heterodyne squeal or static |
-| Detection | Neither side reliably knows a message was lost |
-| Recovery | Depends on someone noticing and asking "say again" |
-| Audit | No structured record of what was blocked |
+| Failure 1 | Simultaneous transmissions produce a heterodyne squeal or static |
+| Failure 2 | Readback errors are only caught if the controller notices |
+| Detection | Neither side reliably knows a message was lost or misheard |
+| Recovery | Depends on someone asking "say again" |
+| Audit | No structured record of what was blocked or misheard |
 
-## 3. Goals and Non-Goals
+## 4. Scope
+
+| In or out | Item | Why |
+| --- | --- | --- |
+| **In** | A: Blocked transmission recovery | The core problem |
+| **In** | B: Readback checking | Same pipeline as A, and makes voice two-way |
+| **In** | Thin monitoring agent | Reads what the pipeline already produces and raises insights. Adds Moss and Elastic depth without touching the live path |
+| Out | AI that runs ATC | Unsafe, against our human-approval rule, too big. Vision slide only |
+| Out | Collision avoidance | Radar and TCAS territory, a different product |
+| On hold | Raspberry Pi hardware | Laptop simulator first ([Work Split 3a](04-work-split.md#3a-on-hold-raspberry-pi-integration)) |
+| Later | ATC practice mode | Only after the demo flow works |
 
 ### Goals
 
-- Detect stepped-on transmissions in the cockpit within 10 ms.
-- Recover the intended instruction from the controller's own transmission and present it to a human for approval.
-- Deliver the approved instruction privately to the pilot's headset, and confirm the pilot understood it.
-- Keep a complete, queryable audit trail of every event.
+- Detect stepped-on transmissions on the cockpit side as they happen.
+- Show exactly which words were blocked, using tower and cockpit transcripts.
+- Recover the instruction from the controller's own transmission and get human approval.
+- Deliver it to the pilot's headset in a voice that can't be mistaken for ATC.
+- Catch wrong readbacks and correct them by voice.
+- Keep a complete, queryable audit trail and live frequency stats.
 
 ### Non-Goals
 
-- No autonomous action. Agents never issue commands without human sign-off.
-- No replacement of the primary VHF radio or of standard phraseology.
-- No control of the aircraft. Unstep only advises by audio.
+- No autonomous action. A human approves every directive.
+- No replacement of the primary VHF radio or standard phraseology.
+- No control of the aircraft. Unstep only advises by audio and screen.
+- No voice cloning of controllers.
 
-### Current Scope
-
-- Raspberry Pi integration is on hold. The Pi 5 is still the target hardware, but for now the cockpit edge runs as a software simulator on a laptop, with recorded radio audio and a simulated PTT/squelch signal. See [Work Split, section 3a](04-work-split.md#3a-on-hold-raspberry-pi-integration).
-- One demo flow must work every time before anything else is added (see section 11).
-
-## 4. Users
+## 5. Users
 
 | User | Need |
 | --- | --- |
 | Pilot | Know immediately that an instruction was blocked, what it said, and that their readback was correct |
-| Ground controller | See blocked transmissions and approve the correction in one click |
-| Safety inspector / NTSB | Query every anomaly, verification, sign-off and readback after the fact |
+| Ground controller | See what was blocked or misheard and approve the correction in one click |
+| Supervisor | See trends on a frequency, such as repeated blocked calls or rising readback errors |
+| Safety inspector / NTSB | Query every event, verification, sign-off and readback after the fact |
 
-## 5. System Architecture
+## 6. System Design
 
-Full data flow diagrams are in [Architecture](05-architecture.md).
+Full diagrams are in [Architecture](05-architecture.md). Detailed sponsor usage is in [Advice](08-advice.md).
 
-### 5.1 Cockpit Edge (Local Reflex Layer)
+### 6.1 Principles
 
-**Hardware:** target is a Raspberry Pi 5 connected to the aircraft audio panel and the Push-to-Talk (PTT) squelch line. For now, a laptop simulator.
+- **Live messages go over WebSocket.** Moss is memory, not a message bus.
+- **Moss is each agent's fast local memory**, with handoff at clear points (end of an event, end of a flight) and one writer per index.
+- **Elastic orchestrates and remembers.** Every event is also written to an Elastic index so Agent Builder agents can read it.
+- **A human approves every directive.**
 
-**Moss (shared agent memory and local search):**
+### 6.2 Cockpit Edge (laptop simulator for now)
 
-- **Shared context space.** Edge and ground agents hand off context by reading and writing a shared Moss space, not by messaging each other.
-- **Local semantic search.** Before flight, the edge indexes the airport's taxiway layout, NOTAMs, local procedures and the aircraft's recent clearances. When static hits, it searches this locally in under 5 ms.
-- **Offline indexing.** The edge keeps indexing locally when the cloud link is gone, so it still knows recent context and can raise a local alert (M-003).
-- **Monitoring.** Everything written to the shared space gives a running view of each aircraft's state and recent events.
-- How Moss runs (in-process, WebAssembly, Rust, sync model) must be checked against the Moss docs before we claim it (S-6, M-010).
-
-**Cartesia (voice in and out):**
-
-| Use | What it does |
+| Part | What it does |
 | --- | --- |
-| Cut-off detection | End-of-speech detection on the received audio flags a transmission that stops mid-instruction, a second signal next to the audio collision detector |
-| Text-to-speech | Speaks the approved directive into the pilot's left ear-cup, first audio in under 90 ms |
-| Advisory voice | A distinct voice and tone so the pilot never mistakes it for real ATC (S-4) |
-| ATC pronunciation | Numbers spoken the ATC way: "niner", "tree", "fife" |
-| Readback check | Speech-to-text on the pilot's readback, compared with the approved directive. A mismatch triggers "Readback incorrect" and a repeat |
+| Overlap detector | Finds the squeal or heterodyne signature and the time window it covers |
+| Cockpit transcript | Cartesia STT on the received audio, finalized on PTT release |
+| Local hint (Moss) | Searches the flight session and airport index with the fragment that was heard. Gives a "Likely" hint in a few milliseconds, with the search time on screen |
+| Advisory voice (Cartesia TTS) | Speaks directives in the left ear only, calm advisory voice, ATC numbers |
+| Readback check | Cartesia turn-based STT on the pilot mic. Our code compares callsign, action and runway with the directive. Pilot speech interrupts the advisory voice |
+| Offline alert | Pre-generated "Advisory. Transmission blocked, request say again" audio |
 
-### 5.2 Ground and Multi-Agent ATC Infrastructure (Orchestration and Compliance Layer)
+### 6.3 Ground
 
-**Elastic Cloud Serverless** is the orchestration and compliance core. The agents are built in Elastic Agent Builder and run as an **Elastic Workflow** (endpoint, trigger, action). They share context through Moss and never chat with each other.
-
-| Component | Role |
+| Part | What it does |
 | --- | --- |
-| Tower transcription | Cartesia speech-to-text on the controller's own transmission, with key terms (callsigns, runway and taxiway names, "hold short"). This is the source of truth for what was blocked (M-002) |
-| Agent 1: Intercept Agent | Picks up the anomaly from the shared Moss space and matches it with the tower transcript |
-| Agent 2: Regulatory Compliance Agent | Runs Elastic hybrid search (BM25 plus dense vectors) over FAA Order JO 7110.65 to find the exact mandatory procedure and cite it |
-| Human-in-the-Loop Gate | Queues a structured Proposed Safety Directive on the controller dashboard |
-| Human Sign-Off | Controller clicks "Approve", which sends the directive to the cockpit |
-| Fleet Audit | Every anomaly, verification, sign-off and readback is stored in Elastic indices and queried live with ES\|QL |
+| Tower transcript | Cartesia STT on the controller's audio. Audio streams while PTT is held, `finalize` on release. Key terms for callsigns, runways, taxiways and phrases. Word timestamps |
+| Blocked words | Tower words whose timestamps fall inside the overlap window are marked as blocked, for example "Cessna 1-2-3, ~~hold short Runway 33~~" |
+| Gateway | WebSocket hub for live messages. Writes every message to an Elastic events index |
+| Elastic Workflow | Endpoint, trigger, action. Runs the agents for each event |
+| Intercept Agent (Agent Builder) | Matches the cockpit event with the tower transcript |
+| Compliance Agent (Agent Builder) | Hybrid search (BM25 plus vectors) over FAA Order JO 7110.65 to cite the exact paragraph |
+| Readback Auditor (Agent Builder) | Checks each readback result against FAA readback rules and records the outcome |
+| Frequency Monitor | Indexes every transmission on the frequency in Moss and raises insights, for example "N123AB has had 2 blocked calls in 5 minutes." Never sends anything to the cockpit |
+| Controller dashboard | Directive card with blocked words highlighted, Approve or Reject, readback status, monitoring panel |
+| Audit | Every stage in Elastic indices. Live ES\|QL for audit and frequency stats |
 
-Example directive card:
+### 6.4 Moss Indexes
+
+| Index | Kind | Contents | Writer | Readers |
+| --- | --- | --- | --- | --- |
+| `airport-<ICAO>` | Long-term, loaded before flight | Runways, taxiways, NOTAMs, procedures, phraseology, key FAA paragraphs | Pre-flight setup | Cockpit, ground |
+| `flight-<callsign>` | Cockpit session | Every clearance, readback and event for this aircraft | Cockpit only | Ground and audit, after `push_index()` |
+| `freq-<frequency>` | Ground session | Every tower transcript on the frequency, with callsign and timestamp | Ground only | Ground agents, Frequency Monitor |
+
+Sessions open before going offline, since opening one checks credentials with Moss Cloud.
+
+### 6.5 Example Directive Card
 
 ```
-Proposed Action: Hold Short of Runway 33
-Source:          Tower transcript, 14:02:11Z
-Confidence:      High (transcript match + rule match)
-Verified via:    FAA JO 7110.65, paragraph TBD
+Callsign:     Cessna 1-2-3 (N123AB)
+Tower said:   "Cessna 1-2-3, hold short Runway 33"
+Blocked:      hold short Runway 33
+Proposed:     Hold short Runway 33
+Confidence:   High (transcript match + rule match)
+Verified via: FAA JO 7110.65, paragraph TBD
 [ Approve ]  [ Reject ]
 ```
 
-The confidence method and the real paragraph number are still to be defined (M-008).
+The confidence method and real paragraph number are still to be defined (M-008).
 
-## 6. End-to-End Workflow
+## 7. End-to-End Workflow
 
-| Step | Stage | Component | Target |
-| --- | --- | --- | --- |
-| 1 | Pre-flight sync | Edge pulls NOTAMs and taxiway data from Elastic and indexes them in Moss | Before pushback |
-| 2 | Stepped-on event | ATC says "Hold short of Runway 33" while a helicopter keys its mic | n/a |
-| 3 | Detection | Audio collision detector plus Cartesia cut-off detection | Under 10 ms for the audio detector |
-| 4 | Local context | Edge searches Moss for position, active runway, NOTAMs and recent clearances, then writes the event to the shared space | Under 5 ms search |
-| 5 | Tower transcript | Cartesia speech-to-text on the controller's transmission | TBD |
-| 6 | Verification | Elastic Workflow runs the Intercept and Compliance agents with hybrid search | TBD |
-| 7 | Human approval | Card appears on the controller's screen, one-click approve | Human-paced |
-| 8 | Headset delivery | Cartesia speaks: "Advisory. Transmission blocked. Hold short Runway tree tree. Read back." | Under 90 ms to first audio |
-| 9 | Readback check | Pilot reads back, Cartesia transcribes, edge compares with the directive | TBD |
-| 10 | Audit | Full interaction stored in Elastic, queryable with ES\|QL | Async |
+| Step | Stage | What happens |
+| --- | --- | --- |
+| 1 | Pre-flight | Cockpit loads `airport-<ICAO>` and opens `flight-<callsign>`. Ground opens `freq-<frequency>` |
+| 2 | Stepped-on call | Tower says "Cessna 1-2-3, hold short Runway 33" while a helicopter keys its mic |
+| 3 | Tower transcript | Cartesia transcribes the tower call with word timestamps and adds it to `freq-<frequency>` |
+| 4 | Detection | Cockpit finds the overlap window and transcribes what it heard: "Cessna 1-2-3 [static]" |
+| 5 | Local hint | Moss search gives a "Likely hold short Runway 33." Pilot hears: "Advisory. Transmission blocked. Likely hold short Runway 33. Awaiting controller." |
+| 6 | Event | Cockpit sends `AnomalyEvent` over WebSocket. Gateway writes it to Elastic and triggers the Workflow |
+| 7 | Verification | Intercept Agent matches the tower transcript and marks the blocked words. Compliance Agent cites the FAA paragraph |
+| 8 | Approval | Controller sees the card and clicks Approve |
+| 9 | Delivery | Advisory voice: "Advisory. Cessna one two tree, hold short runway tree tree. Read back." Words highlight as spoken |
+| 10 | Readback | Pilot reads back. Wrong: "Readback incorrect" and repeat (max 2, then flag the controller). Right: confirmed |
+| 11 | Monitoring | Frequency Monitor updates insights. Readback Auditor records the outcome |
+| 12 | Audit | Every stage is in Elastic and queryable with ES\|QL |
 
-### Step details
+### Local hint rules
 
-1. **Pre-flight sync.** Before pushback, the edge pulls active NOTAMs and sector maps from Elastic Cloud and indexes them in Moss. It can then search locally without a network.
-2. **Stepped-on event.** ATC issues a clearance. A second station transmits at the same time and the heterodyne crash erases the instruction in the cockpit.
-3. **Detection.** The audio detector sees the squelch break and collision signature. Cartesia's end-of-speech detection confirms the transmission was cut off.
-4. **Local context.** The edge searches Moss for its local state and writes the event and context to the shared Moss space.
-5. **Tower transcript.** On the ground, Cartesia transcribes what the controller actually said, using key terms so runway and taxiway names come out right.
-6. **Verification.** The Elastic Workflow triggers. The Intercept Agent matches the event with the transcript. The Compliance Agent finds and cites the FAA procedure.
-7. **Human approval.** A card appears on the controller's screen. The controller approves with one click.
-8. **Headset delivery.** Cartesia speaks the directive in the advisory voice into the pilot's left ear.
-9. **Readback check.** The pilot reads the instruction back. If it matches, the system logs "readback correct." If not, it says "Readback incorrect" and repeats the instruction. After two failed readbacks it flags the controller.
-10. **Audit.** Every step is stored in Elastic for post-flight safety analysis.
+The local hint is the only thing the pilot hears before a controller approves. To keep it safe:
 
-## 7. Functional Requirements
+- It always says "Likely" and ends with "Awaiting controller."
+- It is never phrased as a clearance and never asks for a readback.
+- It is replaced by the approved directive, or by "request say again" if the controller rejects.
+
+## 8. Functional Requirements
 
 | ID | Requirement |
 | --- | --- |
-| FR-1 | The edge must detect a collision from the audio and PTT/squelch signals. |
-| FR-2 | The edge must index airport and sector data locally in Moss before flight. |
-| FR-3 | The edge must write anomaly context to the shared Moss space and trigger the ground workflow when a link is available. |
-| FR-4 | The ground system must transcribe the controller's transmission and use it as the source of the directive. |
-| FR-5 | The ground system must propose a directive with a defined confidence and a real rule citation. |
+| FR-1 | The cockpit must detect stepped-on transmissions and record the overlap window. |
+| FR-2 | The tower and cockpit audio must both be transcribed, with word timestamps on the tower side. |
+| FR-3 | The system must show which tower words were blocked. |
+| FR-4 | The cockpit must give a labeled local hint from Moss search, following the local hint rules. |
+| FR-5 | The ground must propose a directive with a defined confidence and a real FAA citation. |
 | FR-6 | No directive may reach the cockpit without explicit human approval. |
-| FR-7 | Approved directives must be spoken into the pilot headset only, not broadcast on VHF. |
-| FR-8 | The headset voice must be clearly distinct from ATC and use ATC number pronunciation. |
-| FR-9 | The edge must check the pilot's readback and repeat the directive on a mismatch. |
-| FR-10 | Every event, agent output, human decision and readback must be stored and queryable. |
-| FR-11 | No API keys or secrets may be committed to the repo. |
+| FR-7 | Directives must be spoken in the pilot headset only, in the left ear, never on VHF. |
+| FR-8 | The advisory voice must be clearly distinct from ATC, start with "Advisory" and use ATC number pronunciation. |
+| FR-9 | The cockpit must check readbacks, repeat on a mismatch, and flag the controller after two failures. |
+| FR-10 | Pilot speech must interrupt the advisory voice. |
+| FR-11 | The Frequency Monitor must raise insights from existing data and never send to the cockpit. |
+| FR-12 | Every event, agent output, human decision, readback and insight must be stored and queryable. |
+| FR-13 | No API keys or secrets may be committed. Browsers get short-lived tokens only. |
 
-## 8. Latency Budget
+## 9. Latency
 
-| Segment | Target | Notes |
+We show our own measured numbers on screen, not vendor figures (M-001). Vendor figures are background only.
+
+| Segment | Target | Vendor or third-party figure |
 | --- | --- | --- |
-| Collision detection | Under 10 ms | On the edge |
-| Local search (Moss) | Under 5 ms | On the edge |
-| Tower transcript (Cartesia STT) | TBD | Ground |
-| Context handoff and workflow trigger | TBD | Depends on Moss sharing and link |
-| Agent verification | TBD | Hybrid search plus agent reasoning |
-| Human approval | Human-paced | Seconds, not milliseconds |
-| Directive delivery to edge | TBD | Depends on Moss sharing and link |
-| TTS first audio (Cartesia) | Under 90 ms | Measured from the directive arriving on the edge |
-| Readback check | TBD | From end of pilot speech to verdict |
+| Overlap detection | Under 10 ms | n/a |
+| Moss local search | Under 10 ms | About 3 ms median, 5 ms p99 on 100k docs (Moss benchmark) |
+| Tower transcript final after PTT release | TBD | TBD |
+| Gateway and Workflow trigger | TBD | n/a |
+| Agent verification | TBD | n/a |
+| Human approval | Human-paced | n/a |
+| TTS first audio | Measure | Under 90 ms model only (Cartesia). About 166 to 190 ms with network (third party) |
+| Readback verdict after pilot stops | TBD | n/a |
 
-The 90 ms figure covers speech synthesis only. It is not the end-to-end time from collision to headset (M-001). During the demo we show the Moss search time, the Cartesia time to first audio and the end-to-end time without the human on screen.
+Sources are in [Research](06-research.md#3-evidence-table).
 
-## 9. Open Questions
-
-These are tracked in detail in [Mistakes and Lessons](03-mistakes-and-lessons.md) and [Sponsor Review](07-sponsor-review.md).
-
-- What datalink connects the aircraft to the ground in flight? (M-003)
-- Does Cartesia TTS run on the edge, or is it a cloud call? (M-004)
-- What is the source for the February 2026 NTSB finding? (M-005, S-9)
-- What certification path applies to tapping a certified aircraft's audio panel? (M-006)
-- How is "immutable" audit storage actually guaranteed? (M-007)
-- How is the directive confidence score calculated? (M-008)
-- How does Moss share a space between the edge and the ground, and how does it actually run? (M-010, S-6)
-- What does the sponsor note "Slack (Grant)" mean?
-- Is "ATC practice" mode a feature or just an idea? Not in scope until the main flow works.
-
-## 10. Research Plan
-
-The pitch needs real numbers. Every claim must be backed by a source or by our own measurement. Full details and the evidence table are in [Research and Evidence](06-research.md).
-
-| Area | What we need to show | Owner |
-| --- | --- | --- |
-| Problem size | How often transmissions are blocked (NASA ASRS, FAA runway incursion data) | Dev B |
-| Safety impact | NTSB investigations naming blocked transmissions, plus the source for the February 2026 finding | Dev B |
-| Existing options | Why anti-blocking radios and CPDLC don't solve it | Dev B |
-| Responsibility | Rules on recording and transcribing ATC audio | Dev B |
-| Feasibility | Published latency for Cartesia TTS and STT, and for Moss search (Pi 5 audio latency on hold) | Dev A |
-| Detection | Evidence that collisions and cut-offs can be detected from audio | Dev A |
-| Moss model | How Moss runs and shares a space between machines | Dev A |
-| Our prototype | Measured latency for each segment in section 8 | Both |
-
-**Deliverable by end of day 1:** each owner has filled their rows in the evidence table, and the three headline numbers in [Research section 5](06-research.md#5-headline-numbers-for-the-pitch) are written using High confidence sources only.
-
-## 11. Demo Flow
-
-One flow that must work every time. Nothing else is added until it does.
-
-1. A recorded clip plays: "Cessna 1-2-3, hold short Runway 33" with a helicopter squeal over it.
-2. The edge flags the collision. The on-screen overlay shows the detection and Moss search times.
-3. The tower transcript appears on the controller dashboard with the directive card and its FAA citation.
-4. The controller clicks Approve.
-5. The advisory voice speaks the directive in the left ear only. The overlay shows Cartesia's time to first audio.
-6. The pilot reads back, first wrong, then right. The system catches the mistake, repeats, then confirms.
-7. A live ES\|QL query shows the full audit trail for the event.
-
-## 12. Responsibility
+## 10. Responsibility
 
 | Area | Approach |
 | --- | --- |
-| Human control | Agents never act alone. Every directive needs controller approval |
-| Not mistaken for ATC | Distinct advisory voice, and every message starts with "Advisory" |
-| Privacy | Tower audio is recorded and transcribed only to recover blocked instructions. Retention and access rules go in the README |
-| Accessibility | Spoken directives are also shown as text on the dashboard and the edge screen. Readback checks help with high workload or hearing difficulty |
-| Secrets | API keys live in a local `.env` file that is never committed |
+| Human control | A human approves every directive. Agents never act alone |
+| Not mistaken for ATC | Distinct calm advisory voice, every message starts with "Advisory," no voice cloning of controllers |
+| Local hint | Always labeled "Likely" and "Awaiting controller," never phrased as a clearance |
+| Privacy | Tower audio is transcribed only to recover blocked or misheard instructions. Retention and access rules go in the README |
+| Accessibility | Spoken words are highlighted on screen as they are said. Readback checks help with high workload or hearing difficulty |
+| Secrets | Keys in a local `.env`, never committed. Browser gets short-lived tokens |
 
-## 13. Sponsor Fit
+## 11. Demo Flow (2 minutes)
 
-Details and the benchmark against past winners are in [Sponsor Review](07-sponsor-review.md).
+1. **Play the squeal for 5 seconds.** "That was an instruction to stop before a runway, and the pilot just lost it."
+2. Dashboard: tower transcript with the blocked words highlighted (Cartesia word timestamps).
+3. Cockpit: "Likely hold short Runway 33," with the Moss search time on screen.
+4. Controller approves. The Workflow ran the agents and the card cites the FAA paragraph (Elastic).
+5. Advisory voice in the left ear, words highlighted as spoken, first audio time on screen (Cartesia).
+6. Pilot reads back wrong. Caught and corrected by voice. Reads back right. Confirmed.
+7. Monitoring panel and a live ES\|QL query: blocked calls and readback errors on this frequency.
+8. Close: "No instruction lost or misheard. Humans stay in charge."
 
-| Sponsor | How it is core to Unstep |
+We also prepare a 30-second version per track that opens with that sponsor's moment.
+
+## 12. Sponsor Fit
+
+| Track | Core use | Must-have demo moment |
+| --- | --- | --- |
+| Cartesia | STT on both sides with key terms and word timestamps, PTT finalize, turn STT for readbacks, advisory TTS with pronunciation dictionary, interruption | Wrong readback caught by voice, blocked words highlighted |
+| Moss | Local hint search inside the voice loop, flight and frequency sessions, handoff, monitoring | Hint with search time on screen, agents sharing context through Moss |
+| Elastic | Workflow running three Agent Builder agents, hybrid search for FAA citations, live ES\|QL audit and stats | FAA paragraph cited, live ES\|QL stats |
+
+Benchmarks against past winners are in [Sponsor Review](07-sponsor-review.md) and [Advice, section 2](08-advice.md#2-benchmark-against-the-tracks).
+
+## 13. Cut List
+
+Cut in this order if time runs short:
+
+1. Raspberry Pi (already on hold)
+2. ATC practice mode
+3. Offline mode beyond the pre-generated alert
+4. Elastic Workflow, falling back to direct agent calls (last resort, costs Elastic points)
+
+**Never cut:** readback check, blocked-word highlight, Moss search time on screen, human approval.
+
+## 14. Open Questions
+
+| Question | Tracked in |
 | --- | --- |
-| Cartesia | The voice loop: tower transcription, cut-off detection, advisory speech, readback check |
-| Moss | Shared agent memory, local semantic search, offline indexing, monitoring |
-| Elastic | Agent Builder agents run as a Workflow, hybrid search over the FAA rulebook, live ES\|QL audit |
+| What datalink would carry events in a real aircraft? | M-003, RA-5 |
+| Source for the February 2026 NTSB finding | M-005, RB-3 |
+| Certification path for a real audio panel tap | M-006 |
+| How audit storage is made tamper-resistant | M-007 |
+| How directive confidence is calculated, and the real FAA paragraph | M-008 |
+| Exact syntax of the Moss `$near` filter | RA-8 |
+| Can Elastic Agent Builder call Moss (for example through MCP)? | RB-9 |
+| What does the sponsor note "Slack (Grant)" mean? | Sponsor Review |
+
+## 15. Research Plan
+
+Every number in the pitch needs a source or our own measurement. Details and the evidence table are in [Research](06-research.md).
+
+| Area | What we need to show | Owner |
+| --- | --- | --- |
+| Problem size | How often transmissions are blocked and readbacks go wrong (NASA ASRS, FAA) | Dev B |
+| Safety impact | NTSB investigations naming blocked calls or readback errors, plus the February 2026 source | Dev B |
+| Existing options | Why anti-blocking radios and CPDLC don't solve it | Dev B |
+| Responsibility | Rules on recording and transcribing ATC audio | Dev B |
+| Feasibility | Cartesia and Moss figures, overlap detection from audio | Dev A |
+| Our prototype | Measured latency for every segment in section 9 | Both |
+
+**End of day 1:** each owner's rows filled with links, and three headline numbers written from High confidence sources only.

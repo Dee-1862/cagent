@@ -19,6 +19,21 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: Folded Rishit's advice into PRD v0.3
+
+**Type:** Changed
+**Area:** Docs
+
+- Accepted all of [08-advice.md](08-advice.md) and folded it into the PRD, architecture, work split and research.
+- PRD v0.3: the product is now "no ATC instruction lost or misheard" (blocked transmission recovery plus readback checking, plus a thin monitoring agent). Added Terms, Scope, Responsibility, Cut List and a new 2-minute demo flow.
+- PRD v0.3: added local hint rules so the spoken "Likely" hint never acts as a clearance.
+- Architecture v0.3: live messages over a WebSocket gateway, Moss as local memory with three indexes and one writer each, and events also written to Elastic so Agent Builder agents can read them.
+- Work split v0.3: Dev A owns the cockpit, cockpit voice and all Moss work including the Frequency Monitor. Dev B owns the gateway, tower STT and all Elastic work including the Readback Auditor. Both have 9 tasks with equal effort.
+- Research: filled in vendor figures for Cartesia and Moss with sources, added RA-8 and RB-9.
+- Mistakes: added M-011 and M-012, resolved M-004 and M-010, updated M-001, M-002, M-003 and M-009.
+
+**Related:** [PRD](01-prd.md), [Advice, section 9](08-advice.md#9-how-this-was-folded-in)
+
 ## 2026-10-23: Added advice on scope, tracks, Moss and Cartesia
 
 **Type:** Docs

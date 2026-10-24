@@ -133,16 +133,16 @@ We found no winning ATC or aviation voice project. The nearest were a university
 
 | ID | Status | Where |
 | --- | --- | --- |
-| S-1 | Accepted | Cartesia is now the whole voice loop: [PRD 5.1](01-prd.md#51-cockpit-edge-local-reflex-layer), M-009 |
-| S-2 | Accepted | Tower STT with key terms: [PRD 5.2](01-prd.md#52-ground-and-multi-agent-atc-infrastructure-orchestration-and-compliance-layer), task B1 |
-| S-3 | Accepted | Readback check: [PRD 6](01-prd.md#6-end-to-end-workflow), task A7 |
+| S-1 | Accepted, refined in v0.3 | Cartesia is now the whole voice loop: [PRD 6.2](01-prd.md#62-cockpit-edge-laptop-simulator-for-now), M-009 |
+| S-2 | Accepted | Tower STT with key terms: [PRD 6.3](01-prd.md#63-ground), tasks B2 and B3 |
+| S-3 | Accepted | Readback check: [PRD 7](01-prd.md#7-end-to-end-workflow), task A7 |
 | S-4 | Accepted | Advisory voice and ATC numbers: FR-8, task A6 |
-| S-5 | Accepted | Moss as shared memory and local search: [Architecture](05-architecture.md), tasks A4, A5 |
-| S-6 | Open | Research RA-7, M-010 |
-| S-7 | Accepted | Single [demo flow](01-prd.md#11-demo-flow) first |
-| S-8 | Accepted | [PRD 12](01-prd.md#12-responsibility), task B8, research RB-8 |
+| S-5 | Accepted, refined in v0.3 | Moss as local memory with handoff and local hint search, not a message bus ([Advice, section 3](08-advice.md#3-moss-what-it-does-well-and-how-we-should-use-it)), tasks A4, A5 |
+| S-6 | Resolved | Moss docs read, see research RA-7 and M-010 |
+| S-7 | Accepted | Single [demo flow](01-prd.md#11-demo-flow-2-minutes) first |
+| S-8 | Accepted | [PRD 10](01-prd.md#10-responsibility), shared task S3, research RB-8 |
 | S-9 | Accepted | NTSB claim flagged in the PRD summary, research RB-3 |
-| S-10 | Partly done | `.gitignore` now covers `.env` and key files. README is task S1 |
+| S-10 | Partly done | `.gitignore` now covers `.env` and key files. README is shared task S2 |
 
 ## Sources
 

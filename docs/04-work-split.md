@@ -4,145 +4,165 @@ How the two of us divide Unstep so we can build in parallel and get the full sys
 
 | Field | Value |
 | --- | --- |
-| Status | Draft v0.2 |
+| Status | Draft v0.3 |
 | Last updated | 2026-10-23 |
-| Related | [PRD](01-prd.md), [Changes](02-changes.md), [Mistakes and Lessons](03-mistakes-and-lessons.md), [Architecture](05-architecture.md), [Research](06-research.md), [Sponsor Review](07-sponsor-review.md) |
+| Related | [PRD](01-prd.md), [Changes](02-changes.md), [Mistakes and Lessons](03-mistakes-and-lessons.md), [Architecture](05-architecture.md), [Research](06-research.md), [Sponsor Review](07-sponsor-review.md), [Advice](08-advice.md) |
 
 ## 1. Strategy
 
 1. **Agree on the contracts first.** We fix the message formats before writing anything else. After that, neither of us waits on the other.
 2. **Mock the other side.** Each person builds against a fake version of the other's half, so both halves work alone from day one.
-3. **Wire early, improve later.** The first goal is a thin end-to-end path with fake data. We swap in real Moss, Elastic and Cartesia one at a time after that.
-4. **Simulate the aircraft.** We use recorded or generated radio audio on a laptop, not a real audio panel (see M-006). Raspberry Pi integration is on hold (see section 3a).
-5. **One owner per sponsor.** Each of us becomes the expert on our sponsors, so the demo and write-up for each one are solid (see section 2).
-6. **One flow that works every time.** The [demo flow](01-prd.md#11-demo-flow) comes before any extra feature.
+3. **Wire early on WebSocket.** The first end-to-end path (M2) uses plain WebSocket and fake data. It does not depend on Moss, Elastic or Cartesia behaving as we expect.
+4. **Simulate the aircraft.** Recorded radio audio on a laptop, not a real audio panel (M-006). Raspberry Pi is on hold (section 3a).
+5. **One owner per sponsor.** Each of us becomes the expert on our sponsor, writes its part of the pitch and answers its judges.
+6. **One flow that works every time.** The [demo flow](01-prd.md#11-demo-flow-2-minutes) comes before anything else.
 
 ## 2. Owners
 
-| Role | Owner | Area | Sponsors owned |
+| Role | Owner | Area | Sponsor owned |
 | --- | --- | --- | --- |
-| Dev A | _name_ | Cockpit edge simulator (laptop): audio, detection, Moss, cockpit voice, readback | **Moss**, Cartesia TTS and readback |
-| Dev B | _name_ | Ground side: tower transcription, Elastic agents and Workflow, dashboard, audit | **Elastic**, Cartesia tower STT |
+| Dev A | _name_ | Cockpit edge, cockpit voice, readback check, all Moss work including the Frequency Monitor | **Moss** and Cartesia in the cockpit |
+| Dev B | _name_ | Gateway, tower transcription, all Elastic work, dashboard, audit | **Elastic** and Cartesia in the tower |
 
-Fill in the names and swap roles if that fits our skills better. Cartesia is split by side: Dev A owns the voice in the cockpit, Dev B owns the transcription in the tower.
+Fill in the names. Cartesia is split by side: Dev A owns TTS and readback STT in the cockpit, Dev B owns STT in the tower.
+
+### Why this split is balanced
+
+| | Dev A | Dev B |
+| --- | --- | --- |
+| Build tasks | 9 | 9 |
+| Effort (S = 1, M = 2, L = 3) | 18 | 18 |
+| Sponsor depth | Moss: hint search, three indexes, handoff, monitoring | Elastic: Workflow, three Agent Builder agents, hybrid search, ES\|QL |
+| Cartesia | TTS, pronunciation dictionary, interruption, turn STT readback, cockpit STT | Tower STT with key terms, PTT finalize, word timestamps, blocked words |
+| Hardest piece | Readback check with interruption (L) | Workflow with Intercept and Compliance agents (L) |
+| Main dependency on the other | Needs `ApprovedDirective` from B (mocked until M2) | Needs `AnomalyEvent` from A (mocked until M2) |
+
+If one of us finishes early, take the other's lowest task in the list rather than starting new scope.
 
 ## 3. Shared Contracts (Both, do first)
 
-We agree on these together before splitting up. They live in `contracts/` once code exists. All of them pass through the shared Moss space, with WebSocket as the fallback transport (M-010).
+We agree on these before splitting up. They live in `contracts/` once code exists. All go over the WebSocket gateway, which also writes each one to the Elastic events index.
 
-| Contract | Written by | Contents |
+| Contract | Written by | Fields |
 | --- | --- | --- |
-| `AnomalyContext` | Edge | `event_id`, `aircraft_id`, `timestamp`, `collision_duration_ms`, `cutoff_detected`, `gps`, `taxiway_node`, `active_runway`, `recent_clearances`, `audio_clip_ref` |
-| `TowerTranscript` | Tower STT | `transcript_id`, `timestamp`, `frequency`, `text`, `key_terms_matched`, `confidence` |
-| `ProposedDirective` | Compliance Agent | `event_id`, `instruction_text`, `confidence`, `confidence_method`, `rule_citation`, `source_transcript_id` |
-| `ApprovedDirective` | Dashboard | `event_id`, `instruction_text`, `approved_by`, `approved_at` |
-| `ReadbackResult` | Edge | `event_id`, `readback_text`, `match`, `attempt` |
-| `AuditRecord` | Everyone | `event_id`, `stage`, `actor`, `timestamp`, `latency_ms`, `payload` |
-| Workflow trigger | Edge | `POST` to the Elastic Workflow endpoint with `event_id` |
+| `TowerTranscript` | Tower STT (B) | `transcript_id`, `frequency`, `callsign`, `ptt_start`, `ptt_end`, `text`, `words` (`word`, `start`, `end`), `confidence` |
+| `AnomalyEvent` | Cockpit (A) | `event_id`, `callsign`, `frequency`, `overlap_start`, `overlap_end`, `heard_text`, `local_hint` (`text`, `moss_ms`), `gps`, `taxiway_node` |
+| `ProposedDirective` | Compliance Agent (B) | `event_id`, `transcript_id`, `blocked_words`, `instruction_text`, `slots` (`callsign`, `action`, `runway`), `confidence`, `confidence_method`, `rule_citation` |
+| `ApprovedDirective` | Dashboard (B) | `event_id`, `instruction_text`, `slots`, `approved_by`, `approved_at` |
+| `ReadbackResult` | Cockpit (A) | `event_id`, `readback_text`, `slots`, `match`, `attempt` |
+| `Insight` | Frequency Monitor (A) | `insight_id`, `frequency`, `callsign`, `kind`, `text`, `ts` |
+| `AuditRecord` | Everyone | `event_id`, `stage`, `actor`, `ts`, `latency_ms`, `payload` |
+| Transport | B hosts, A connects | One WebSocket gateway on the ground laptop |
 
-**Done when:** the schemas are written down as JSON examples and both of us have signed off.
+**Done when:** the schemas are written as JSON examples and both of us have signed off.
 
 ## 3a. On Hold: Raspberry Pi Integration
 
-Not assigned to anyone for now. We pick this up after the demo path works on a laptop.
+Not assigned to anyone for now. We pick this up after the demo flow works on a laptop.
 
 | Item | Why it waits |
 | --- | --- |
-| Running the edge stack on a Raspberry Pi 5 | The laptop simulator proves the flow first |
+| Running the cockpit stack on a Raspberry Pi 5 | The laptop simulator proves the flow first |
 | Audio intercept board and audio panel connection | Needs hardware and raises certification questions (M-006) |
 | Real PTT/squelch line tap | Simulated signal is enough for the demo |
 | Pi 5 audio latency research (RA-3) | Only matters once we run on the Pi |
 
-Write the edge code so it can move to the Pi later: keep audio input behind one interface and avoid laptop-only libraries where an easy alternative exists.
+Keep audio input behind one interface so the code can move to the Pi later.
 
 ## 3b. Not in Scope Yet
 
 | Item | When |
 | --- | --- |
-| "ATC practice" mode for pilots | Only after the demo flow is done |
+| ATC practice mode | Only after the demo flow is done |
+| AI that runs ATC | Vision slide only |
 
-## 4. Dev A: Cockpit Edge Simulator
+## 4. Dev A: Cockpit, Voice and Moss
 
-| # | Task | Done when |
-| --- | --- | --- |
-| A1 | Audio input from a file or mic, plus a simulated PTT/squelch signal | A recorded clip plays through the pipeline |
-| A2 | Collision detector (overlap or heterodyne signature) | Flags stepped-on clips, ignores clean ones, under 10 ms |
-| A3 | Cartesia cut-off detection on the received audio | A clip that stops mid-instruction is flagged |
-| A4 | Moss local index of taxiways, NOTAMs and recent clearances, with semantic search | Search returns runway, node and NOTAMs in under 5 ms |
-| A5 | Moss shared context space: write `AnomalyContext`, read `ApprovedDirective`, call the Workflow trigger | Ground mock sees the context, edge sees an approval from the mock |
-| A6 | Cartesia TTS in the left headset channel, with a distinct advisory voice and ATC number pronunciation | "Advisory. Hold short Runway tree tree" plays in the left ear only |
-| A7 | Readback check with Cartesia STT, compare with the directive, repeat on mismatch | Wrong readback is caught and repeated, right one is confirmed |
-| A8 | Offline fallback: keep indexing in Moss and play the local "request say again" alert | Works with the network unplugged (see M-003) |
-| A9 | On-screen latency overlay for detection, Moss search and Cartesia first audio | Numbers show live during the demo |
-| A10 | Measure edge latency for each segment | Numbers added to PRD section 8 |
-| AR | Research RA-1, RA-2, RA-4 to RA-7 (time-boxed, 1 hour) | Rows filled in the [evidence table](06-research.md#3-evidence-table) with links |
+| # | Task | Size | Done when |
+| --- | --- | --- | --- |
+| A1 | Audio input from file or mic, simulated PTT, plus the demo clips (clean call, stepped-on call, wrong readback) | S | Each clip plays through the pipeline |
+| A2 | Overlap detector that outputs the overlap window | M | Stepped-on clip flagged with the right window, clean clip ignored, under 10 ms |
+| A3 | Cockpit STT (Cartesia, finalize on PTT release) | S | Cockpit transcript reads "Cessna 1-2-3 [static]" for the stepped-on clip |
+| A4 | Moss `airport-<ICAO>` index and `flight-<callsign>` session, plus the local hint search | M | Fragment "Cessna 1-2-3" returns "hold short Runway 33" with `time_taken_ms` |
+| A5 | Moss `freq-<frequency>` session and the Frequency Monitor with two insights (repeated blocked calls, rising readback errors) | M | Insights appear on the gateway after a scripted run |
+| A6 | Advisory TTS: ATC number converter, pronunciation dictionary, calm voice, left channel only, word timestamps for highlighting | L | "Advisory. Cessna one two tree, hold short runway tree tree" plays left ear only, words highlight |
+| A7 | Readback check: turn STT on pilot mic, slot comparison, "Readback incorrect" repeat (max 2), interruption on `turn.start` | L | Wrong readback caught and repeated, right one confirmed, pilot can cut the voice off |
+| A8 | Offline: pre-generated alert audio, flight session `push_index()` at end of event | S | Alert plays with the network off, flight session visible on the ground after push |
+| A9 | Cockpit latency overlay (detection, Moss search, first audio) and measurements | S | Numbers show live and are written into [Research section 4](06-research.md#4-our-own-measurements) |
+| AR | Research RA-1, RA-2, RA-4 to RA-8 (1 hour) | | Rows filled with links |
 
-## 5. Dev B: Ground Side
+Dev A total: S x4, M x3, L x2 = 4 + 6 + 6 = 16, plus the Moss section of the pitch and 30-second Moss version = 18.
 
-| # | Task | Done when |
-| --- | --- | --- |
-| B1 | Tower audio capture and Cartesia STT with key terms (callsigns, runways, taxiways, "hold short") | `TowerTranscript` gets runway and taxiway names right (see M-002) |
-| B2 | Elastic Workflow with an endpoint trigger that starts the agents | Calling the endpoint with an `event_id` runs the agents |
-| B3 | Index FAA Order JO 7110.65 in Elastic with hybrid search (BM25 plus vectors) | Query for "hold short" returns the right paragraph |
-| B4 | Intercept and Compliance agents in Agent Builder, reading context from Moss | Agents produce a `ProposedDirective` with a real citation and a defined confidence (see M-008) |
-| B5 | Controller dashboard with an Approve/Reject card, the transcript, and readback status | One click writes `ApprovedDirective` |
-| B6 | Audit logging into Elastic indices, plus live ES\|QL queries for the demo | Every stage of an event can be queried on screen (see M-007) |
-| B7 | Elastic implementation write-up (the sponsor asked for it) | Short doc explaining agents, Workflow, search and audit |
-| B8 | Privacy and accessibility notes (S-8) | Notes ready for the README and pitch |
-| B9 | Measure ground-side latency for each segment | Numbers added to PRD section 8 |
-| BR | Research RB-1 to RB-8 (time-boxed, 1 hour) | Rows filled in the [evidence table](06-research.md#3-evidence-table) with links |
+## 5. Dev B: Gateway, Tower and Elastic
+
+| # | Task | Size | Done when |
+| --- | --- | --- | --- |
+| B1 | WebSocket gateway that relays all contracts and writes each one to the Elastic events index | S | A mock cockpit and mock dashboard exchange messages, all visible in Elastic |
+| B2 | Tower STT (Cartesia manual mode): stream while PTT is held, `finalize` on release, key term list, word timestamps | M | Runway, taxiway and callsign come out right, words have timestamps |
+| B3 | Blocked words: mark tower words inside the overlap window | S | Card shows "Cessna 1-2-3, ~~hold short Runway 33~~" |
+| B4 | FAA Order JO 7110.65 indexed in Elastic with hybrid search (BM25 plus vectors) | M | "hold short" query returns the right paragraph |
+| B5 | Elastic Workflow (endpoint, trigger, action) running the Intercept and Compliance agents in Agent Builder | L | Trigger with an `event_id` produces a `ProposedDirective` with a real citation and defined confidence (M-008) |
+| B6 | Readback Auditor agent | S | Every `ReadbackResult` gets an audit outcome in Elastic |
+| B7 | Controller dashboard: card with blocked words, Approve or Reject, readback status, monitoring panel, live word highlighting | L | One click sends `ApprovedDirective`, insights and readback status update live |
+| B8 | Audit and live ES\|QL: event trail, blocked calls per hour, readback error rate by frequency | M | Queries run live on screen (M-007) |
+| B9 | Ground latency measurements | S | Numbers written into [Research section 4](06-research.md#4-our-own-measurements) |
+| BR | Research RB-1 to RB-9 (1 hour) | | Rows filled with links |
+
+Dev B total: S x4, M x3, L x2 = 4 + 6 + 6 = 16, plus the Elastic implementation write-up the sponsor asked for = 18.
 
 ## 5a. Shared Tasks
 
-| # | Task | Done when |
-| --- | --- | --- |
-| S1 | README with setup, Cartesia features used, known limitations (sponsor requirement) | README at repo root covers all three |
-| S2 | `.env` for keys, never committed | `.gitignore` covers it and no keys are in history |
-| S3 | Demo clip with a realistic squeal over the instruction | Clip plays reliably |
-| S4 | 2-minute demo-first presentation | Rehearsed twice |
+| # | Task | Lead | Done when |
+| --- | --- | --- | --- |
+| S1 | Contracts as JSON examples (M0) | Both | Signed off |
+| S2 | README with setup, Cartesia features used, known limitations | B | At repo root |
+| S3 | Privacy and accessibility notes for README and pitch | A | In README |
+| S4 | `.env` for keys, short-lived tokens for the browser | A | No keys in the repo or history |
+| S5 | 2-minute demo-first presentation, plus a 30-second version per track | Both | Rehearsed twice |
 
 ## 6. Milestones
 
-| Milestone | What works | Who |
+| Milestone | What works | Tasks |
 | --- | --- | --- |
-| M0: Contracts | Schemas and transport agreed | Both |
-| M1: Halves alone | Each side runs against its own mock | A1, A2, A5 and B2, B5 |
-| **M2: First wire** | **Fake collision goes from edge to dashboard, approval comes back, text is printed on the edge** | **Both** |
-| M3: Real services | Moss, Elastic hybrid search and Cartesia replace the mocks | A3, A4, A6 and B1, B3, B4 |
-| M4: Demo ready | The [demo flow](01-prd.md#11-demo-flow) works end to end, including the readback check | A7 and B6, plus both |
-| M5: Polish | Offline fallback, latency overlay, write-ups, README, open mistakes resolved | A8 to A10, B7 to B9, S1 to S4 |
+| M0: Contracts | Schemas agreed | S1 |
+| M1: Halves alone | Each side runs against its own mock | A1, A2 and B1 |
+| **M2: First wire** | **Fake stepped-on event goes cockpit to gateway to dashboard, Approve comes back, text prints in the cockpit. WebSocket only** | **Both** |
+| M3: Real voice and search | Cartesia STT on both sides, Moss hint, FAA hybrid search | A3, A4 and B2, B3, B4 |
+| M4: Demo flow | The full [demo flow](01-prd.md#11-demo-flow-2-minutes) works, including readback and Workflow | A6, A7 and B5, B7 |
+| M5: Depth and polish | Monitoring, auditor, ES\|QL stats, offline alert, latency overlay, README, pitch | A5, A8, A9 and B6, B8, B9, S2 to S5 |
 
-M2 is the main target. Once it works, everything after it is an upgrade to a system that already runs end to end.
+M2 is the main early target. If we fall behind, use the [cut list](01-prd.md#13-cut-list).
 
 ## 7. Day 1 Plan
 
-Goal for the end of the day: the first wire (M2) works, and the headline numbers are backed by sources.
+Goal for the end of the day: M2 works, and the headline numbers are backed by sources.
 
 | Block | Dev A | Dev B |
 | --- | --- | --- |
-| 1: Kickoff | Together: agree contracts (M0) and review the research questions | Same |
-| 2: Morning | Research AR (1 hour), then A1, A2, A5 | Research BR (1 hour), then B2, B5 |
-| Midday sync | Swap findings, connect the two mocks | Same |
-| 3: Afternoon | Push for M2 together | Same |
-| 4: End of day | Measure real latency into [Research section 4](06-research.md#4-our-own-measurements) | Fill evidence gaps, write the headline numbers, update the PRD |
+| 1: Kickoff | Together: contracts (M0), fill in owner names | Same |
+| 2: Morning | Research AR (1 hour), then A1, A2 | Research BR (1 hour), then B1 |
+| Midday sync | Swap findings, connect cockpit to gateway | Same |
+| 3: Afternoon | Push for M2 together, then start A4 | Push for M2 together, then start B2 |
+| 4: End of day | Measure cockpit latency | Fill evidence gaps, write the headline numbers |
 | Wrap-up | Commit and push, log changes and mistakes | Same |
 
-Research is time-boxed and never blocks the build. Open questions carry over to day 2.
+Research is time-boxed and never blocks the build.
 
 ## 8. Working Rules
 
 - Commit and push after each task, with a one-line title and bullet-point description.
-- Log notable changes in [02-changes.md](02-changes.md).
-- Log mistakes and lessons in [03-mistakes-and-lessons.md](03-mistakes-and-lessons.md).
+- Log notable changes in [02-changes.md](02-changes.md) and mistakes in [03-mistakes-and-lessons.md](03-mistakes-and-lessons.md).
 - Any contract change needs both of us to agree, and gets a changes log entry.
-- If you get blocked on the other person's half, extend your mock instead of waiting.
-- Check every vendor claim against the vendor's own docs before it goes in the pitch (M-010).
+- If you're blocked on the other half, extend your mock instead of waiting.
+- Check every vendor claim against the vendor's own docs before it goes in the PRD or pitch (M-010, M-011).
+- Say "stepped-on" or "blocked," never "collision," for radio overlap (M-012).
 
 ## 9. Integration Checkpoints
 
 | Checkpoint | Test |
 | --- | --- |
-| After M0 | Each of us writes a sample message to the shared space, and the other reads it |
-| After M2 | Run the full fake path 10 times in a row without errors |
-| After M3 | Run the demo scenario with real services and record the latency |
-| Before demo | Full dry run, plus a dry run with the network unplugged |
+| After M0 | Each of us sends a sample message through the gateway, and the other parses it |
+| After M2 | Full fake path 10 times in a row without errors |
+| After M3 | Real STT and Moss on the demo clip, latency recorded |
+| After M4 | Full demo flow 5 times in a row, including the wrong readback |
+| Before demo | Full dry run, plus a dry run with the network off |
