@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: Added architecture and research plan
+
+**Type:** Docs
+**Area:** Docs
+
+- Added [05-architecture.md](05-architecture.md) with a system diagram, a start-to-finish sequence diagram, a stage table and failure paths.
+- Added [06-research.md](06-research.md) with research questions, an evidence table and a measurements table.
+- Added a research plan to the PRD (section 10).
+- Added research tasks AR and BR and a day 1 plan to the work split.
+
+**Related:** [Architecture](05-architecture.md), [Research](06-research.md)
+
 ## 2026-10-23: Added work split plan
 
 **Type:** Docs

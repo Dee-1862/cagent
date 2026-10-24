@@ -4,7 +4,7 @@
 | --- | --- |
 | Status | Draft v0.1 |
 | Last updated | 2026-10-23 |
-| Related | [Changes](02-changes.md), [Mistakes and Lessons](03-mistakes-and-lessons.md), [Work Split](04-work-split.md) |
+| Related | [Changes](02-changes.md), [Mistakes and Lessons](03-mistakes-and-lessons.md), [Work Split](04-work-split.md), [Architecture](05-architecture.md), [Research](06-research.md) |
 
 ## 1. Executive Summary
 
@@ -159,3 +159,20 @@ These are tracked in detail in [Mistakes and Lessons](03-mistakes-and-lessons.md
 - What certification path applies to tapping a certified aircraft's audio panel? (M-006)
 - How is "immutable" audit storage actually guaranteed? (M-007)
 - How is the directive confidence score calculated? (M-008)
+
+## 10. Research Plan
+
+The pitch needs real numbers. Every claim must be backed by a source or by our own measurement. Full details and the evidence table are in [Research and Evidence](06-research.md).
+
+| Area | What we need to show | Owner |
+| --- | --- | --- |
+| Problem size | How often transmissions are blocked (NASA ASRS, FAA runway incursion data) | Dev B |
+| Safety impact | NTSB investigations naming blocked transmissions, plus the source for the February 2026 finding | Dev B |
+| Existing options | Why anti-blocking radios and CPDLC don't solve it | Dev B |
+| Feasibility | Published latency for Cartesia and Moss, plus Pi 5 audio latency | Dev A |
+| Detection | Evidence that collisions can be detected from audio | Dev A |
+| Our prototype | Measured latency for each segment in section 8 | Both |
+
+**Deliverable by end of day 1:** each owner has filled their rows in the evidence table, and the three headline numbers in [Research section 5](06-research.md#5-headline-numbers-for-the-pitch) are written using High confidence sources only.
+
+Architecture and data flow are covered in [Architecture](05-architecture.md).

@@ -6,7 +6,7 @@ How the two of us divide Unstep so we can build in parallel and get the full sys
 | --- | --- |
 | Status | Draft v0.1 |
 | Last updated | 2026-10-23 |
-| Related | [PRD](01-prd.md), [Changes](02-changes.md), [Mistakes and Lessons](03-mistakes-and-lessons.md) |
+| Related | [PRD](01-prd.md), [Changes](02-changes.md), [Mistakes and Lessons](03-mistakes-and-lessons.md), [Architecture](05-architecture.md), [Research](06-research.md) |
 
 ## 1. Strategy
 
@@ -50,6 +50,7 @@ We agree on these together before splitting up. They live in `contracts/` once c
 | A6 | Cartesia TTS into the left headset channel | Approved text is spoken in the left ear only |
 | A7 | Offline fallback: plain "transmission blocked, request say again" alert | Works with the network unplugged (see M-003) |
 | A8 | Measure on-device latency for each segment | Numbers added to PRD section 8 |
+| AR | Research RA-1 to RA-5 (time-boxed, 1 hour) | Rows filled in the [evidence table](06-research.md#3-evidence-table) with links |
 
 ## 5. Dev B: Ground Side
 
@@ -62,6 +63,7 @@ We agree on these together before splitting up. They live in `contracts/` once c
 | B5 | Controller dashboard with an Approve/Reject card | One click sends `ApprovedDirective` |
 | B6 | Audit logging into Elastic indices, plus ES\|QL queries for review | Every stage of an event can be queried (see M-007) |
 | B7 | Measure ground-side latency for each segment | Numbers added to PRD section 8 |
+| BR | Research RB-1 to RB-7 (time-boxed, 1 hour) | Rows filled in the [evidence table](06-research.md#3-evidence-table) with links |
 
 ## 6. Milestones
 
@@ -76,7 +78,22 @@ We agree on these together before splitting up. They live in `contracts/` once c
 
 M2 is the main target. Once it works, everything after it is an upgrade to a system that already runs end to end.
 
-## 7. Working Rules
+## 7. Day 1 Plan
+
+Goal for the end of the day: the first wire (M2) works, and the headline numbers are backed by sources.
+
+| Block | Dev A | Dev B |
+| --- | --- | --- |
+| 1: Kickoff | Together: agree contracts (M0) and review the research questions | Same |
+| 2: Morning | Research AR (1 hour), then A1 to A3 | Research BR (1 hour), then B1 and B5 |
+| Midday sync | Swap findings, connect the two mocks | Same |
+| 3: Afternoon | Push for M2 together | Same |
+| 4: End of day | Measure real latency into [Research section 4](06-research.md#4-our-own-measurements) | Fill evidence gaps, write the headline numbers, update the PRD |
+| Wrap-up | Commit and push, log changes and mistakes | Same |
+
+Research is time-boxed and never blocks the build. Open questions carry over to day 2.
+
+## 8. Working Rules
 
 - Commit and push after each task, with a one-line title and bullet-point description.
 - Log notable changes in [02-changes.md](02-changes.md).
@@ -84,7 +101,7 @@ M2 is the main target. Once it works, everything after it is an upgrade to a sys
 - Any contract change needs both of us to agree, and gets a changes log entry.
 - If you get blocked on the other person's half, extend your mock instead of waiting.
 
-## 8. Integration Checkpoints
+## 9. Integration Checkpoints
 
 | Checkpoint | Test |
 | --- | --- |
