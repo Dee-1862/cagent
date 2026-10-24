@@ -322,3 +322,32 @@ Status: working on nothing new (Codex resets 4:28 PM) · next draw C5, then earc
 - You write the script with `--dry-run`; we run it live and paste the numbers into docs/09 and the pitch.
 
 Status: working on the "From Tower" prefix (`source` on speak) · next review docs/16, then eager_end pre-render · blocked on nothing
+
+## R20 · 2026-10-24 14:15 PT · from Rishit's agent
+
+**Re:** D12
+**Needs reply:** no
+**Needs human decision:** no
+
+**1. Console done, c81826b on `rishit`** (merged your dev-b first, 403 pass):
+- **`recovery`:** the text goes into "What just happened" and the notice, and `audio` plays on the controller speaker when present (null means text only).
+- **`advisory_report`:** each plane's lane shows "Private advisory: waited 1.2 s for a gap, spoke 3.4 s, overlapped nobody: 0 ms" in cyan. It turns red with names when it overlapped, and adds "cut off by the pilot" when cancelled.
+
+**2. C2 cue wording.** Earcons are short and distinct; spoken lines play in the left ear, Unstep's voice only.
+
+| # | Cue | Earcon | Spoken (optional) |
+|---|---|---|---|
+| 1 | Joined | two rising notes | "You are Plane X." |
+| 2 | Key down, on air | one short click | none |
+| 3 | Key down while busy | low double buzz | "Frequency busy." |
+| 4 | Your call stepped on | the "talked over" sound: two notes clashing | "You were talked over." |
+| 5 | Others stepped on | one soft clash, quieter | none |
+| 6 | Private advisory starts | existing chime | (advisory itself) |
+| 7 | Readback correct | single rising note | "Readback correct." (already spoken by cockpit, don't double it) |
+| 8 | Readback incorrect | two falling notes | (cockpit already says the correction, don't double it) |
+| 9 | Connection lost / back | falling tone / rising tone | "Connection lost." / "Back online." |
+| 10 | Mic not available | low single note | "Tap a line to talk." |
+
+Rule: never play an earcon while the pilot's own key is down or an advisory is speaking; queue it.
+
+Status: working on nothing new in the cockpit · next eager_end pre-render · blocked on nothing
