@@ -58,8 +58,17 @@ function Join({ hub, onSeat }: { hub: Hub; onSeat: (s: Seat) => void }) {
 
   useEffect(() => {
     let stop = false;
-    const load = () => fetch(`${hub.http}/live/stations`).then((r) => r.json()).then((d) => !stop && setRoom(d))
-      .catch(() => !stop && setError("Can't reach the tower. Is the hub running and the link right?"));
+    const load = () => fetch(`${hub.http}/live/stations`).then((r) => r.json())
+      .then((d) => { if (!stop) { setRoom(d); setError(null); } })
+      .catch(async () => {
+        if (stop) return;
+        // A CORS refusal and a dead hub look the same to fetch(); an opaque no-cors probe tells them apart.
+        const up = await fetch(`${hub.http}/live/stations`, { mode: "no-cors" }).then(() => true, () => false);
+        if (stop) return;
+        setError(up
+          ? `The tower at ${hub.http} is up but refuses this page. Add ${location.origin} to UNSTEP_ALLOWED_ORIGINS on the hub.`
+          : `Can't reach the tower at ${hub.http}. It may be waking up (free Render takes about a minute) or down. Retrying...`);
+      });
     load();
     const t = setInterval(load, 3000);
     return () => { stop = true; clearInterval(t); };
@@ -112,6 +121,7 @@ function Join({ hub, onSeat }: { hub: Hub; onSeat: (s: Seat) => void }) {
 
 function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: () => void }) {
   const [conn, setConn] = useState<"connecting" | "open" | "closed">("connecting");
+  const [why, setWhy] = useState<string | null>(null); // why the radio isn't connected, in plain words
   const [stations, setStations] = useState<Station[]>([]);
   const [keyed, setKeyed] = useState<Record<string, number>>({});
   const keyedRef = useRef<Record<string, number>>({});
@@ -137,6 +147,8 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
   const lastStatus = useRef<Record<string, string>>({});
   const wasOpen = useRef(false);
   const pressAt = useRef(0);
+  const holding = useRef(false);
+  const [hubLive, setHubLive] = useState(true); // finger still on the button (the mic prompt can take a moment)
   const releaseTimer = useRef<number | null>(null);
 
   const me = stations.find((s) => s.id === station);
@@ -159,6 +171,7 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
         case "hello":
           if (!greeted.current) { greeted.current = true; cue("joined"); }
           setStations(m.stations);
+          setHubLive(!!m.live);
           setKeyed(m.keyed || {});
           setTrace([...m.traces].reverse().find((t: Trace) => t.callsign === station) ?? null);
           return;
@@ -224,7 +237,25 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
           return;
         case "status": return void say(m.text);
       }
-    }, setConn);
+    }, (st) => { setConn(st); if (st === "open") setWhy(null); });
+    l.onClose = async (code, attempt) => {
+      if (code !== 4003 && attempt < 2) return;
+      const seats = await fetch(`${hub.http}/live/stations`).then((r) => r.json()).catch(() => null);
+      if (seats && !seats.stations.some((x: Station) => x.id === station)) {
+        setWhy("This seat was freed while you were away. Join again for a new plane.");
+        l.close();
+        window.setTimeout(onLeave, 2500);
+      } else if (seats) {
+        setWhy(code === 4003
+          ? "The tower refused this plane: the room code is wrong, or this site isn't allowed on the hub (UNSTEP_ALLOWED_ORIGINS)."
+          : "The tower is up; reconnecting the radio...");
+      } else {
+        const up = await fetch(`${hub.http}/live/stations`, { mode: "no-cors" }).then(() => true, () => false);
+        setWhy(up
+          ? `The tower at ${hub.http} refuses this page. Add ${location.origin} to UNSTEP_ALLOWED_ORIGINS on the hub.`
+          : `Can't reach the tower at ${hub.http}: it may be waking up (free Render takes about a minute) or down. Retrying...`);
+      }
+    };
     live.current = l;
     setSpeaker((phrase) => l.send({ type: "cue", name: phrase })); // spoken cue lines, in Unstep's voice
     l.open();
@@ -240,10 +271,17 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
 
   // ---- push to talk
 
-  const down = () => {
+  const down = async () => {
+    holding.current = true;
     if (onAir) return;
     if (releaseTimer.current) { clearTimeout(releaseTimer.current); releaseTimer.current = null; }
-    if (!mic.ready) { cue("mic_off"); return void say("Mic is off: use a line below"); }
+    if (!mic.ready) {
+      // The join tap normally turns the mic on; after a reload or a saved plane link it never ran.
+      // This press is a user gesture too, so ask here.
+      if (!Mic.available()) { cue("mic_off"); return void say("Mic needs https: open the https link, or use More for typed lines"); }
+      if (!(await mic.enable())) { cue("mic_off"); return void say("Microphone blocked: allow it for this site in the browser, then try again"); }
+      if (!holding.current) return void say("Mic on. Hold to talk.");
+    }
     audio();
     if (others.length) cue("busy"); // eyes-free: someone is already talking
     chirp(1400, 30);
@@ -257,6 +295,7 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
     setKeyDown(true);
   };
   const up = () => {
+    holding.current = false;
     if (!onAir || releaseTimer.current) return;
     releaseTimer.current = window.setTimeout(() => {
       releaseTimer.current = null;
@@ -289,7 +328,7 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
   const pttState = conn !== "open" ? "off" : onAir ? (others.length ? "clash" : "air") : others.length ? "busy" : "idle";
   const pttText = {
     off: "Reconnecting...",
-    idle: mic.ready ? "HOLD TO TALK" : "Mic off",
+    idle: mic.ready || Mic.available() ? "HOLD TO TALK" : "Mic off",
     air: "ON AIR",
     busy: `${others.map(nameOf).join(" and ")} talking`,
     clash: "TALKED OVER",
@@ -320,12 +359,15 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
             : <>
                 <span className="ptt-main">{pttText}</span>
                 {pttState === "busy" && <span className="ptt-sub">You can still talk. Real radios don't stop you.</span>}
+                {pttState === "off" && why && <span className="ptt-sub">{why}</span>}
               </>}
         </button>
       </div>
 
       <div className="lyrics" ref={card} aria-live="polite">
-        {lyrics.lines.length === 0 && <p className="line quiet">What anyone says on the radio appears here as they speak.</p>}
+        {lyrics.lines.length === 0 && <p className="line quiet">{hubLive
+          ? "What anyone says on the radio appears here as they speak."
+          : "Live captions need Cartesia. This tower runs offline (fake speech), so spoken words aren't transcribed."}</p>}
         {lyrics.lines.map((l, i) => (
           <p key={l.id} className={`line ${l.kind} ${i === lyrics.lines.length - 1 ? "now" : "past"} ${l.final ? "final" : "interim"}`}>
             {l.kind === "advisory" && <span className="only-you">Only you</span>}

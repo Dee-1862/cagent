@@ -69,9 +69,17 @@ def allowed_origins() -> list[str]:
     """Web origins on other domains that may open a live room socket, for example the
     pilot app on Vercel: UNSTEP_ALLOWED_ORIGINS=https://unstep.vercel.app (comma
     separated, `*` wildcards allowed, as in https://*.vercel.app). Pages served by the
-    gateway itself are always allowed. The gateway token still applies."""
+    gateway itself are always allowed. The gateway token still applies.
+
+    Our own pilot app on Vercel (every deployment address of the project) is always
+    allowed, so a new Vercel deploy never needs a hub setting; the variable only adds more."""
     extra = env("UNSTEP_ALLOWED_ORIGINS") or ""
-    return [o.strip().rstrip("/") for o in extra.split(",") if o.strip()]
+    listed = [o.strip().rstrip("/") for o in extra.split(",") if o.strip()]
+    return [*DEFAULT_PILOT_ORIGINS, *(o for o in listed if o not in DEFAULT_PILOT_ORIGINS)]
+
+
+# The project's Vercel pilot app: production and per-deployment addresses.
+DEFAULT_PILOT_ORIGINS = ("https://cagent*.vercel.app", "https://*-dee-1862s-projects.vercel.app")
 
 
 def gateway_token() -> str | None:

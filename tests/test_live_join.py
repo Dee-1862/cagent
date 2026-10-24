@@ -199,3 +199,26 @@ def test_join_with_a_language_sets_the_cockpit_language(monkeypatch):
             assert m["code"] is None and r.edges[seat["callsign"]].language is None
         other = client.post("/live/join?language=xx").json()
         assert other["language"] is None
+
+
+def test_our_vercel_pilot_app_is_allowed_by_default(monkeypatch):
+    monkeypatch.setattr(room_mod, "create_memory", LocalMemory)
+    monkeypatch.delenv("UNSTEP_ALLOWED_ORIGINS", raising=False)
+    monkeypatch.delenv("UNSTEP_GATEWAY_TOKEN", raising=False)
+    client = TestClient(create_live_app(live=False, sink=MemorySink()))
+    ours = "https://cagent-ou1flyw4s-dee-1862s-projects.vercel.app"
+    r = client.get("/live/stations", headers={"origin": ours})
+    assert r.headers.get("access-control-allow-origin") == ours
+    with client.websocket_connect("/live/ws/N123AB", headers={"origin": ours}) as ws:
+        assert ws.receive_json()["type"] == "hello"
+    r = client.get("/live/stations", headers={"origin": "https://someone-else.vercel.app"})
+    assert r.headers.get("access-control-allow-origin") is None
+
+
+def test_a_set_allowed_origins_adds_to_our_vercel_app_instead_of_replacing_it(monkeypatch):
+    monkeypatch.setattr(room_mod, "create_memory", LocalMemory)
+    monkeypatch.delenv("UNSTEP_GATEWAY_TOKEN", raising=False)
+    monkeypatch.setenv("UNSTEP_ALLOWED_ORIGINS", "https://cagent-pmlex079c-dee-1862s-projects.vercel.app")
+    client = TestClient(create_live_app(live=False, sink=MemorySink()))
+    newer = "https://cagent-9c1xhv1ks-dee-1862s-projects.vercel.app"
+    assert client.get("/live/stations", headers={"origin": newer}).headers.get("access-control-allow-origin") == newer
