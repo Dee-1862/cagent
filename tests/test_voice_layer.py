@@ -211,7 +211,8 @@ def test_interrupt_cancels_current_message():
 def test_pronunciation_dict_entries():
     entries = load_pronunciation_dict()
     texts = {e["text"] for e in entries}
-    assert {"niner", "tree", "fife"} <= texts
+    assert {"tree", "fife"} <= texts
+    assert "niner" not in texts  # Sonic says niner right; the respelling made ink-2 hear "N1er"
     assert all(set(e) == {"text", "pronunciation"} for e in entries)
 
 
