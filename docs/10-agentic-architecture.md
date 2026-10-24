@@ -16,7 +16,39 @@ How the two halves of Unstep are organized as agents, where the human sits, and 
 4. **Three channels, each for what it is good at:** the radio stays the shared voice channel, a live link carries only ATC-style messages, and Moss carries context handoff after the event. Moss is not the live channel (M-011).
 5. **Share only what ATC already says.** Live messages carry the same content a controller would speak (callsign, instruction, runway, source), not raw audio or memory documents.
 
-## 2. The Two Halves at a Glance
+## 2. Demo View: One Picture
+
+The simple version for the pitch. One blocked call, left to right, with each sponsor's part in its own color. Sections 3 to 7 have the detail.
+
+```mermaid
+flowchart LR
+    A["1. Tower says<br/>hold short Runway 33<br/>but another call blocks it"]:::problem
+    B["2. Cockpit Unstep notices<br/>Likely hold short<br/>found in memory"]:::moss
+    C["3. Ground Unstep checks<br/>what the tower said<br/>and the FAA rule"]:::elastic
+    D["4. Controller says<br/>Approve"]:::human
+    E["5. Pilot hears it<br/>and reads it back<br/>wrong readback caught"]:::cartesia
+    F["6. Dashboard and<br/>live stats"]:::elastic
+
+    A --> B --> C --> D --> E
+    E -.-> F
+
+    classDef problem fill:#ffebee,stroke:#c62828,color:#1b1b1b
+    classDef moss fill:#e8f5e9,stroke:#2e7d32,color:#1b1b1b
+    classDef elastic fill:#e3f2fd,stroke:#1565c0,color:#1b1b1b
+    classDef human fill:#f3e5f5,stroke:#6a1b9a,color:#1b1b1b
+    classDef cartesia fill:#fff3e0,stroke:#ef6c00,color:#1b1b1b
+```
+
+| Step | What the audience sees or hears | Who does it |
+| --- | --- | --- |
+| 1 | A squeal over the tower's instruction | The problem |
+| 2 | Pilot hears "Advisory. Transmission blocked. Likely hold short Runway 33. Awaiting controller." | Moss (local memory search, in milliseconds) |
+| 3 | The blocked words and the FAA paragraph appear for the controller | Elastic (agents in a Workflow, hybrid search) |
+| 4 | Controller says "Approve" | The human |
+| 5 | Pilot hears the directive, reads back "Runway 23", Unstep catches it and repeats "Runway tree tree" | Cartesia (speech in and out) |
+| 6 | Dashboard and a live ES\|QL query show the whole event | Elastic |
+
+## 3. The Two Halves at a Glance
 
 ```mermaid
 flowchart LR
@@ -56,9 +88,9 @@ flowchart LR
 
 Solid lines are live. Dotted lines happen after the event and never block it.
 
-## 3. Ground: Orchestrator, Agents and the Human
+## 4. Ground: Orchestrator, Agents and the Human
 
-### 3.1 Why a Workflow and not a supervisor agent
+### 4.1 Why a Workflow and not a supervisor agent
 
 | | LLM supervisor agent | **Elastic Workflow (proposed)** |
 | --- | --- | --- |
@@ -73,7 +105,7 @@ On a safety path the order of steps must not depend on a model's mood. LLMs are 
 
 Verified in the Elastic docs on 2026-10-23: Workflows have an `ai.agent` step that invokes an Agent Builder agent, an `ai.prompt` step, a `parallel` step (preview), a `waitForInput` step that pauses for human input, and manual triggers that can be run "through the UI or API" ([Steps](https://www.elastic.co/docs/explore-analyze/workflows/steps), [Triggers](https://www.elastic.co/docs/explore-analyze/workflows/triggers)). Still to verify in B5: the exact API path to start a run and to resume a `waitForInput` step.
 
-### 3.2 One Workflow run per blocked call
+### 4.2 One Workflow run per blocked call
 
 ```mermaid
 flowchart TD
@@ -97,7 +129,7 @@ flowchart TD
 
 The gateway stays the single enforcement point: it holds the proposal, accepts only a human decision, and builds the directive from the stored proposal. The Workflow records and sequences; it never talks to the cockpit directly. If the `waitForInput` resume API turns out not to fit, the fallback is two short runs: one that ends at the proposal, and one triggered by the decision.
 
-### 3.3 Agents and their limits
+### 4.3 Agents and their limits
 
 | Agent | Kind | Reads | Writes | Tools it may use |
 | --- | --- | --- | --- | --- |
@@ -109,7 +141,7 @@ The gateway stays the single enforcement point: it holds the proposal, accepts o
 
 No agent can send a directive. No agent talks to another agent: they hand results to the Workflow, which passes them on.
 
-## 4. Cockpit: Local Compute with Cartesia and Moss
+## 5. Cockpit: Local Compute with Cartesia and Moss
 
 ```mermaid
 flowchart LR
@@ -129,13 +161,13 @@ flowchart LR
 
 The edge agent is a state machine, not an LLM. It moves through fixed states (listening, blocked, hint given, awaiting approval, directive spoken, awaiting readback, confirmed or flagged) so its behavior can be tested and predicted.
 
-### 4.1 Explainability (optional, cut if time is short)
+### 5.1 Explainability (optional, cut if time is short)
 
 Every advisory carries an evidence bundle. The pilot can ask "Unstep, why?" and hear, for example: "Your call from the tower at one four zero two was blocked. Controller approved hold short runway tree tree. Source: your taxi clearance at one three five eight." The same bundle drives the dashboard card and the audit record, so the cockpit, the controller and the inspector all see one explanation. It reuses the existing pilot query path (A10), Moss search and Cartesia TTS, so it adds no new component.
 
-## 5. How Information Moves Between the Two Sides
+## 6. How Information Moves Between the Two Sides
 
-### 5.1 Options
+### 6.1 Options
 
 | Option | What moves | Speed | Verdict |
 | --- | --- | --- | --- |
@@ -144,7 +176,7 @@ Every advisory carries an evidence bundle. The pilot can ask "Unstep, why?" and 
 | C. Moss handoff or in-session indexing | Whole Moss indexes via Moss Cloud | `push_index()` replaces the whole index, readers poll every 300 s by default (M-011) | **Not a live channel.** Right for context handoff after the event |
 | D. Live link with ATC-style messages (proposed) | Small structured messages over WebSocket today, any IP link later | 9 ms gateway round trip measured in the live demo | **Use for the live path.** Content limited to what ATC already says |
 
-### 5.2 Proposed: three channels
+### 6.2 Proposed: three channels
 
 ```mermaid
 sequenceDiagram
@@ -181,7 +213,7 @@ sequenceDiagram
 | Moss handoff | Flight session (clearances, readbacks, events) | After the event, end of flight | Moss's own handoff pattern: one writer, push, then read |
 | Elastic | Every message and every Workflow step | Always, asynchronously | Audit and stats, never blocks the live path |
 
-### 5.3 Share only what ATC already shares
+### 6.3 Share only what ATC already shares
 
 The live link carries the same information a controller would put on the radio, in the same structure, plus ids to tie the event together. It never carries raw audio, Moss documents or anything a controller would not say.
 
@@ -193,7 +225,7 @@ The live link carries the same information a controller would put on the radio, 
 
 Proposed change for discussion: `AnomalyEvent` currently also sends `gps`. The taxiway node is enough for the ground to check the instruction, so `gps` could be dropped to keep to this rule. This is a contract change and needs both developers to agree (CLAUDE.md).
 
-## 6. Open Items
+## 7. Open Items
 
 | Item | Owner | How we close it |
 | --- | --- | --- |

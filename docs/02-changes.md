@@ -19,6 +19,14 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: Simple demo view added to the agentic architecture
+
+**Type:** Docs
+**Area:** Docs
+
+- Added section 2 "Demo View: One Picture" to [10-agentic-architecture.md](10-agentic-architecture.md): six boxes left to right, one color per sponsor, plus a table of what the audience sees or hears at each step.
+- The detailed diagrams moved down one section number (3 to 7).
+
 ## 2026-10-23: One config for every connection, gateway token fixed
 
 **Type:** Fixed
