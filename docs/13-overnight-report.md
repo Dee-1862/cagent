@@ -1,6 +1,6 @@
 # Overnight Report: Demo Build (2026-10-24, about 00:15 to 03:45 PT)
 
-What was built while Rishit slept, how to run it, what's left, and what needs a human decision. Everything is on branch `rishit` and in PR #2.
+What was built while Rishit slept, how to run it, what's left, and what needs a human decision. Everything is on branch `rishit` and in PR #3 (PR #2, the earlier work, was already merged).
 
 ## 1. Run it
 
@@ -49,7 +49,7 @@ Found by live runs and three red-team passes; all fixed with tests (254 passing)
 
 | # | Item | Who |
 | --- | --- | --- |
-| 1 | **Merge PR #2** into `master`. It touches `unstep/gateway/server.py` (host allowlist, observer role, `/demo` routes) and `unstep/ground/mock_agents.py`; Dev B should glance at those | Both |
+| 1 | **Merge PR #3** into `master`. It touches `unstep/gateway/server.py` (host allowlist, observer role, `/demo` routes) and `unstep/ground/mock_agents.py`; Dev B should glance at those | Both |
 | 2 | **Elastic is still the weak track.** The ground agents are mocks ("No rule citation supplied · mock ground agents" on screen). B5 (Workflow and agents), B4 (FAA index) and B8 (ES\|QL) are the critical path. The analytics card already runs real ES\|QL as soon as `ELASTIC_*` is configured | Dev B |
 | 3 | **Cross-machine gateway.** The gateway now only answers local hosts. To run tower and cockpit on two laptops, set `UNSTEP_ALLOWED_HOSTS` to the gateway laptop's LAN IP | Dev B |
 | 4 | **Controller voice is a recorded clip.** A live mic for the controller would make the voice-first story stronger; it's labeled honestly for now | Rishit |
