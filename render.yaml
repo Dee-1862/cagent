@@ -10,8 +10,10 @@ services:
         value: "*.onrender.com"
       - key: UNSTEP_OFFLINE    # delete this to use real Cartesia, Moss and Elastic
         value: "1"
-      # The public demo runs offline (no API spend), so it needs no room code. Before going live
-      # (UNSTEP_OFFLINE removed), add UNSTEP_GATEWAY_TOKEN here and VITE_UNSTEP_TOKEN in Vercel.
+      # Room code. Required whenever UNSTEP_OFFLINE is removed: with live keys and no code, anyone
+      # with the link spends our Cartesia credits. Set the same value as VITE_UNSTEP_TOKEN in Vercel.
+      - key: UNSTEP_GATEWAY_TOKEN
+        sync: false
       - key: UNSTEP_PUBLIC_URL
         value: "https://unstep.onrender.com"
       # The pilot app on Vercel: every deployment address of this project, plus the production one.
@@ -23,6 +25,9 @@ services:
         sync: false
       - key: CARTESIA_VOICE_ID
         sync: false
+      # The unstep-atc-v2 dictionary id (the niner fix), from scripts/upload_pronunciation_dict.py. Not the old id.
+      - key: CARTESIA_PRONUNCIATION_DICT_ID
+        sync: false
       - key: MOSS_PROJECT_ID
         sync: false
       - key: MOSS_PROJECT_KEY
@@ -30,4 +35,7 @@ services:
       - key: ELASTIC_CLOUD_URL
         sync: false
       - key: ELASTIC_API_KEY
+        sync: false
+      # Set to 1 once scripts/deploy_elastic.py has created the agents and workflows.
+      - key: UNSTEP_ELASTIC_AGENTS
         sync: false

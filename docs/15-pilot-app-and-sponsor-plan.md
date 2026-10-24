@@ -51,6 +51,18 @@ projector (ATC console)           ------------------>  same laptop, /live/atc/
 
 Vercel stays optional and hosts the pilot app only. In the Vercel project: Root Directory `app`, framework Vite, Production Branch `dev-b/gateway-and-contracts` (Vercel's default is `master`, and at the repo root it tries to deploy the Python hub as a serverless function and fails). Environment variables in Vercel: `VITE_UNSTEP_HUB=https://<service>.onrender.com` and, if the hub has a room token, `VITE_UNSTEP_TOKEN` (it ends up in the public page, like the QR link). On Render add `UNSTEP_ALLOWED_ORIGINS=https://<project>.vercel.app`, `UNSTEP_PILOT_APP_URL=https://<project>.vercel.app` and `UNSTEP_PUBLIC_URL=https://<service>.onrender.com`, so the hub accepts the Vercel page and the console QR points at it.
 
+### Going live on Render
+
+The public Render hub runs offline by default (`UNSTEP_OFFLINE=1`: real room logic, stand-in speech, memory and analytics). To make it live, only Deekshith can do these steps in the dashboards:
+
+1. **Render, service `unstep`, Environment:** delete `UNSTEP_OFFLINE`. Fill `CARTESIA_API_KEY`, `CARTESIA_VOICE_ID`, `CARTESIA_PRONUNCIATION_DICT_ID` (the new `unstep-atc-v2` id from `python scripts/upload_pronunciation_dict.py --name unstep-atc-v2`, not the old one), `MOSS_PROJECT_ID`, `MOSS_PROJECT_KEY`, `ELASTIC_CLOUD_URL`, `ELASTIC_API_KEY`, `UNSTEP_ATC_PASSWORD`. Set `UNSTEP_ELASTIC_AGENTS=1` once `scripts/deploy_elastic.py` has worked.
+2. **Room code:** set `UNSTEP_GATEWAY_TOKEN` on Render and the same value as `VITE_UNSTEP_TOKEN` in Vercel. With live keys and no code, anyone with the link spends our Cartesia credits.
+3. **Redeploy both.** Open the console: the badge must say LIVE, not "OFFLINE · fake speech".
+4. **Plan:** the free tier has 512 MB and sleeps after about 15 minutes idle (about a minute to wake). Six Moss sessions plus live speech may not fit; consider the starter plan for demo day. Either way, open the link a few minutes before judging.
+5. **Hold to talk once on a phone** and check that a real transcript of your own voice appears on the console.
+
+The primary live hub stays on Rishit's laptop (`python -m unstep.live --https` or the tunnel) for latency. Render live is the public backup and the QR target if the laptop network fails. Latency numbers in the pitch come from laptop runs only.
+
 ## 3. Demo Flow for a Crowd
 
 The laptop is the tower. Two judges get pre-joined phones (Plane A and B). The QR stays on screen so anyone can join as Plane C to F.

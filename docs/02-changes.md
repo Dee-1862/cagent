@@ -19,6 +19,16 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Render blueprint ready for going live, with a checklist
+
+**Type:** Changed
+**Area:** Other
+
+- `render.yaml` now lists `UNSTEP_GATEWAY_TOKEN` (required once `UNSTEP_OFFLINE` is removed), `CARTESIA_PRONUNCIATION_DICT_ID` (the new `unstep-atc-v2` id with the niner fix) and `UNSTEP_ELASTIC_AGENTS`, all filled in the dashboard.
+- [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md) section 2: "Going live on Render", the steps only Deekshith can do in the Render and Vercel dashboards, the plan choice, and that pitch latency numbers come from laptop runs only.
+
+**Related:** agent mail R25
+
 ## 2026-10-24: The Moss search step says why no hint came out
 
 **Type:** Fixed
