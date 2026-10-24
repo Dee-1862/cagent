@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Live room built: pick a seat, agents in the middle, controller for edge cases
+
+**Type:** Added
+**Area:** Other
+
+- `python -m unstep.live` serves the live room on the gateway. Each person picks a seat (tower controller, Cessna N123AB, Helicopter H456, observer) and talks on a shared virtual frequency by typing or with a hold-to-talk microphone.
+- `unstep/live/radio.py`: overlap clusters, mixing with an AM beat tone on overlapped frames, keyed squelch from real push-to-talk timing, radio truth.
+- `unstep/live/room.py`: tower transcriber, one cockpit agent per aircraft, ground agents (stand-in until B5), policy agent, frequency monitor and an observer, all in process but through the real gateway and its rules.
+- Controller screen: live agent graph with message flows, "Needs you" queue with countdowns, auto-relay switch, and an evidence chain per blocked call (struck words, what the cockpit heard, Moss hint and source, policy checks, timed agent steps). Pilot screen: left-ear advisories, cockpit transcript, ask-Unstep box. Observer: read-only supervisor view.
+- Live check with four browser seats on real Cartesia: an auto-relayed hold short with a wrong then right readback, and an escalated takeoff clearance that the controller rejected. Two bugs found and fixed on the way (M-016).
+- 9 new tests for the radio, the room, the app and the speech queue.
+
 ## 2026-10-24: Policy agent: the controller is needed only for edge cases
 
 **Type:** Added

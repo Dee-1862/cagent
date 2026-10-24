@@ -73,7 +73,7 @@ GRAPH_NODES = [
     {"id": "cockpit:N123AB", "label": "Cockpit agent N123AB", "sub": "Cartesia + Moss"},
     {"id": "cockpit:H456", "label": "Cockpit agent H456", "sub": "Cartesia + local memory"},
     {"id": "gateway", "label": "Gateway", "sub": "routing and rules"},
-    {"id": "ground", "label": "Ground agents", "sub": "intercept + compliance (mock until B5)"},
+    {"id": "ground", "label": "Ground agents", "sub": "mock until Elastic B5"},
     {"id": "policy", "label": "Policy agent", "sub": "auto-relay or escalate"},
     {"id": "monitor", "label": "Frequency monitor", "sub": "insights"},
     {"id": "controller", "label": "Controller (you)", "sub": "edge cases only"},
@@ -201,6 +201,25 @@ class _Turns:
             self.last_pcm = pcm
             yield TurnEvent("turn.start")
             yield TurnEvent("turn.end", transcript=text)
+
+
+class SerialTTS:
+    """One headset, one voice: queues speak() calls on a shared speech connection.
+
+    In the live room an auto-relayed directive can arrive while the cockpit is still
+    speaking the local hint; two concurrent speak() calls on one Cartesia socket fail.
+    """
+
+    def __init__(self, engine):
+        self.engine = engine
+        self._lock = asyncio.Lock()
+
+    async def speak(self, text, context_id=None, on_chunk=None):
+        async with self._lock:
+            return await self.engine.speak(text, context_id=context_id, on_chunk=on_chunk)
+
+    def __getattr__(self, name):
+        return getattr(self.engine, name)
 
 
 class BrowserAudioOut(AudioOut):
@@ -352,7 +371,7 @@ class LiveRoom:
                 edge = LiveEdge(callsign=s.callsign, frequency=self.frequency,
                                 link=InProcLink(gw, "cockpit"),
                                 memory=create_memory() if first else LocalMemory(),
-                                tts=self._advisory_tts(), turn_stt_factory=turns.factory,
+                                tts=SerialTTS(self._advisory_tts()), turn_stt_factory=turns.factory,
                                 audio_out=BrowserAudioOut(self, s.id))
                 edge.room = self
                 first = False

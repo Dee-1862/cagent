@@ -38,6 +38,7 @@ Each entry uses this template:
 | M-013 | Voice was only the output, screens were the interface | Audio | Resolved |
 | M-014 | Local hint could have suggested a permissive clearance | Edge device | Resolved |
 | M-015 | Both developers built the same gateway and contracts | Other | Resolved |
+| M-016 | The scripted demo hid timing and realism bugs | Other | Resolved |
 
 ---
 
@@ -212,3 +213,14 @@ Each entry uses this template:
 **Why it matters:** Half a block of work was thrown away, and the merge needed manual conflict resolution in eleven files.
 **What we learned:** Pull before starting a task, and say which task you are taking before you start it. A shared task (S1) needs one person to draft and the other to review, not both drafting.
 **Action:** Kept `unstep/` as the codebase and removed the duplicate. From now on, each task starts with a pull and a short note in the team chat or a draft PR naming the task.
+
+## M-016: The scripted demo hid timing and realism bugs
+
+**Date found:** 2026-10-24
+**Status:** Resolved
+**Area:** Other
+
+**What happened:** The first live room run showed two problems the scripted presenter never hit. Mixing two voices by simple addition did not trigger the overlap detector, because real AM overlaps also produce a carrier beat tone. And when the policy agent auto-relayed a directive, it arrived while the cockpit was still speaking the local hint, so two speech requests ran on one Cartesia connection and the directive was never spoken.
+**Why it matters:** A scripted demo only proves the script. Judges trying the system themselves would have found both.
+**What we learned:** Test with people acting freely and with real timing. Model the physical channel (the AM beat), not just the happy-path data. Anything that can arrive while something else is in progress needs an explicit rule.
+**Action:** The mixer models the beat tone on overlapped frames, cockpit speech is queued one line at a time (`SerialTTS`), and both have tests.

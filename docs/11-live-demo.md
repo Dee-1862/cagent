@@ -4,9 +4,41 @@ How to turn the scripted presenter into a real, multi-person demo: each person j
 
 | Field | Value |
 | --- | --- |
-| Status | Proposal v0.1, needs Dev A's agreement |
+| Status | Built (v0.2): live room, policy agent, role screens. The policy rule change needs Dev A's agreement |
 | Last updated | 2026-10-24 |
 | Related | [PRD](01-prd.md), [Agentic Architecture](10-agentic-architecture.md), [Work Split](04-work-split.md), [Architecture](05-architecture.md) |
+
+## 0. How to Run It
+
+```
+python -m unstep.live              # LIVE when CARTESIA_API_KEY is set, opens http://127.0.0.1:8765/live/
+python -m unstep.live --offline    # fake speech, no API calls
+python -m unstep.live --host 0.0.0.0 --port 8765   # others on the same network (see the printed link)
+```
+
+1. Every person opens the link and picks a seat: tower controller, Cessna N123AB, Helicopter H456 or the observer screen.
+2. The tower transmits: type in the say box, click a suggested line, or hold Space to talk where the microphone is allowed.
+3. Someone else transmits at the same time, and the call is stepped on for real.
+4. Watch the agents on the controller and observer screens. Routine restrictive calls are relayed by the policy agent. Edge cases land in "Needs you" with the reasons and a countdown.
+
+| What | Real or stand-in |
+| --- | --- |
+| Shared frequency, overlap, AM beat tone, radio truth | Real (`unstep/live/radio.py`) |
+| Cockpit overlap detector, local hint, advisory voice, readback check, pilot questions | Real (Rishit's cockpit agent, one per aircraft) |
+| Tower transcript and cockpit transcript | Real Cartesia STT in live mode |
+| Speech from the say box | Real Cartesia TTS in each station's voice |
+| Ground agents (intercept, compliance) | Stand-in (`unstep.ground.mock_agents.propose`) until the Elastic Workflow (B5) |
+| Policy agent, gateway rules, Elastic storage | Real |
+| Moss | Real for N123AB, local memory for H456 (Moss plan limit) |
+
+Checked live on 2026-10-24 with four headless browser seats on real Cartesia. A hold short stepped on by the helicopter was auto-relayed and spoken. A wrong readback ("runway two three") was caught and the correct one confirmed. A stepped-on "cleared for takeoff" was escalated with two reasons and rejected by the controller, and the pilot heard "request say again".
+
+### Known limits
+
+- Directives are still broadcast to every cockpit agent, and each agent keeps only its own callsign. Per-aircraft routing in the gateway is still to do (L2).
+- The H456 cockpit agent uses the N123AB seed data, so its local hints are not meaningful yet (L4, Dev A).
+- Microphones need `https` or `localhost`. The say box works everywhere.
+- Room history lives in memory and resets when the server restarts. Elastic keeps every message.
 
 ## 1. Why Change the Presenter Mode
 
@@ -112,6 +144,20 @@ Every event gets one evidence chain, built as it happens and stored in Elastic. 
 Each agent step shows its input, output and time, so a judge can follow one blocked call from the squeal to the confirmed readback.
 
 ## 6. Human in the Loop with Several Aircraft
+
+**Built as a policy agent** (`unstep/ground/policy.py`). The controller is needed only for edge cases: the policy auto-relays a blocked instruction only when the agents can show it repeats the controller's own words. All of these must pass, otherwise the call goes to "Needs you" with the failed checks as reasons:
+
+| Check | Passes when |
+| --- | --- |
+| tower_transcript | The ground heard the controller's own transmission |
+| addressed | That transmission was addressed to this aircraft |
+| fresh | The controller spoke within `UNSTEP_AUTO_MAX_AGE_S` (default 30 s) |
+| restrictive | The instruction makes the aircraft wait (hold short, hold position, stop, go around) |
+| confidence | The agents rated the match high |
+| hint_agrees | The cockpit's local hint does not contradict it |
+| autonomy_on | The controller has not switched auto-relay off |
+
+The gateway re-checks every auto approval (restrictive, high confidence) and rebuilds it from the stored proposal. The policy role can approve but never reject. This changes PRD rule FR-6 and needs Dev A's agreement.
 
 - **Queue, not a single card.** Proposals line up per aircraft. The controller hears them one at a time, oldest first, with the callsign said first.
 - **Visible countdown.** Each card shows how long until it expires, which removes the "proposal expired while I was talking" failure.

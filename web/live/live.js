@@ -208,7 +208,8 @@ function onHello(m) {
   st.traces = new Map(m.traces.map((t) => [t.event_id, t]));
   $("radio").replaceChildren();
   m.radio.forEach(radioCluster);
-  $("insights").replaceChildren();
+  $("insights").replaceChildren(h("div", { class: "empty" },
+    "No patterns yet. The monitor flags repeated blocked calls and readback errors."));
   m.insights.forEach(addInsight);
   if (sup) drawGraph();
   renderTraces();
@@ -259,6 +260,7 @@ function cockpitLine(m) {
 }
 
 function addInsight(i) {
+  $("insights").querySelector(".empty")?.remove();
   $("insights").prepend(h("div", { class: "line" }, h("span", { class: "p" }, i.kind), i.text));
 }
 
@@ -294,8 +296,23 @@ function nodeId(id) {
   return id;
 }
 
+// Flows arrive in bursts; play them one after another so labels stay readable.
+const flowQueue = [];
+let flowBusy = false;
 function animateFlow(m) {
   if (st.kind === "aircraft" || !NODE_POS[nodeId(m.from)] || !NODE_POS[nodeId(m.to)]) return;
+  if (flowQueue.length > 40) flowQueue.shift();
+  flowQueue.push(m);
+  if (!flowBusy) nextFlow();
+}
+function nextFlow() {
+  const m = flowQueue.shift();
+  if (!m) { flowBusy = false; return; }
+  flowBusy = true;
+  playFlow(m);
+  setTimeout(nextFlow, 140);
+}
+function playFlow(m) {
   const a = nodeId(m.from);
   const b = nodeId(m.to);
   const [x1, y1] = NODE_POS[a];
@@ -304,7 +321,9 @@ function animateFlow(m) {
   const layer = $("pulses");
   if (!layer) return;
   const dot = s("circle", { cx: x1, cy: y1, r: 6, fill: color });
-  const text = s("text", { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 8, "text-anchor": "middle", class: "flow-label" }, m.label);
+  const quiet = m.label === "stored";  // every message is stored; a dot is enough
+  const text = s("text", { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 8, "text-anchor": "middle", class: "flow-label" },
+    quiet ? "" : m.label);
   layer.append(dot, text);
   const edge = $(`e-${a}-${b}`) || $(`e-${b}-${a}`);
   if (edge) edge.classList.add("hot");

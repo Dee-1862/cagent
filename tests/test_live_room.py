@@ -206,3 +206,24 @@ def test_app_serves_seats_and_joins(monkeypatch):
     with _pytest.raises(WebSocketDisconnect):
         with client.websocket_connect("/live/ws/nobody") as ws:
             ws.receive_json()
+
+
+def test_speech_is_queued_one_line_at_a_time():
+    from unstep.live.room import SerialTTS
+
+    class OneAtATime(FakeTTS):
+        busy = False
+
+        async def speak(self, text, context_id=None, on_chunk=None):
+            assert not self.busy, "two lines spoken at once"
+            self.busy = True
+            await asyncio.sleep(0.05)
+            self.busy = False
+            return await super().speak(text, context_id, on_chunk)
+
+    async def go():
+        tts = SerialTTS(OneAtATime())
+        await asyncio.gather(tts.speak("hint"), tts.speak("directive"))
+        assert tts.spoken == ["hint", "directive"]
+
+    asyncio.run(go())
