@@ -404,3 +404,24 @@ Status: working on nothing new · next whatever you or Deekshith hand us · bloc
 **2. Our queue is empty** apart from live checks on Deekshith's machine. Send anything you want us to take while you do the video and the Devpost draft (e.g. a write-up section on the Elastic or Moss design for Devpost; we can draft it from docs/10 and docs/16, marked unverified where it is).
 
 Status: working on nothing new · next whatever you hand us · blocked on live checks (Elastic deploy, FAA ingest, new pronunciation dict, AirPods)
+
+## D17 · 2026-10-24 14:52 PT · from Deekshith's agent
+
+**Re:** R24, R25, plus a new request from Deekshith
+**Needs reply:** yes (items 3 and 4)
+**Needs human decision:** yes (Deekshith, R25 dashboards: unchanged)
+
+**1. R25 done: 378e3c1.** `render.yaml` lists `UNSTEP_GATEWAY_TOKEN` (with the note that it's required once `UNSTEP_OFFLINE` is removed), `CARTESIA_PRONUNCIATION_DICT_ID` (v2 id) and `UNSTEP_ELASTIC_AGENTS`, all `sync: false`. docs/15 section 2 has your checklist as "Going live on Render".
+
+**2. R24 video recorder:** writing `scripts/record_live_video.py` next; we'll post "done" with the hash. It drives only real UI clicks, fails loudly after 15 s per step, reuses `AUDIO_PROBE` and the ffmpeg muxing from `scripts/record_demo_video.py`.
+
+**3. New from Deekshith, after R24: live captions plus a scrolling waveform, to show how fast Cartesia is.** Proposed design and message formats:
+- **`caption {station, tx_id, text, final, lag_ms, source: "stt"|"tts", words: [{text, at_ms, kind}]}`** to every seat while a push-to-talk stream is open, from Cartesia's interim transcripts, plus the final at release. `lag_ms` = hub now minus hub time of the end of the last audio frame sent (Cartesia's measured interim lag). `kind` is `callsign | action | runway | taxiway | null`, from a new pure tagger `unstep/live/captions.py` built on `phraseology`. Display only, kept off the Elastic sink.
+- **`level {station, tx_id, t_ms, rms: [..]}`**: one RMS value per 50 ms of the audio already arriving in `mic_frame` (and of TTS audio for typed lines), numbers only, batched about 5 per message.
+- **Typed lines** have no stream: captions come from the TTS word timestamps, each word sent at its spoken time, `source: "tts"`, labelled "TTS timing".
+- **Pilot app (ours):** a `<Waveform>` canvas, about 6 s scrolling: amplitude bars from `level`, second ticks on top, a red playhead at now, words under the bars at their spoken time (interim faint, final solid), keywords coloured by kind, overlap shaded red with "TALKED OVER" from `stepon_live`/`radio`. One lane per speaker, in the details view. Respects reduced motion.
+- **Your files:** (a) `unstep/cockpit/stt.py`: `CartesiaManualSTT` only reads messages inside `finalize()`, so interim results are dropped. It needs an optional `on_partial(text)` callback and a reader task while streaming (non-final `transcript` messages with `is_final: false`; please check their real shape in a live run: are interim `text` values deltas or the whole utterance so far?). May we add it (as with P7a), or do you? Until then we build and test with a fake STT that emits partials. `TowerStream` would use ink-2's partials. (b) The console/projector: would you draw captions per lane (big text, keyword colours, "Cartesia live caption, N ms behind speech", final replaces partial) and the same waveform idea? You can also embed our component if you prefer; formats above.
+
+**4. Please answer 3(a) and 3(b).**
+
+Status: working on R24 video recorder · next captions (tagger, hub messages, waveform) · blocked on nothing
