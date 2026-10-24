@@ -47,7 +47,7 @@ In the demo the pilot has only AirPods. The phone is the talk button and the rad
 | # | Item | Status | Owner |
 | --- | --- | --- | --- |
 | C0 | Streaming STT while the key is held (d3e183b), ink-2 words with ink-whisper times (f3d2d2a), fast replays (d92aac6), streamed advisory to the phone (167027a), pronunciation dictionary, cancel when the pilot talks, hold while the frequency is busy (P5, bc01591), per-station voices, radio-sounding transmissions with Unstep's voice clean (de4db82), measured repro ([09](09-cartesia-feedback.md)) | Built | both |
-| C1 | Three-way recovery (section 2). Priority: restrictive to the addressee first, then the blocked-caller notice, then the controller note; permissive never automatic; anything older than 30 s dropped | Agreed (R18). Contract fields to be posted first | Room: Deekshith's side. Cockpit voice: Rishit's side |
+| C1 | Three-way recovery (section 2). Priority: restrictive to the addressee first, then the blocked-caller notice, then the controller note; permissive never automatic; anything older than 30 s dropped. No contract change (R19) | Built: controller note (570d30e), blocked-caller notice via `notify_blocked` with directives first (Rishit's ab2f1db, room call this commit), directives say "From Tower" (Rishit's eca04b0) | Room: Deekshith's side. Cockpit voice: Rishit's side |
 | C2 | Eyes-free pilot mode: every screen cue becomes an earcon or a short spoken line. Test AirPods early: the mic may switch Bluetooth to call mode and break left-ear-only | Agreed (R18) | `app/`: Deekshith's side. Earcon wording: Rishit's side |
 | C3 | Private advisory repeated in the pilot's language after the English (es, hi, fr, only if every number survives) | Built (d711e89; join picker 882d059) | Rishit's side, join Deekshith's side |
 | C4 | Slower speech (0.85) for "readback incorrect" corrections. Urgent emotion skipped: sonic-3.6 offers calm, neutral, angry, content, sad | Built (d711e89) | Rishit's side |
@@ -62,10 +62,12 @@ A judge causes the stepped-on call with their own voice and hears the fix privat
 
 [09-cartesia-feedback.md](09-cartesia-feedback.md) with measured numbers and workarounds is our Cartesia issues section. We will add the same short sections for Moss and Elastic here, only with what we measured on the live services.
 
-## 8. Proposed Next (waiting for answers in D11)
+## 8. Decided in R19
 
-Listed so nothing is lost; none of these is agreed yet.
-
-- Speaker-attributed recovery: "From Tower, to you: ..." and, for party-line awareness, "From Plane B, to Tower: ...", optionally replaying the speaker's own clean words cut by word times.
-- Cartesia features to check on Cartesia's docs first: `turn.eager_end` / `turn.resume` as a gap detector, speed and volume controls for gap fitting, Infill only as a labelled visual, Voice Changer only for an evaluation set.
-- An evaluation step: ATCO2 test hour, a UWB-ATCC sample, our synthetic set and our live sessions; callsign and runway accuracy, WER, readback-error precision and recall, latency p50 and p95; results stored in Elastic.
+| Item | Status | Owner |
+| --- | --- | --- |
+| Speaker-attributed text: "Advisory. From Tower, to you: ...", party-line summaries optional, last priority, only when nobody is talking | Agreed; "From Tower" prefix built (eca04b0) | Rishit's side |
+| Replaying the controller's own clean words cut by word times | Not now (choppy audio, new safety logic). Next | |
+| `turn.eager_end` / `turn.resume` to pre-render the advisory and cancel on a key-up (check on sonic-3.6 first) | Agreed | Rishit's side |
+| Volume control, Infill, Voice Changer evaluation set | Not now | |
+| Evaluation: our synthetic set and live sessions only (public datasets only if the licence clearly allows a public repo); callsign and runway accuracy, readback-error precision and recall, latency p50 and p95 | Agreed, small | Deekshith's side writes the script (`--dry-run`), Rishit's side runs it live |

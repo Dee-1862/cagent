@@ -45,3 +45,20 @@ def test_stale_recovery_is_dropped(make_room, monkeypatch):
         await room.stop()
 
     asyncio.run(go())
+
+
+def test_blocked_pilot_is_told_to_say_again(make_room):
+    async def go():
+        room, atc, pilot = await make_room()
+        calls = []
+        for cs, edge in room.edges.items():
+            async def notify(event_id, cs=cs, **kw):
+                calls.append((cs, event_id))
+            edge.notify_blocked = notify
+        await stepped_on(room)
+        await wait_for(lambda: calls)
+        assert [c[0] for c in calls] == ["H456"]  # the helicopter's own call was blocked; tower is not a cockpit
+        assert calls[0][1].startswith("rec-tx-")
+        await room.stop()
+
+    asyncio.run(go())

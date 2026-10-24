@@ -19,6 +19,19 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: A pilot whose call was stepped on is told to say again (C1, blocked caller)
+
+**Type:** Added
+**Area:** Edge device
+
+- Merged Rishit's `CockpitEdge.notify_blocked()` (ab2f1db: busy hold, directives go first) and the "From Tower" prefix on directives (eca04b0).
+- The room now calls `notify_blocked` for every aircraft whose own transmission was in a stepped-on overlap ("Your last call was blocked. Say again."), skipping anything older than 30 s, and audits each as stage `recovery`.
+- Intercept agent wording fixed after Rishit's review: the stepped-on call is usually the controller's call to the pilot.
+- [16-sponsor-depth.md](16-sponsor-depth.md) updated with R19's decisions.
+- Checked: 1 new room test with fake edges.
+
+**Related:** agent mail R19
+
 ## 2026-10-24: The controller hears who stepped on them (C1, tower side)
 
 **Type:** Added

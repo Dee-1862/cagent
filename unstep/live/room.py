@@ -868,6 +868,8 @@ class LiveRoom:
                 jobs.append(self._pilot_spoke(t, clean=not mx.overlaps))
         if towers and mx.overlaps:
             jobs.append(self._recover_for_tower(cluster, mx))
+        if mx.overlaps:
+            self._notify_blocked_callers(cluster, mx)
         await asyncio.gather(*jobs, return_exceptions=False)
 
     async def _peek_streamed(self, tx: Transmission) -> str | None:
@@ -880,6 +882,31 @@ class LiveRoom:
         except Exception:
             return None
         return result if isinstance(result, str) else None
+
+    def _notify_blocked_callers(self, cluster: list[Transmission], mx: Mix) -> None:
+        """C1, blocked caller: a pilot whose own call was stepped on hears "Your last call was
+        blocked. Say again." through their cockpit agent (busy hold and priority are Rishit's
+        CockpitEdge.notify_blocked: a directive for that plane always goes first)."""
+        for t in cluster:
+            s = self.stations.get(t.station)
+            edge = self.edges.get(s.callsign) if s is not None and s.kind == "aircraft" else None
+            if edge is None or not any(o.start_ms < t.end_ms and o.end_ms > t.start_ms for o in mx.overlaps):
+                continue
+            if now_ms() - t.end_ms > RECOVERY_STALE_MS:
+                continue
+            self._spawn(self._notify_one(edge, t))
+
+    async def _notify_one(self, edge, t: Transmission) -> None:
+        try:
+            await edge.notify_blocked(f"rec-{t.tx_id}")
+        except Exception:
+            log.exception("blocked-caller notice failed for %s", t.station)
+            return
+        delivered = now_ms() - t.end_ms
+        await self.links["tower"].send(AuditRecord(
+            event_id=f"rec-{t.tx_id}", stage="recovery", actor="tower", latency_ms=delivered,
+            payload={"to": t.station, "from": "unstep", "kind": "blocked_caller_notice", "priority": 1,
+                     "delivered_ms": delivered}))
 
     async def _recover_for_tower(self, cluster: list[Transmission], mx: Mix) -> None:
         """C1, tower side: the controller was transmitting, so they never heard the call that
