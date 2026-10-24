@@ -488,7 +488,9 @@ class LiveRoom:
                                               on_error=lambda t: self._status(f"policy: {t}"))
             # The hub's frequency session (freq-<frequency>): a Moss session when live, written
             # only by the Frequency Monitor, never pushed. Local memory offline or if Moss fails.
-            monitor = self.monitor = FrequencyMonitor(create_memory() if self.live else LocalMemory())
+            if self.live and self._shared_moss is None:
+                self._shared_moss = create_memory()  # one client for the monitor and every plane
+            monitor = self.monitor = FrequencyMonitor(self._shared_moss if self.live else LocalMemory())
 
             async def monitor_on(msg):
                 try:

@@ -247,7 +247,7 @@ def test_planes_share_one_moss_client(monkeypatch):
         await r.start()
         await r.claim_aircraft(); await r.claim_aircraft(); await r.claim_aircraft()  # a third plane joins
         assert len(made) == 1 and len(r.edges) == 3
-        assert all(e.memory is made[0] for e in r.edges.values())
+        assert all(e.memory is made[0] for e in r.edges.values()) and r.monitor.memory is made[0]
         await r.stop()
 
     asyncio.run(go())
