@@ -1,9 +1,9 @@
 """Live smoke test for MossMemory.
 
-Seeds `airport-KUNS` and `flight-N123AB` through MossMemory (the same seed the
-demo uses), runs the demo hint query, runs a `$gte` filter on `ts`, prints
+Loads `airport-KUNS` (run ingest_airport.py first) and seeds `flight-N123AB`
+through MossMemory, runs the demo hint query, runs a `$gte` filter on `ts`, prints
 Moss `time_taken_ms`, and checks that numeric filters work on `ts` even though
-Moss stores metadata as strings. Pushes both indexes to Moss Cloud unless
+Moss stores metadata as strings. Pushes only the flight session to Moss Cloud unless
 --no-push is given.
 
 Needs MOSS_PROJECT_ID and MOSS_PROJECT_KEY in .env; otherwise prints
@@ -36,13 +36,13 @@ async def main(push: bool) -> int:
 
     from unstep.cockpit.hint import derive_hint
     from unstep.cockpit.memory import MossMemory
-    from unstep.cockpit.seed import COCKPIT, PREFLIGHT, seed
+    from unstep.cockpit.seed import COCKPIT, seed
     from unstep.scenario import CALLSIGN, T0, anomaly_event
 
     mem = MossMemory(pid, pkey)
     t = time.perf_counter()
     a, f = await seed(mem)
-    print(f"seeded {a} and {f} in {1000 * (time.perf_counter() - t):.0f} ms (session open + embed)")
+    print(f"loaded {a}, seeded {f} in {1000 * (time.perf_counter() - t):.0f} ms")
 
     failures = 0
 
@@ -82,7 +82,7 @@ async def main(push: bool) -> int:
             print(f"[ts $gte] {label}: ERROR {type(e).__name__}: {e}")
 
     if push:
-        for index, owner in ((a, PREFLIGHT), (f, COCKPIT)):
+        for index, owner in ((f, COCKPIT),):
             t = time.perf_counter()
             await mem.push(index, writer=owner)
             print(f"[push] {index} pushed in {1000 * (time.perf_counter() - t):.0f} ms")

@@ -73,8 +73,12 @@ class ApprovalLoop:
         self.current, self.pending, self.deadline = None, None, None
         return result
 
-    def timeout(self) -> VoiceApproval | None:
-        if self.current and self.pending is None and self.deadline is not None and self.clock() >= self.deadline:
+    def timeout(self, force: bool = False) -> VoiceApproval | None:
+        """`force` ends the window even if the clock is a hair short of the deadline
+        (sleeps can wake early on Windows), so a proposal can never stay current forever."""
+        if self.current and self.pending is None and self.deadline is not None and (
+            force or self.clock() >= self.deadline
+        ):
             return self._finish("", "unclear")
         return None
 
@@ -144,14 +148,6 @@ class ControllerVoice:
             self.context = None
 
 
-async def _until_deadline(loop: ApprovalLoop) -> None:
-    """Sleep until the deadline has really passed. asyncio may wake a timer up to
-    its clock resolution early (about 15 ms on Windows), and loop.timeout() only
-    acts once clock() >= deadline, so a single sleep can miss the timeout."""
-    while loop.deadline is not None and loop.clock() < loop.deadline:
-        await asyncio.sleep(loop.deadline - loop.clock())
-
-
 async def _answer(loop: ApprovalLoop, prompt: str, voice: ControllerVoice, stt_factory, send) -> None:
     assert loop.current is not None
     event_id = loop.current.event_id
@@ -183,15 +179,14 @@ async def _answer(loop: ApprovalLoop, prompt: str, voice: ControllerVoice, stt_f
                                 break
                             await voice.say(action)
                     else:
-                        await _until_deadline(loop)
-                        action = loop.timeout()
+                        await asyncio.sleep(max(0, loop.deadline - loop.clock()))
+                        action = loop.timeout(force=True)
             if loop.pending is None:
                 if isinstance(action, VoiceApproval):
                     await emit(action)
                 return
     except TimeoutError:
-        await _until_deadline(loop)
-        action = loop.timeout()
+        action = loop.timeout(force=True)
         if action:
             await emit(action)
         return

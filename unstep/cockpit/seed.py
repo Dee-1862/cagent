@@ -7,7 +7,7 @@ instead of looking hardcoded (M-014).
 
 from __future__ import annotations
 
-from unstep.cockpit.memory import Doc, Memory, airport_index, flight_index
+from unstep.cockpit.memory import Doc, Memory, MossMemory, airport_index, flight_index
 from unstep.scenario import CALLSIGN, FREQUENCY, T0
 
 AIRPORT_ICAO = "KUNS"  # fictional demo field
@@ -52,6 +52,9 @@ async def seed(memory: Memory, callsign: str = CALLSIGN, t0: int = T0) -> tuple[
     a, f = airport_index(AIRPORT_ICAO), flight_index(callsign)
     memory.register_index(a, PREFLIGHT)
     memory.register_index(f, COCKPIT)
-    await memory.add_docs(a, airport_docs(), writer=PREFLIGHT)
+    if isinstance(memory, MossMemory):
+        await memory.load_airport(a)
+    else:
+        await memory.add_docs(a, airport_docs(), writer=PREFLIGHT)
     await memory.add_docs(f, flight_docs(callsign, t0), writer=COCKPIT)
     return a, f

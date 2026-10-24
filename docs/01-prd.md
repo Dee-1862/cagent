@@ -112,7 +112,7 @@ Full diagrams are in [Architecture](05-architecture.md). Detailed sponsor usage 
 | Cockpit transcript | Cartesia STT on the received audio, finalized when the squelch closes (the cockpit can't see the tower's PTT) |
 | Local hint (Moss) | Searches the flight session and airport index with the fragment that was heard. Gives a "Likely" hint in a few milliseconds, with the search time and the source record on screen. Restrictive instructions only |
 | Advisory voice (Cartesia TTS) | Chime, then directives in the left ear only, calm advisory voice, ATC numbers |
-| Pilot voice queries | Pilot presses the Unstep key and asks, for example, "what was my last clearance?", "say again" or "which taxiway?". Cartesia turn STT, Moss search over the flight session and airport index, Cartesia TTS answer |
+| Pilot voice queries | Pilot presses the Unstep key and asks, for example, "what was my last clearance?", "say again" or "which taxiway?". Cartesia turn STT, Moss search over the flight session and airport index, Cartesia TTS answer. Questions the fixed intents don't match go to **Moss Inference** with only our retrieved records as context; the spoken answer must be a word-for-word quote of an approved clearance or airport record (airport quotes are labeled "not a clearance"), otherwise "No record found. Ask the controller." Never used for hints, readbacks or approval |
 | Readback check | Cartesia turn-based STT on the pilot mic. Our code compares callsign, action and runway with the directive. Pilot speech interrupts the advisory voice |
 | Offline alert | Pre-generated "Advisory. Transmission blocked, request say again" audio |
 

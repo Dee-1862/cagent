@@ -19,14 +19,44 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Grounded pilot questions and persistent airport knowledge
+
+**Type:** Added
+**Area:** Edge device
+
+Regex pilot intents remain the primary path. Unmatched questions retrieve the
+three newest approved clearances for this callsign and up to three airport hits,
+then use an injectable Moss Inference answerer with server retrieval disabled
+(`indexes=[]`). Answers must be an exact no-record response or an attributable
+quote of at least three words, with no extra claims. Unapproved hints are excluded.
+Failures and a three-second deadline return the existing ask-controller response.
+First-token latency goes into the pilot-query audit payload and edge latency
+summary; shared contracts are unchanged. Hints, readbacks and approval remain
+deterministic. The offline demo uses FakeAnswerer for its new free-form question.
+
+Run `python scripts/ingest_airport.py` before starting a cockpit with Moss.
+The script uses credentials from the process environment, skips without them,
+creates `airport-KUNS` once, and upserts the stable seed ids on later runs.
+The bundled data is for fictional KUNS only. Cockpit startup uses `load_index`
+and cannot add or push airport records; flight and frequency stay sessions.
+LocalMemory still seeds both indexes. The smoke script now pushes only flight.
+Cloud lifecycle follows the [Moss Python API](https://docs.moss.dev/docs/reference/python/api)
+and [indexing guidance](https://docs.moss.dev/docs/integrate/indexing-data).
+
+Added `tests/test_inference.py` with fake inference and cloud clients. Python
+syntax checks passed for all nine changed Python files. The requested Python312
+pytest executable was absent in the execution environment, so the full suite
+could not start. No live inference or ingestion calls were run.
+
+**Related:** [PRD 6.2, 6.4 and FR-14](01-prd.md)
+
 ## 2026-10-24: Voice approval timeout could send nothing on Windows
 
 **Type:** Fixed
 **Area:** Ground agents
 
 - `test_runner_silence_sends_only_unclear[True]` failed about once in four full runs. Cause: asyncio may fire a sleep or timeout up to its clock resolution early (about 15 ms on Windows), and `ApprovalLoop.timeout()` only acts once `clock() >= deadline`. An early wake meant controller silence produced no "unclear" and no retry, in the real 10 s window too.
-- Added `_until_deadline()` in `unstep/ground/voice_approval.py`, which keeps sleeping until the deadline has really passed, used on both timeout paths.
-- 0 failures in 60 runs of the test, full suite 184 passed.
+- Fixed in parallel by both developers. Rishit's `timeout(force=True)` was kept when merging, and Dev B's `_until_deadline()` helper was dropped so there is one mechanism.
 - Process note: master was fast-forwarded to `abbbb53` by a command that did not stop on a failed test run. Merges to master now run the suite first and stop on failure.
 
 ## 2026-10-24: Demo view added to the main architecture doc

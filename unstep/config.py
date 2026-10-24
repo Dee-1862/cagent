@@ -20,6 +20,7 @@ DEFAULT_CARTESIA_STT_MODEL = "ink-2"
 DEFAULT_CARTESIA_TTS_MODEL = "sonic-3.6"
 DEFAULT_EVENTS_INDEX = "unstep-events"
 DEFAULT_PENDING_TTL_S = 60.0
+DEFAULT_MOSS_INFERENCE_MODEL = "moss"
 
 
 def load_env() -> None:
@@ -80,6 +81,13 @@ def cartesia_stt_model() -> str:
 
 def cartesia_tts_model() -> str:
     return env("CARTESIA_TTS_MODEL", default=DEFAULT_CARTESIA_TTS_MODEL)
+
+
+# Moss
+
+
+def moss_inference_model() -> str:
+    return env("MOSS_INFERENCE_MODEL", default=DEFAULT_MOSS_INFERENCE_MODEL)
 
 
 # Elastic
