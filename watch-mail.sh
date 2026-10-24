@@ -26,7 +26,7 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
   after="$(git show "$REF:$FILE" 2>/dev/null || true)"
   if [ "$after" != "$before" ]; then
     echo "NEW MAIL in $FILE ($(git log -1 --format='%h %s' "$REF"))"
-    diff <(printf '%s\n' "$before") <(printf '%s\n' "$after") | sed -n 's/^> //p'
+    diff <(printf '%s\n' "$before") <(printf '%s\n' "$after") | sed -n 's/^> //p' || true  # diff exits 1 when they differ
     exit 0
   fi
 done
