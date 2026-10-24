@@ -51,8 +51,9 @@ async def cartesia() -> None:
     from unstep.cockpit.stt import CartesiaManualSTT
     from unstep.cockpit.tts import CartesiaTTS
 
-    tts = CartesiaTTS()
+    tts = None
     try:
+        tts = CartesiaTTS()  # raises if CARTESIA_VOICE_ID is missing; report it, don't crash
         first = []
         t = time.perf_counter()
         r = await tts.speak("Unstep pre-flight check.", on_chunk=lambda c: first.append(time.perf_counter() - t) if not first else None)
@@ -60,7 +61,8 @@ async def cartesia() -> None:
     except Exception as e:
         check("Cartesia TTS", False, f"{type(e).__name__}: {e}"[:160])
     finally:
-        await tts.close()
+        if tts is not None:
+            await tts.close()
     try:
         pcm = (np.clip(read_wav(ROOT / "assets/clips/real/controller_approve.wav"), -1, 1) * 32767).astype("<i2").tobytes()
         async with CartesiaManualSTT() as stt:

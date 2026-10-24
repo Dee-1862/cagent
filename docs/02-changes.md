@@ -19,6 +19,17 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Merged Rishit's presenter mode and demo work into the Dev B branch
+
+**Type:** Changed
+**Area:** Other
+
+- Merged 19 commits from `rishit` (presenter mode and demo screen, live microphone push-to-talk, tower transcript and blocked-word plumbing, Cartesia reconnect and retry fixes, pre-flight check, pitch script). No conflicts.
+- Two new TTS reconnect tests only passed where `CARTESIA_VOICE_ID` was set in `.env`. They now set a test voice id like they already set a test API key.
+- `unstep/ground/tower.py` had the Cartesia models written in. They now come from config: `CARTESIA_STT_MODEL` (default `ink-2`) for text with key terms and the new `CARTESIA_STT_TIMESTAMP_MODEL` (default `ink-whisper`) for word timing.
+- `scripts/preflight.py` crashed when `CARTESIA_VOICE_ID` was missing, so the Moss and Elastic checks never ran. It now reports the TTS check as FAIL and carries on.
+- Checks: 259 tests pass, offline demo passes, pre-flight passes every live check (Cartesia STT, Moss, Moss Inference, Elastic) except TTS, which needs `CARTESIA_VOICE_ID` in `.env`.
+
 ## 2026-10-24: Live microphone for presenter mode
 
 **Type:** Added

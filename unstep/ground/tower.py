@@ -13,7 +13,7 @@ import websockets
 
 from unstep import scenario
 from unstep.clock import now_ms
-from unstep.config import ws_url
+from unstep.config import cartesia_stt_model, cartesia_stt_timestamp_model, ws_url
 from unstep.cockpit.audio import read_wav
 from unstep.cockpit.stt import CartesiaManualSTT, build_keyterms
 from unstep.contracts import TowerTranscript, wrap
@@ -32,8 +32,8 @@ class TowerTranscriber:
             raise ValueError("invalid PTT window or PCM audio")
         terms = build_keyterms(callsigns=[callsign] if callsign else (),
                                runways=self.runways, taxiways=self.taxiways)
-        async with self.stt_factory(model="ink-2", keyterms=terms) as text_stt:
-            async with self.stt_factory(model="ink-whisper", timestamp_granularities=["word"]) as word_stt:
+        async with self.stt_factory(model=cartesia_stt_model(), keyterms=terms) as text_stt:
+            async with self.stt_factory(model=cartesia_stt_timestamp_model(), timestamp_granularities=["word"]) as word_stt:
                 started = time.monotonic()
                 for offset in range(0, len(audio), 3200):
                     chunk = audio[offset:offset + 3200]

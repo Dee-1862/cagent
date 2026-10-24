@@ -17,6 +17,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_GATEWAY_URL = "ws://127.0.0.1:8765"
 DEFAULT_CARTESIA_VERSION = "2026-08-14"
 DEFAULT_CARTESIA_STT_MODEL = "ink-2"
+# ink-2 has key terms but no word timestamps; ink-whisper has word timestamps.
+DEFAULT_CARTESIA_STT_TIMESTAMP_MODEL = "ink-whisper"
 DEFAULT_CARTESIA_TTS_MODEL = "sonic-3.6"
 DEFAULT_EVENTS_INDEX = "unstep-events"
 DEFAULT_PENDING_TTL_S = 60.0
@@ -93,6 +95,10 @@ def cartesia_version() -> str:
 
 def cartesia_stt_model() -> str:
     return env("CARTESIA_STT_MODEL", default=DEFAULT_CARTESIA_STT_MODEL)
+
+
+def cartesia_stt_timestamp_model() -> str:
+    return env("CARTESIA_STT_TIMESTAMP_MODEL", default=DEFAULT_CARTESIA_STT_TIMESTAMP_MODEL)
 
 
 def cartesia_tts_model() -> str:

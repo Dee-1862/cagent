@@ -344,6 +344,7 @@ def test_cartesia_tts_reconnects_once_after_idle_close(monkeypatch):
     from unstep.cockpit.tts import CartesiaTTS, SpeechResult
 
     monkeypatch.setenv("CARTESIA_API_KEY", "test")
+    monkeypatch.setenv("CARTESIA_VOICE_ID", "test-voice")  # not every .env has one
     tts = CartesiaTTS()
     calls = []
 
@@ -365,6 +366,7 @@ def test_cartesia_tts_never_retries_after_audio_went_out(monkeypatch):
     from unstep.cockpit.tts import CartesiaTTS
 
     monkeypatch.setenv("CARTESIA_API_KEY", "test")
+    monkeypatch.setenv("CARTESIA_VOICE_ID", "test-voice")  # not every .env has one
     tts = CartesiaTTS()
     calls = []
 
