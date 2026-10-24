@@ -19,6 +19,19 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Benchmark report against the status quo and published work
+
+**Type:** Docs
+**Area:** Docs
+
+- [18-benchmark.md](18-benchmark.md), written by `scripts/benchmark_report.py` (docs/17 is the Devpost draft). Simulated traffic, synthetic speech, recorded sessions and ATCO2 each get their own heading; simulated numbers are only under "Simulated traffic (n=...)".
+- **Status quo** is 0% automatic detection, with the sources already in our research (FAA CAMI 1.16% and "no alerting system", SKYbrary, the NTSB quote).
+- **Simulated traffic** (500 calls, 157 stepped on), each with a Wilson 95% interval: 91.7% of step-ons detected by the audio detector, 0 false events on 343 clean calls, recovered instruction correct in 144 of 144, restrictive instruction delivered in 91 of 97. The report says these run on exact text and measure the pipeline's logic, not speech recognition.
+- **Timing:** a modelled "say again" exchange (assumptions labelled) is set against Unstep's measured 6.1 s before the on-air fix and its offline-model 0.43 s after, with the live number left as [confirm live].
+- **Still to run:** the speech, HAAWAII comparison, ATCO2 and recorded-session sections list the commands to run.
+
+**Related:** agent mail D20, D21
+
 ## 2026-10-24: Traffic simulator, labelled simulated, and a fix it found
 
 **Type:** Added

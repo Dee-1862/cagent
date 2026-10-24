@@ -73,7 +73,8 @@ def section_sim(s: dict | None, calls: list[dict]) -> str:
              f"| Wrong readbacks caught (recall) | n/a | {p(s['readback_error_recall'])} |",
              f"| Readbacks flagged that were really wrong (precision) | n/a | {p(s['readback_error_precision'])} |", "",
              f"Auto-relayed: {s['auto_relayed']}; decided by the simulated controller: {s['controller_decisions']}.",
-             "The detection here is the cockpit's audio overlap detector on the room's radio model (a beat tone where two stations transmit); push-to-talk key timing, which the live room also uses, isn't simulated.", ""]
+             "The detection here is the cockpit's audio overlap detector on the room's radio model (a beat tone where two stations transmit); push-to-talk key timing, which the live room also uses, isn't simulated.",
+             "The offline room knows each typed line's words, so the recovered instruction and the readback check run on exact text here: those rows measure the pipeline's logic (matching, policy, delivery, the slot checker), not speech recognition. Speech accuracy is in the next sections.", ""]
     stepped = [c for c in calls if c.get("stepped_on")]
     if stepped:
         modelled = sorted(say_again_ms(c["instruction"]) for c in stepped)
