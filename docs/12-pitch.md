@@ -58,6 +58,7 @@ The 1.16% figure is from the FAA CAMI study DOT/FAA/AM-05/19 (research RB-1). Sa
 
 ## 5. Before judging
 
+- Run `python scripts/preflight.py` at the table: it checks keys, clips, the port, Cartesia, Moss, Moss Inference and Elastic, and plays a left-channel test tone. It ends with READY or lists what's missing.
 - Run `python -m unstep.demo --live` once at the table to warm up Cartesia and Moss Inference (first calls are slower).
 - Sound check the squeal volume. Say "in the left ear" aloud, since a hall can't hear stereo.
 - Backup video on the laptop and a phone.

@@ -15,7 +15,7 @@ python -m unstep.demo --live    # real Cartesia, Moss and Moss Inference; warms 
 python -m unstep.demo           # same pipeline offline, with labeled fakes
 ```
 
-Opens `http://127.0.0.1:8765/demo/`. **Space** runs the next scene, **A** toggles audio mode and the full view, **?** shows the keys. Every scene runs the real pipeline on recorded clips in `assets/clips/real/`; nothing on screen is canned. Design and storyboard: [docs/11-demo-design.md](docs/11-demo-design.md). Pitch script: [docs/12-pitch.md](docs/12-pitch.md).
+Before presenting, `python scripts/preflight.py` checks keys, clips, Cartesia, Moss and Moss Inference and ends with READY. Opens `http://127.0.0.1:8765/demo/`. **Space** runs the next scene, **A** toggles audio mode and the full view, **?** shows the keys. Every scene runs the real pipeline on recorded clips in `assets/clips/real/`; nothing on screen is canned. Design and storyboard: [docs/11-demo-design.md](docs/11-demo-design.md). Pitch script: [docs/12-pitch.md](docs/12-pitch.md).
 
 | Audio mode (the first minute) | Close |
 | --- | --- |
