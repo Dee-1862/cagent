@@ -129,7 +129,7 @@ class FakeTTS:
         self.spoken: list[str] = []
         self.cancelled: set[str] = set()
 
-    async def speak(self, text, context_id=None, on_chunk=None) -> SpeechResult:
+    async def speak(self, text, context_id=None, on_chunk=None, **_options) -> SpeechResult:
         context_id = context_id or str(uuid.uuid4())
         self.spoken.append(text)
         words = text.split()
@@ -191,23 +191,27 @@ class CartesiaTTS:
             await self._ws.close()
             self._ws = None
 
-    def request(self, text: str, context_id: str) -> dict:
+    def request(self, text: str, context_id: str, language: Optional[str] = None,
+                speed: Optional[float] = None) -> dict:
+        generation = dict(self.generation_config)
+        if speed is not None:
+            generation["speed"] = speed  # Sonic's documented range is 0.6 to 1.5
         req = {
             "model_id": self.model_id,
             "transcript": text,
             "voice": {"id": self.voice_id},
-            "language": "en",
+            "language": language or "en",
             "context_id": context_id,
             "output_format": {"container": "raw", "encoding": "pcm_s16le", "sample_rate": self.sample_rate},
             "continue": False,
             "add_timestamps": True,
-            "generation_config": self.generation_config,
+            "generation_config": generation,
         }
         if self.pronunciation_dict_id:
             req["pronunciation_dict_id"] = self.pronunciation_dict_id
         return req
 
-    async def speak(self, text, context_id=None, on_chunk=None) -> SpeechResult:
+    async def speak(self, text, context_id=None, on_chunk=None, language=None, speed=None) -> SpeechResult:
         """Retry once on a fresh connection: Cartesia closes the WebSocket after it sits
         idle (for example while a presenter pauses between scenes)."""
         from websockets.exceptions import ConnectionClosed
@@ -220,22 +224,22 @@ class CartesiaTTS:
                 on_chunk(pcm)
 
         try:
-            return await asyncio.wait_for(self._speak_once(text, context_id, track), SPEAK_DEADLINE_S)
+            return await asyncio.wait_for(self._speak_once(text, context_id, track, language, speed), SPEAK_DEADLINE_S)
         except (ConnectionClosed, OSError, asyncio.TimeoutError):
             self._ws = None
             if heard:
                 # Audio already went out: retrying would say the line twice.
                 raise
-            return await asyncio.wait_for(self._speak_once(text, context_id, on_chunk), SPEAK_DEADLINE_S)
+            return await asyncio.wait_for(self._speak_once(text, context_id, on_chunk, language, speed), SPEAK_DEADLINE_S)
 
-    async def _speak_once(self, text, context_id=None, on_chunk=None) -> SpeechResult:
+    async def _speak_once(self, text, context_id=None, on_chunk=None, language=None, speed=None) -> SpeechResult:
         ws = await self.connect()
         context_id = context_id or str(uuid.uuid4())
         started = time.perf_counter()
         first_ms: Optional[float] = None
         chunks: list[bytes] = []
         words: list[tuple[str, float, float]] = []
-        await ws.send(json.dumps(self.request(text, context_id)))
+        await ws.send(json.dumps(self.request(text, context_id, language, speed)))
         while context_id not in self._cancelled:
             try:
                 raw = await asyncio.wait_for(ws.recv(), timeout=0.25)
@@ -291,13 +295,18 @@ class AdvisoryVoice:
         self.play = play  # e.g. sounddevice.play; None keeps audio in memory only
         self.current: Optional[str] = None
 
-    async def say(self, text: str) -> Spoken:
-        text = advisory(text)
+    async def say(self, text: str, language: Optional[str] = None, speed: Optional[float] = None,
+                  prefix: bool = True) -> Spoken:
+        """`language`/`speed` go to Cartesia when set; `prefix=False` keeps a translated line
+        free of the English "Advisory." (the translation carries its own)."""
+        text = advisory(text) if prefix else text
         self.current = str(uuid.uuid4())
         ding = chime(self.sample_rate)
         if self.play:
             self.play(to_left_stereo(ding), self.sample_rate)
-        speech = await self.tts.speak(text, context_id=self.current)
+        options = {k: v for k, v in (("language", language), ("speed", speed)) if v is not None}
+        # Only pass options when used, so TTS engines without them keep working.
+        speech = await self.tts.speak(text, context_id=self.current, **options)
         self.current = None
         audio = np.concatenate([ding, pcm_bytes_to_array(speech.pcm)])
         stereo = to_left_stereo(audio)
