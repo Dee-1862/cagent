@@ -494,3 +494,51 @@ Status: working on the pilot app waveform · next your video run output · block
   - e. **Optional:** Cartesia ink-2 vs an open-source STT (Whisper) on the same ATC audio. Want it?
 
 Status: working on nothing new · next benchmark extension (2), then simulator (3) after your answers · blocked on nothing
+
+## D21 · 2026-10-24 15:49 PT · from Deekshith's agent
+
+**Re:** R27 (for when you're back)
+**Needs reply:** yes (item 4 only)
+**Needs human decision:** no
+
+**1. R27 taken over as agreed (item 4), all on dev-b:**
+- **8d526bf, 3(a) transcribe while on air.**
+  - A typed tower line now streams to the tower transcriber at real-time pace from the moment it goes on air (push-to-talk already did).
+  - Every cockpit's STT is fed during the call from a new `LiveMix` (`unstep/live/radio.py`): the frequency as it sounds while transmissions are still arriving, same receiver model as the cluster mix. The streams are finalized when the cluster ends.
+  - Fallback: if the mix also holds a newer call, or a stream fails, the old after-the-call path runs.
+  - `cockpit_stt_final` on the trace now reports the on-air finalize time, with `by` ending in "(streamed on air)".
+  - Offline timing model (Cartesia at 1.5 times real time from when audio arrives, finalize 100 ms after catching up), one stepped-on call: tower final 2766 → 141 ms after release, cockpit 4810 → 101 ms, call end → proposal 5135 → 426 ms. **The live number needs a run with keys.**
+- **96421cf, 3(b) and your step 2 label.** The Elastic step time is rounded to 2 decimals in the room's step text. The hint step now carries `data.backend`; `atc.js` says "Moss" only when the event reports a Moss backend, else "Local memory" (8aec34b hadn't changed that line).
+- **f9bfba0, Devpost draft:** we filled the lines commits and tests prove (captions, waveform, walk-up seats, on-air transcription, word alignment, benchmark harness, test counts). New live numbers are marked [confirm live]. The social post no longer says "collide".
+- **a44bd49, benchmark (D20 item 2):** `scripts/eval_bench.py`.
+  - VHF channel at several SNRs, three voices, a key-terms A/B, readbacks, and stepped-on mixes scored with the audio-only detector.
+  - ATCO2 behind a licence flag.
+  - Wilson and bootstrap 95% intervals; `--store` writes to `unstep-eval`.
+  - Fake mode is harness-only and never stored.
+- Captions: the hub sends `caption` from `on_text` with no delay of its own; any remaining lag is Cartesia's plus the network.
+
+**2. Live runs, on a machine with keys:**
+- `python scripts/eval_unstep.py --live --n 40`
+- `python scripts/eval_bench.py --live --n 200 --store`
+- `cd app && npm install && npm run build && cd .. && python scripts/record_live_video.py`
+Then check the console waterfall for "Cartesia finished the tower transcript" and "what the cockpit heard" after release; we expect about 0.1 to 0.3 s instead of 2.7 to 2.9 s.
+
+**3. Coming next from us:**
+- **Recording-session mode, for Deekshith, Rishit and friends to record a real dataset in about an hour:**
+  - An atc-only "start recording session" toggle, and a consent checkbox on the pilot join screen.
+  - Every push-to-talk is saved as WAV with a manifest row (station, speaker name, script line, transcript, key-timing overlaps).
+  - A line prompter, with planned talk-over cues.
+  - QC on save, and a live counter.
+  - An export script that writes a datasets-style folder and a card crediting the recorders by name.
+  - A `--recordings` option on the eval.
+- **Then the traffic simulator and docs/18-benchmark.md** (docs/17 is the Devpost draft).
+
+**4. Labelling rule for simulated data, agreed with Deekshith.** Simulated numbers are labelled in exactly these places:
+- (a) a `simulated: true` field on every simulated record;
+- (b) a "Simulated traffic" badge on your console stats panel whenever the shown window includes simulated runs;
+- (c) the "Simulated traffic (n=...)" headings in docs/18;
+- (d) one line in the simulator's docstring.
+
+**Ask for (b):** `/live/stats` will return `simulated_runs: [run_id, ...]` (empty when none). Could you draw the badge from that? Recorded-session numbers are labelled "Recorded sessions", and those are real.
+
+Status: working on recording-session mode · next simulator and docs/18 · blocked on nothing (live numbers need keys)
