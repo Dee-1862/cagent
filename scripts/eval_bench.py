@@ -77,7 +77,11 @@ class LiveSpeech:
         from unstep.cockpit.tts import CartesiaTTS
         from unstep.live.radio import to_mono16k
 
-        speech = await CartesiaTTS(voice_id=self.voices.get(role)).speak(text)
+        tts = CartesiaTTS(voice_id=self.voices.get(role))
+        try:
+            speech = await tts.speak(text)
+        finally:
+            await tts.close()  # one socket per line; left open they pile up until Cartesia answers 429
         return to_mono16k(speech.pcm, speech.sample_rate)
 
     async def hear(self, pcm: np.ndarray, keyterms: bool, ref: str, condition: str) -> tuple[str, float]:
@@ -166,18 +170,25 @@ def first_active_ms(pcm: np.ndarray, t0: int) -> int | None:
 # ------------------------------------------------------------ the run
 
 async def run_bench(speech, n: int, conditions: list[str], stepped: int, seed: int, ab: bool,
-                    concurrency: int = 4) -> dict:
+                    concurrency: int = 2) -> dict:
     items = build_items(n, seed)
     sem = asyncio.Semaphore(concurrency)
     rng = random.Random(seed)
 
-    async def limited(coro):
-        async with sem:
-            return await coro
+    async def limited(make):
+        """`make()` builds the call; a Cartesia 429 (rate limit) is retried with backoff, not fatal."""
+        for attempt in range(6):
+            async with sem:
+                try:
+                    return await make()
+                except Exception as exc:
+                    if "429" not in str(exc) or attempt == 5:
+                        raise
+            await asyncio.sleep(2 ** attempt)
 
     roles = [VOICE_ROLES[i % len(VOICE_ROLES)] for i in range(len(items))]
-    said = await asyncio.gather(*(limited(speech.say(it.instruction, r)) for it, r in zip(items, roles)))
-    readback_audio = await asyncio.gather(*(limited(speech.say(it.readback, "pilot")) for it in items))
+    said = await asyncio.gather(*(limited(lambda it=it, r=r: speech.say(it.instruction, r)) for it, r in zip(items, roles)))
+    readback_audio = await asyncio.gather(*(limited(lambda it=it: speech.say(it.readback, "pilot")) for it in items))
 
     def channel(pcm, cond, k):
         level = CONDITIONS[cond]
@@ -187,7 +198,7 @@ async def run_bench(speech, n: int, conditions: list[str], stepped: int, seed: i
 
     async def hear_all(cond, keyterms=True):
         async def one(k):
-            text, ms = await limited(speech.hear(channel(said[k], cond, k), keyterms, items[k].instruction, cond))
+            text, ms = await limited(lambda: speech.hear(channel(said[k], cond, k), keyterms, items[k].instruction, cond))
             it = items[k]
             return {"id": it.id, "voice": roles[k], "said": it.instruction, "heard": text, "finalize_ms": round(ms, 1),
                     "callsign": it.spoken_callsign, "action": it.action, "runway": it.runway}
@@ -209,7 +220,7 @@ async def run_bench(speech, n: int, conditions: list[str], stepped: int, seed: i
     # readbacks through radio-10
     async def readback(k):
         it = items[k]
-        text, _ = await limited(speech.hear(channel(readback_audio[k], "radio-10", 50_000 + k), True, it.readback, "radio-10"))
+        text, _ = await limited(lambda: speech.hear(channel(readback_audio[k], "radio-10", 50_000 + k), True, it.readback, "radio-10"))
         match, _, _ = check_readback(Slots(callsign=it.spoken_callsign, action=it.action, runway=it.runway), text)
         return {"id": it.id, "heard": text, "flagged": not match, "labelled": it.readback_wrong, "error": it.error}
     rb = await asyncio.gather(*(readback(k) for k in range(len(items))))
@@ -230,7 +241,7 @@ async def run_bench(speech, n: int, conditions: list[str], stepped: int, seed: i
         first = first_active_ms(pcm, t0)
         hits.append({"id": items[k].id, "window": window, "detected": bool(found), "iou": round(best, 3),
                      "latency_ms": (first - window[0]) if first is not None else None})
-        text, ms = await limited(speech.hear(pcm, True, items[k].instruction, "stepped"))
+        text, ms = await limited(lambda: speech.hear(pcm, True, items[k].instruction, "stepped"))
         damaged.append({"id": items[k].id, "said": items[k].instruction, "heard": text, "finalize_ms": ms,
                         "callsign": items[k].spoken_callsign, "action": items[k].action, "runway": items[k].runway})
     clean_flags = [bool(detect_overlap(channel(said[k], "radio-10", k))) for k in range(min(len(items), max(stepped, 1) * 2))]

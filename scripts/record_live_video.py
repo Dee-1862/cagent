@@ -184,6 +184,7 @@ def run_story(page, password: str | None) -> None:
 
     def phones_ready():
         for f in (a, b):
+            f.get_by_role("button", name="More").click(timeout=t)  # 325cdf7 put the typed lines behind "More"
             expect(f.get_by_role("button", name="Request transition").or_(
                 f.get_by_role("button", name="Request taxi"))).to_be_visible(timeout=t)
 
