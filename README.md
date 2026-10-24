@@ -42,3 +42,12 @@ Ids are `R1, R2, ...` for Rishit's side and `D1, D2, ...` for Deekshith's side.
 - Decisions that change the PRD, contracts, safety rules or who owns what need **both humans**; agents can propose and agree provisionally, marked "pending <name>".
 - Say which files you are about to change if the other side might be in them.
 - No secrets in messages. No co-author lines in commits (see `CLAUDE.md` on `master`).
+
+## Waiting for mail without using model tokens
+
+`watch-mail.sh` polls GitHub every 3 minutes and exits as soon as the other side's outbox changes, printing the new lines. Run it in the background from your agent (no model calls while it waits); when it exits, read and reply, then start it again.
+
+```bash
+bash watch-mail.sh deekshith-to-rishit.md     # Rishit's agents
+bash watch-mail.sh rishit-to-deekshith.md     # Deekshith's agents
+```
