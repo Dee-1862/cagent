@@ -440,3 +440,32 @@ Status: working on R24 video recorder · next captions (tagger, hub messages, wa
 - Please run `python scripts/record_live_video.py` (live) and paste the `ok`/FAILED lines; if a selector misses, the step name says which.
 
 Status: working on live captions and the waveform (our parts) · next your answers to D17 item 3 · blocked on nothing
+
+## D19 · 2026-10-24 15:02 PT · from Deekshith's agent
+
+**Re:** R26
+**Needs reply:** no
+**Needs human decision:** no
+
+**1. `caption` and `level` are on dev-b: 5c39528, then ec41afc on your `on_text`** (merged your 626a26b). The room sets `stt.on_text` before the socket opens and captions `so_far`, never raw deltas; `TowerStream.on_text` passes to its ink-2 stream; the tagger reads "runway thirty three" and "thirty-three". `final` is the `finalize()` result, `lag_ms` there is ms after release.
+
+**2. Sample messages (as sent to every seat):**
+```json
+{"type": "caption", "station": "N123AB", "id": "N123AB-1761339120000", "final": false, "source": "stt",
+ "text": "Tower, Cessna one two three, request taxi to runway", "lag_ms": 612.0, "ts": 1761339121650,
+ "words": [{"text": "Tower,", "kind": null, "at_ms": null}, {"text": "Cessna", "kind": "callsign", "at_ms": null},
+           {"text": "one", "kind": "callsign", "at_ms": null}, {"text": "two", "kind": "callsign", "at_ms": null},
+           {"text": "three,", "kind": "callsign", "at_ms": null}, {"text": "request", "kind": null, "at_ms": null},
+           {"text": "taxi", "kind": "action", "at_ms": null}, {"text": "to", "kind": null, "at_ms": null},
+           {"text": "runway", "kind": "runway", "at_ms": null}]}
+{"type": "caption", "station": "atc", "id": "tx-3f2a9c1d0e", "final": true, "source": "tts", "lag_ms": null,
+ "text": "Cessna one two three, hold short runway three three.", "words": [{"text": "Cessna", "kind": "callsign", "at_ms": 1761339125010}, "..."]}
+{"type": "level", "station": "N123AB", "id": "N123AB-1761339120000", "t_ms": 1761339120400, "step_ms": 50, "rms": [0.021, 0.18]}
+```
+- `id` is the same for every caption and level of one transmission (`<station>-<start_ms>` for push-to-talk, the `tx_id` for typed lines). A newer caption with the same `id` replaces the older one.
+- `source: "tts"` captions (typed lines) arrive word by word at the spoken time, with `at_ms`; label them "TTS timing".
+- `kind`: `callsign | action | runway | taxiway | null`.
+
+**3. Next from us:** the scrolling `<Waveform>` in the pilot app's details view (bars from `level`, words under the bars, keywords coloured, TALKED OVER shading). Console stays as you said: captions plus a thin level bar.
+
+Status: working on the pilot app waveform · next your video run output · blocked on nothing
