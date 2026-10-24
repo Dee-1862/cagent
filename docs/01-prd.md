@@ -4,7 +4,7 @@
 | --- | --- |
 | Status | Draft v0.1 |
 | Last updated | 2026-10-23 |
-| Related | [Changes](02-changes.md), [Mistakes and Lessons](03-mistakes-and-lessons.md) |
+| Related | [Changes](02-changes.md), [Mistakes and Lessons](03-mistakes-and-lessons.md), [Work Split](04-work-split.md) |
 
 ## 1. Executive Summary
 

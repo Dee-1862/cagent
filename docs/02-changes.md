@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: Added work split plan
+
+**Type:** Docs
+**Area:** Docs
+
+- Added [04-work-split.md](04-work-split.md), which divides the build between two developers.
+- Dev A owns the cockpit edge device. Dev B owns the ground side.
+- Shared contracts come first so both halves can be built in parallel against mocks.
+- Milestone M2 (first end-to-end wire with fake data) is the main early target.
+
+**Related:** [Work Split](04-work-split.md)
+
 ## 2026-10-23: Created documentation folder
 
 **Type:** Docs
