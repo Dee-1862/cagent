@@ -3,7 +3,7 @@ const $ = (id) => document.getElementById(id);
 const names = {atc: "Tower"};
 const shortName = (id) => state.stations.get(id)?.name || (id === "atc" ? "Tower" : id || "A plane");
 const state = {ws: null, ready: false, offset: 0, live: false, autonomy: false,
-  stations: new Map(), connected: {}, keyed: {}, liveOverlap: new Map(), reports: new Map(), traces: new Map(), lanes: new Map(), pending: new Set(), audio: null, password: null, reasons: {}};
+  stations: new Map(), connected: {}, keyed: {}, liveOverlap: new Map(), reports: new Map(), captions: new Map(), traces: new Map(), lanes: new Map(), pending: new Set(), audio: null, password: null, reasons: {}};
 const now = () => Date.now() + state.offset;
 function el(tag, text, className) {
   const node = document.createElement(tag);
@@ -132,6 +132,21 @@ function receive(message) {
       // C1: the controller hears who was blocked, in Unstep's voice; text stays if audio is missing.
       $("happened").textContent = message.text;
       notice(message.text); play(message.audio); break;
+    case "caption": {
+      // Live words from Cartesia while someone talks; a newer caption of the same transmission replaces the older.
+      const prior = state.captions.get(message.station);
+      if (!prior || prior.id !== message.id || message.ts >= prior.ts || message.final) {
+        state.captions.set(message.station, message);
+        renderRadio();
+      }
+      break;
+    }
+    case "level": {
+      const bar = document.querySelector(`.lane[data-station="${CSS.escape(message.station)}"] .level i`);
+      const peak = Math.max(0, ...message.rms);
+      if (bar) bar.style.width = `${Math.min(100, Math.round(peak * 400))}%`;
+      break;
+    }
     case "advisory_report": state.reports.set(message.station, message); renderRadio(); break;
     case "insight": notice(message.insight.text); break;
     case "flow":
@@ -140,7 +155,7 @@ function receive(message) {
       break;
     case "room_reset":
       // Presenter reset: walk-up planes are gone; the board starts clean for the next group.
-      state.traces.clear(); state.lanes.clear(); state.reports.clear(); state.pending.clear();
+      state.traces.clear(); state.lanes.clear(); state.reports.clear(); state.captions.clear(); state.pending.clear();
       state.liveOverlap.clear(); state.keyed = {};
       setStations(message.stations);
       renderMap(); renderTraces(); renderRadio(); renderInbox();
@@ -338,7 +353,12 @@ function renderRadio() {
     const speaker = el("b", names[id] || shortName(id));
     if (id in state.keyed) speaker.append(el("small", "ON AIR", "on-air"));
     row.append(speaker);
-    const words = el("div", tx?.text || (tx ? "Voice transmission · transcript not available" : "No transmission yet"));
+    const caption = state.captions.get(id);
+    const live = caption && (!tx?.start_ms || caption.ts >= tx.start_ms);
+    const words = live ? captionLine(caption)
+      : el("div", tx?.text || (tx ? "Voice transmission · transcript not available" : "No transmission yet"));
+    const level = el("span", undefined, "level"); level.append(el("i"));
+    words.prepend(level);
     if (id !== "atc") {
       const trace = traces.find((t) => t.callsign === id && t.event);
       words.append(el("span", trace ? `Heard at ${new Date(trace.created_ms).toLocaleTimeString()}: “${trace.event.heard_text || "[no words recovered]"}”` : "Heard: no cockpit transcript received yet", "heard"));
@@ -349,6 +369,21 @@ function renderRadio() {
     if (tx?.blocked || state.liveOverlap.has(id)) row.append(el("span", "TALKED OVER", "talked-over"));
     return row;
   }));
+}
+
+// Captions: the words as Cartesia recognises them, with callsign, action and runway coloured.
+function captionLine(c) {
+  const line = el("div", undefined, `caption${c.final ? "" : " partial"}`);
+  const words = el("span", undefined, "caption-words");
+  for (const w of (c.words?.length ? c.words : c.text.split(" ").map((text) => ({text, kind: null})))) {
+    if (typeof w !== "object") continue;
+    words.append(el("span", w.text, w.kind ? `kw ${w.kind}` : undefined), " ");
+  }
+  line.append(words);
+  const label = c.source === "tts" ? "Cartesia speech · TTS timing"
+    : `Cartesia live caption${c.lag_ms != null ? ` · ${Math.round(c.lag_ms)} ms ${c.final ? "after release" : "behind speech"}` : ""}`;
+  line.append(el("small", label, "caption-label"));
+  return line;
 }
 
 // C5: proof that the private advisory spoke only in a gap.
