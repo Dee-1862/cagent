@@ -19,6 +19,16 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Voice approval timeout could send nothing on Windows
+
+**Type:** Fixed
+**Area:** Ground agents
+
+- `test_runner_silence_sends_only_unclear[True]` failed about once in four full runs. Cause: asyncio may fire a sleep or timeout up to its clock resolution early (about 15 ms on Windows), and `ApprovalLoop.timeout()` only acts once `clock() >= deadline`. An early wake meant controller silence produced no "unclear" and no retry, in the real 10 s window too.
+- Added `_until_deadline()` in `unstep/ground/voice_approval.py`, which keeps sleeping until the deadline has really passed, used on both timeout paths.
+- 0 failures in 60 runs of the test, full suite 184 passed.
+- Process note: master was fast-forwarded to `abbbb53` by a command that did not stop on a failed test run. Merges to master now run the suite first and stop on failure.
+
 ## 2026-10-24: Demo view added to the main architecture doc
 
 **Type:** Docs

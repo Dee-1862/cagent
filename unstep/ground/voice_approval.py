@@ -144,6 +144,14 @@ class ControllerVoice:
             self.context = None
 
 
+async def _until_deadline(loop: ApprovalLoop) -> None:
+    """Sleep until the deadline has really passed. asyncio may wake a timer up to
+    its clock resolution early (about 15 ms on Windows), and loop.timeout() only
+    acts once clock() >= deadline, so a single sleep can miss the timeout."""
+    while loop.deadline is not None and loop.clock() < loop.deadline:
+        await asyncio.sleep(loop.deadline - loop.clock())
+
+
 async def _answer(loop: ApprovalLoop, prompt: str, voice: ControllerVoice, stt_factory, send) -> None:
     assert loop.current is not None
     event_id = loop.current.event_id
@@ -175,13 +183,14 @@ async def _answer(loop: ApprovalLoop, prompt: str, voice: ControllerVoice, stt_f
                                 break
                             await voice.say(action)
                     else:
-                        await asyncio.sleep(max(0, loop.deadline - loop.clock()))
+                        await _until_deadline(loop)
                         action = loop.timeout()
             if loop.pending is None:
                 if isinstance(action, VoiceApproval):
                     await emit(action)
                 return
     except TimeoutError:
+        await _until_deadline(loop)
         action = loop.timeout()
         if action:
             await emit(action)
