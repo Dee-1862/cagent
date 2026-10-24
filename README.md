@@ -35,6 +35,42 @@ python -m unstep.cockpit.edge assets/clips/stepped_on_call.wav --play
 
 Approve by voice with `python -m unstep.ground.voice_approval` (add `--live --answer-clip <wav>` for Cartesia), or click Approve or Reject on the dashboard. `python -m unstep.ground.auto_approver` approves everything instantly for load tests. `python -m unstep.cockpit.mock_cockpit --runs 10` is a lightweight stand-in for the edge.
 
+## Browser demo plumbing
+
+Open `/demo/` on the gateway for a read-only message list. `/ws/observer` receives
+all routed contracts, including audits and gateway decisions, and replays the
+last 200 messages on reconnect. It uses the same token and origin checks as
+other roles and rejects all incoming messages. Part B replaces the placeholder
+page.
+
+Add `--demo-audio-dir` to the edge, controller voice loop or `scripts/run_demo.py`
+to save WAV artifacts under `data/demo/audio/`. An explicit directory is also
+accepted; use the same directory in `create_app(demo_audio_dir=...)` when running
+a custom gateway. The one-command demo passes it through automatically. Audio
+export is off by default. The standalone gateway serves the default directory
+at `/demo/audio/`. Files remain until manually removed.
+
+Speech audits carry `party`, `spoken_text` or `heard_text`, available `words`
+with seconds relative to the WAV (including the chime), and optional `audio_url`.
+Controller utterances stream individually when demo audio is enabled; otherwise
+they are included in the final controller audit's `utterances` list. Text-only
+fake pilot/controller input has no recorded audio to export.
+
+```bash
+python -m unstep.ground.tower --clip assets/clips/real/clean_call.wav --live
+python scripts/run_demo.py --live --demo-audio-dir
+```
+
+`TowerTranscriber.transcribe` accepts 16 kHz mono PCM16 bytes, PTT start/end epoch
+milliseconds, frequency and callsign. It uses keyed ink-2 text and a second
+ink-whisper stream for word timing. Both streams are paced and finalized at the
+end of the PTT duration, using Cartesia's [manual STT endpoint](https://docs.cartesia.ai/api-reference/stt/websocket).
+Without `--live`, the tower client uses the explicit scenario fake. Tower word
+offsets remain seconds from `ptt_start`; pass a shared `--ptt-start` when matching
+independently replayed tower and cockpit recordings. The demo runner supplies a
+shared epoch automatically. The runner retains its scripted controller approval;
+use the standalone voice approval client for recorded controller answers.
+
 ## Setup
 
 ```bash
@@ -77,7 +113,7 @@ Every script prints `skipped: ...` and exits 0 when its keys are missing.
 | Ink-2 STT with key terms (callsigns, runways, "hold short", "niner") | `unstep/cockpit/stt.py` `build_keyterms`, `CartesiaManualSTT` | Correct ATC words. Verified live: "likely hold short runway tree tree" came back exactly |
 | Manual `finalize` on squelch close / PTT release | `CartesiaManualSTT.finalize`, used by `unstep/cockpit/edge.py` when a key is set | Transcript is final the moment the transmission ends |
 | Turns endpoint (`turn.start` / `turn.end`, tuned end threshold) | `CartesiaTurnSTT` | Readbacks and pilot queries. Client works live (`smoke_cartesia.py`); the edge uses a scripted fake by default. Also used for controller voice approval (`unstep/ground/voice_approval.py`, task B10) |
-| `ink-whisper` for word timestamps | Not in code yet | Planned workaround (Cartesia feedback item 2), to get tower word times for blocked-word marking |
+| `ink-whisper` for word timestamps | `unstep/ground/tower.py` | Second paced stream for tower word times and blocked-word marking |
 
 ## Moss and Elastic
 
@@ -120,7 +156,7 @@ Every script prints `skipped: ...` and exits 0 when its keys are missing.
 | `contracts/examples/` | One JSON example per contract (`python scripts/export_contract_examples.py`) | Both |
 | `docs/` | PRD, architecture, research, Cartesia feedback | Both |
 
-Every message is an envelope `{"type": "AnomalyEvent", "ts": 1792800000000, "data": {...}}` on `ws://<gateway>/ws/<role>`, role one of `cockpit`, `tower`, `agents`, `dashboard`, `controller_voice`, `monitor`. Routing is in `unstep/gateway/server.py` (`ROUTES`).
+Every message is an envelope `{"type": "AnomalyEvent", "ts": 1792800000000, "data": {...}}` on `ws://<gateway>/ws/<role>`, role one of `cockpit`, `tower`, `agents`, `dashboard`, `controller_voice`, `monitor`, `observer`. Routing is in `unstep/gateway/server.py` (`ROUTES`).
 
 ## Tests
 

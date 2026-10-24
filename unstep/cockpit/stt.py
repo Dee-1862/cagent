@@ -100,13 +100,15 @@ class CartesiaManualSTT:
     """
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None,
-                 sample_rate: int = 16000, keyterms: Iterable[str] = ()):
+                 sample_rate: int = 16000, keyterms: Iterable[str] = (),
+                 timestamp_granularities: Iterable[str] = ()):
         self.api_key = api_key or os.environ.get("CARTESIA_API_KEY")
         if not self.api_key:
             raise RuntimeError("CARTESIA_API_KEY is required")
         params = [("model", model or cartesia_stt_model()), ("encoding", "pcm_s16le"), ("sample_rate", str(sample_rate)),
                   ("cartesia_version", CARTESIA_VERSION)]
         params += [("keyterm", k) for k in keyterms]
+        params += [("timestamp_granularities", value) for value in timestamp_granularities]
         self.url = _url(STT_URL, params)
         self._ws = None
 
@@ -291,6 +293,7 @@ class ReplayTurnSTT:
         self.trailing_silence_s = trailing_silence_s
         self.timeout_s = timeout_s
         self.turn_end_ms: list[float] = []
+        self.last_pcm: bytes | None = None
 
     async def __aenter__(self):
         return self
@@ -309,6 +312,7 @@ class ReplayTurnSTT:
 
         while self.clips:
             pcm = self.clips.pop(0)
+            self.last_pcm = pcm
             async with self.factory() as stt:
                 sent = asyncio.get_running_loop().create_future()
 

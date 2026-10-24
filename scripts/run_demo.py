@@ -43,7 +43,10 @@ from unstep.cockpit.inference import FakeAnswerer  # noqa: E402
 from unstep.cockpit.stt import FakeManualSTT, FakeTurnSTT, ReplayTurnSTT  # noqa: E402
 from unstep.cockpit.tts import FakeTTS  # noqa: E402
 from unstep.clock import now_ms  # noqa: E402
-from unstep.contracts import ProposedDirective, ReadbackResult, VoiceApproval, unwrap  # noqa: E402
+from unstep.contracts import ProposedDirective, ReadbackResult, VoiceApproval, unwrap, wrap
+from unstep.demo_audio import DEFAULT_DEMO_AUDIO_DIR
+from unstep.ground.tower import TowerTranscriber, FakeTowerTranscriber
+from unstep import scenario  # noqa: E402
 from unstep.gateway.server import create_app  # noqa: E402
 from unstep.gateway.sink import MemorySink  # noqa: E402
 from unstep.ground import mock_agents, voice_approval  # noqa: E402
@@ -126,8 +129,8 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
-async def start_gateway(sink) -> tuple[uvicorn.Server, asyncio.Task, str, object]:
-    app = create_app(sink)
+async def start_gateway(sink, demo_audio_dir: Path | None = None) -> tuple[uvicorn.Server, asyncio.Task, str, object]:
+    app = create_app(sink, demo_audio_dir=demo_audio_dir)
     port = free_port()
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     task = asyncio.create_task(server.serve())
@@ -163,20 +166,21 @@ def print_transcript(lines: list[Line]) -> None:
         print(f"+{ln.ts - t0:5d} ms  {ln.party:<10} {ln.text}" + (f"   [{lat}]" if lat else ""))
 
 
-async def demo(clean: bool, play: bool, live: bool = False) -> int:
+async def demo(clean: bool, play: bool, live: bool = False, demo_audio_dir: Path | None = None) -> int:
     sink = MemorySink()
-    server, server_task, url, gw = await start_gateway(sink)
+    server, server_task, url, gw = await start_gateway(sink, demo_audio_dir)
     print(f"gateway on {url}; starting mock agents, controller voice approval, cockpit edge")
     # Controller voice approval loop (B10): prompt, "Approve" on the Unstep key, repeat-back, then send.
-    controller = voice_approval.run(url, FakeTTS(), lambda: FakeTurnSTT(["Approve"]))
+    controller = voice_approval.run(url, FakeTTS(), lambda: FakeTurnSTT(["Approve"]), demo_audio_dir=demo_audio_dir)
     helpers = [asyncio.create_task(mock_agents.run(url)), asyncio.create_task(controller)]
     if live:
         tts, manual_factory, readbacks, question_stt = live_engines()
-        edge = CockpitEdge(link=GatewayLink(url), memory=create_memory(), tts=tts,  # real Moss when keys are set
+        edge = CockpitEdge(demo_audio_dir=demo_audio_dir, link=GatewayLink(url), memory=create_memory(), tts=tts,  # real Moss when keys are set
                            manual_stt_factory=manual_factory, turn_stt_factory=lambda: readbacks,
                            audio_out=AudioOut(LIVE_WAV_OUT))  # played at the end, not mid-flow
     else:
         edge = CockpitEdge(
+            demo_audio_dir=demo_audio_dir,
             link=GatewayLink(url),
             memory=LocalMemory(),
             answerer=FakeAnswerer(),
@@ -198,7 +202,16 @@ async def demo(clean: bool, play: bool, live: bool = False) -> int:
             return 1
         clip = (REAL if live else CLIPS) / ("clean_call.wav" if clean else "stepped_on_call.wav")
         edge._note("RADIO", f"playing {clip.relative_to(CLIPS).as_posix()}" + (" at real time" if live else ""))
-        events = await edge.run_audio(WavFileSource(clip), realtime=live)
+        t0 = now_ms()
+        tower_clip = (REAL if live else CLIPS) / "clean_call.wav"
+        samples = read_wav(tower_clip)
+        pcm = (np.clip(samples, -1, 1) * 32767).astype("<i2").tobytes()
+        tower = TowerTranscriber(runways=["33", "28L"]) if live else FakeTowerTranscriber()
+        transcript = await tower.transcribe(pcm, t0, t0 + round(len(samples) / 16),
+                                            scenario.FREQUENCY, scenario.CALLSIGN)
+        async with websockets.connect(ws_url("tower", url)) as tower_ws:
+            await tower_ws.send(wrap(transcript))
+        events = await edge.run_audio(WavFileSource(clip, t0=t0), realtime=live)
 
         if clean:
             ok = not events and not any(r.get("type") == "AnomalyEvent" for r in sink.records)
@@ -210,7 +223,7 @@ async def demo(clean: bool, play: bool, live: bool = False) -> int:
                 question = QUESTION
                 if live:
                     question = await transcribe_turn(question_stt)
-                q = await edge.ask(question)
+                q = await edge.ask(question, audio=question_stt.last_pcm if live else None)
                 freeform = await edge.ask("Unstep, what runway was I told to stop at?")
                 results = [m for m in edge.sent if isinstance(m, ReadbackResult)]
                 ok = (outcome == "confirmed" and [r.match for r in results] == [False, True]
@@ -250,6 +263,7 @@ async def demo(clean: bool, play: bool, live: bool = False) -> int:
 
 def main() -> int:
     p = argparse.ArgumentParser()
+    p.add_argument("--demo-audio-dir", type=Path, nargs="?", const=DEFAULT_DEMO_AUDIO_DIR)
     p.add_argument("--clean", action="store_true", help="use clean_call.wav and prove no event fires")
     p.add_argument("--play", action="store_true", help="also play the advisory audio through sounddevice")
     p.add_argument("--live", action="store_true", help="real Cartesia STT and TTS on assets/clips/real (keys in .env)")
@@ -260,7 +274,7 @@ def main() -> int:
         from dotenv import load_dotenv
 
         load_dotenv(ROOT / ".env")
-    return asyncio.run(demo(a.clean, a.play, a.live))
+    return asyncio.run(demo(a.clean, a.play, a.live, a.demo_audio_dir))
 
 
 if __name__ == "__main__":

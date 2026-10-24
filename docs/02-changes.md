@@ -19,6 +19,29 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Demo observer, speech artifacts and tower recovery
+
+**Type:** Added
+**Area:** Ground agents | Audio | Audit
+
+Added a read-only observer with 200-message replay, `/demo/` static hosting and
+optional `/demo/audio/` WAV artifacts. Speech audits include exact normalized
+spoken text, heard text, party and available word times. Audio export is off
+by default; `--demo-audio-dir` enables it on the edge, controller and demo runner.
+Controller utterances stream individually with demo audio enabled; normal runs
+retain the existing decision-then-audit sequence and include utterances inside
+the final audit payload.
+
+B2 now uses parallel, paced manual streams: ink-2 for keyed text and ink-whisper
+for word offsets. B3 marks words with at least half their duration blocked.
+Mock agents retain the latest tower transcript per frequency and use it when
+PTT overlaps the cockpit event. The demo runner publishes the clean tower
+transcript with the same epoch base as the received cockpit clip.
+
+Added `tests/test_demo_plumbing.py`. Syntax checked without importing project
+modules. Pytest and live vendor calls were not run in this sandbox. Contracts
+are unchanged.
+
 ## 2026-10-24: Grounded pilot questions and persistent airport knowledge
 
 **Type:** Added

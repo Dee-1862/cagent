@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Unstep live messages</title>
+<h1>Unstep live messages</h1>
+<p id="status">Connecting</p>
+<ol id="messages"></ol>
+<script>
+const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws/observer__UNSTEP_TOKEN_QUERY__`);
+socket.onopen = () => document.querySelector('#status').textContent = 'Connected';
+socket.onclose = () => document.querySelector('#status').textContent = 'Disconnected. Refresh to reconnect.';
+socket.onmessage = event => {
+  const item = document.createElement('li');
+  const pre = document.createElement('pre');
+  pre.textContent = JSON.stringify(JSON.parse(event.data), null, 2);
+  item.append(pre);
+  document.querySelector('#messages').append(item);
+};
+</script>
+</html>
