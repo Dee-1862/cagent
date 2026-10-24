@@ -39,6 +39,7 @@ from unstep.config import gateway_url, ws_url
 from unstep.cockpit.audio import AudioSource, WavFileSource
 from unstep.cockpit.hint import advisory_text, derive_hint
 from unstep.cockpit.inference import Answerer, create_answerer
+from unstep.cockpit.translate import Translator, translate_advisory
 from unstep.cockpit.memory import LocalMemory, Memory, airport_index, create_memory, flight_index
 from unstep.cockpit.overlap import OverlapDetector, OverlapWindow
 from unstep.cockpit.phraseology import display_text
@@ -196,7 +197,8 @@ class TimedTTS:
         self.engine = engine
         self.last_first_audio_ms: Optional[float] = None
 
-    async def speak(self, text, context_id=None, on_chunk=None) -> SpeechResult:
+    async def speak(self, text, context_id=None, on_chunk=None, **options) -> SpeechResult:
+        """`options` (language, speed) are forwarded only when given."""
         started = time.perf_counter()
         first: list[float] = []
 
@@ -206,7 +208,7 @@ class TimedTTS:
             if on_chunk:
                 on_chunk(pcm)
 
-        res = await self.engine.speak(text, context_id=context_id, on_chunk=chunk)
+        res = await self.engine.speak(text, context_id=context_id, on_chunk=chunk, **options)
         self.last_first_audio_ms = first[0] if first else None
         return res
 
@@ -277,6 +279,12 @@ class _Advisory:
     held_at: float | None = None
     replay: bool = False
     cached: Any = None
+    language: str | None = None   # Cartesia language for a translated advisory
+    speed: float | None = None    # Cartesia speed, e.g. slower for corrections
+    prefix: bool = True           # English "Advisory." prefix (off for translations)
+
+
+CORRECTION_SPEED = 0.85  # within Sonic's documented 0.6 to 1.5
 
 
 class CockpitEdge:
@@ -294,6 +302,8 @@ class CockpitEdge:
         gps: Optional[Gps] = None,
         taxiway_node: Optional[str] = "B4",
         answerer: Optional[Answerer] = None,
+        translator: Optional[Translator] = None,
+        language: Optional[str] = None,
         demo_audio_dir: Path | None = None,
     ):
         self.demo_audio_dir = demo_audio_dir
@@ -303,6 +313,8 @@ class CockpitEdge:
         self.link.on_message = self.on_message
         self.memory = memory or create_memory()
         self.answerer = answerer
+        self.translator = translator
+        self.language = language  # pilot's language for the private repeat; None = English only
         if self.answerer is None and self.memory.backend == "moss":
             self.answerer = create_answerer()
         self.tts = TimedTTS(tts or default_tts())
@@ -410,10 +422,12 @@ class CockpitEdge:
                 self._speech_worker = self._spawn(self._drain_advisories())
 
     async def speak(self, text: str, event_id: str = "", display: str | None = None,
-                    *, kind: str = "advisory", _cached=None, **latency: float):
+                    *, kind: str = "advisory", _cached=None, language: str | None = None,
+                    speed: float | None = None, prefix: bool = True, **latency: float):
         """Speak in request order; wait while busy. Only explicit hints may expire."""
         item = _Advisory(text, event_id, display, latency, kind,
-                         asyncio.get_running_loop().create_future(), cached=_cached)
+                         asyncio.get_running_loop().create_future(), cached=_cached,
+                         language=language, speed=speed, prefix=prefix)
         # Replace a held hint in its original position, preserving event order.
         replaced = False
         if event_id and kind in {"directive", "rejection"}:
@@ -445,7 +459,9 @@ class CockpitEdge:
             item.replay = False
             self._active_advisory = item
             try:
-                spoken = item.cached if item.cached is not None else await self.voice.say(item.text)
+                spoken = item.cached if item.cached is not None else await self.voice.say(
+                    item.text, **{k: v for k, v in (("language", item.language), ("speed", item.speed)) if v is not None},
+                    **({} if item.prefix else {"prefix": False}))
                 if item.replay:
                     continue
                 await self._speech_finished(spoken, item.text, item.event_id, item.display, **item.latency)
@@ -647,6 +663,20 @@ class CockpitEdge:
                          display_text=readable(REQUEST_SAY_AGAIN))
         self._resolve(msg.event_id, "rejected")
 
+    def set_language(self, language: Optional[str]) -> None:
+        """The pilot's language for the private repeat of directives (None or "en": English only)."""
+        self.language = language
+
+    async def _say_translation(self, event_id: str, english: str) -> None:
+        """Repeat an approved directive in the pilot's language, only if every number survived."""
+        translated = await translate_advisory(self.translator, english, self.language)
+        if translated is None:
+            return
+        await self.speak(translated, event_id=event_id, display=translated, kind="translation",
+                         language=self.language, prefix=False)
+        await self.audit(event_id, "translation_spoken", self.tts.last_first_audio_ms, language=self.language,
+                         spoken_text=translated, display_text=translated, english=english, party="pilot_ear")
+
     async def _on_approved(self, msg: ApprovedDirective) -> None:
         rt = self._round_trip(msg.event_id)
         display = f"{msg.instruction_text.rstrip('.')}. Read back."
@@ -656,6 +686,7 @@ class CockpitEdge:
                          round_trip_ms=rt, approved_via=msg.approved_via, spoken_text=spoken.text,
                          display_text=readable(display))
         await self._record(f"clr-{msg.event_id}", msg.instruction_text, "clearance")
+        await self._say_translation(msg.event_id, display)
         outcome = await self.readback(msg)
         self._resolve(msg.event_id, outcome)
 
@@ -688,7 +719,9 @@ class CockpitEdge:
                                  **(getattr(stt, "last_input", None) or {}),
                                  **(save_audio(self.demo_audio_dir, np.frombuffer(stt.last_pcm, dtype="<i2"), stt.sample_rate)
                                     if getattr(stt, "last_pcm", None) else {}))
-                await self.speak(step.say, event_id=msg.event_id)
+                # Corrections are spoken slower so the right number lands (Cartesia speed).
+                await self.speak(step.say, event_id=msg.event_id,
+                                 speed=CORRECTION_SPEED if not step.result.match else None)
                 if session.done:
                     return "confirmed" if step.action == "confirmed" else "flagged"
         return "no_readback"

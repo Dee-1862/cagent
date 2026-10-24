@@ -348,7 +348,7 @@ def test_cartesia_tts_reconnects_once_after_idle_close(monkeypatch):
     tts = CartesiaTTS()
     calls = []
 
-    async def flaky(text, context_id=None, on_chunk=None):
+    async def flaky(text, context_id=None, on_chunk=None, *_options):
         calls.append(text)
         if len(calls) == 1:
             raise ConnectionClosedError(None, None)
@@ -370,7 +370,7 @@ def test_cartesia_tts_never_retries_after_audio_went_out(monkeypatch):
     tts = CartesiaTTS()
     calls = []
 
-    async def drops_mid_line(text, context_id=None, on_chunk=None):
+    async def drops_mid_line(text, context_id=None, on_chunk=None, *_options):
         calls.append(text)
         on_chunk(b"\x00\x00")  # some audio was already played
         raise ConnectionClosedError(None, None)
