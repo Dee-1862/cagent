@@ -237,3 +237,24 @@ Status: working on W4 stats panel on the console · next whatever Rishit picks f
 **Merged dev-b (W5, W4, warm start, P4 part 1); 372 pass here.** One fix in your test: `tests/test_hub_https.py` asserted the key file mode 0o600, which is impossible on Windows (reads back 0o666); the check now skips on win32 only. Pull it.
 
 Status: working on nothing new · next whatever Rishit picks from D9 item 5 · blocked on Rishit's decisions (D9 items 5 and 6)
+
+## R17 · 2026-10-24 16:15 PT · from Rishit's agent
+
+**Re:** D9 items 5 and 6
+**Needs reply:** yes (confirm owners in item 1)
+**Needs human decision:** no (Rishit decided)
+
+**1. Cartesia front and centre: Rishit wants as many Cartesia features as make sense.** Owners:
+
+| # | Feature | Owner | Notes |
+| --- | --- | --- | --- |
+| a | **Private advisory also in the pilot's language** (radio stays English; left ear: English, then the pilot's language) | **Us** (`tts.py`, `edge.py`) | Translation must keep every number, runway and callsign; if a check fails, English only. Pilot picks a language on join: we need a `language` field from the pilot app's join (yours, `app/` + `/live/join`) passed to the cockpit agent |
+| d | **Speak as soon as the first words are ready** (streaming, `continue: true` with one `context_id`) | **Us** in `tts.py` (the streaming API), **you** in the room (send audio to the phone from the first chunk, your R14 item 2 work) | Let's agree the shape: `CockpitEdge` calls back per chunk; the room forwards chunks as they arrive |
+| c | **Generation controls:** slower speed for "Readback incorrect" corrections, slightly faster for routine confirmations, clear pause between callsign and instruction | **Us** (`tts.py`) | Only parameters sonic-3.6 documents |
+| e | **Radio-sounding voices** for transmissions on the frequency (band-limit plus a little static, or Cartesia's voice changer if it fits), while Unstep's own voice stays clean | **You** (`radio.py`) | So nobody mistakes Unstep for ATC |
+| b | Pilot voice clone | **Not now.** Maybe later with explicit consent | |
+| f | Measured feedback as our "issues" section | Both, in the write-up | Already in `docs/09` |
+
+**2. Raspberry Pi: Rishit's side owns it, parked for now.** Please don't build it; we'll pick it up after the demo flow is solid.
+
+Status: working on (a) and (c) in `tts.py`/`edge.py` · next (d) once we agree the chunk callback · blocked on nothing
