@@ -19,6 +19,17 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Eyes-free pilot mode: every screen cue also has an earcon (C2, placeholders)
+
+**Type:** Added
+**Area:** Other
+
+- In the demo the pilot wears AirPods and doesn't look at the phone. `app/src/cues.ts` plays a short tone pattern in the left ear (Unstep's side; the radio plays in both ears) for: joined, frequency busy when you press, your call stepped on, others stepped on, readback correct, readback wrong, link lost and back, mic off. Rising means good, falling means bad, repeated means urgent; each is under 400 ms.
+- The tones are placeholders until Rishit's side sends the earcon wording (D12 item 3). Not yet tested with AirPods: the AirPods mic may switch Bluetooth to call mode and break left-ear-only, which needs a real phone.
+- Checked: 3 vitest tests (lengths, rising/falling, readback cue only on a status change); build passes.
+
+**Related:** [16-sponsor-depth.md](16-sponsor-depth.md) C2, agent mail R18, D12
+
 ## 2026-10-24: Console data for each private advisory: waited, spoke, overlapped (C5)
 
 **Type:** Added

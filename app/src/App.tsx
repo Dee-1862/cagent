@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { audio, chirp, keepAwake, playWav, streamChunk, streamEnd } from "./audio";
+import { cue, readbackCue } from "./cues";
 import { Hub, hubFromLocation, join, Live, Msg, parseHub, Seat } from "./hub";
 import { Mic } from "./mic";
 import { ASK_LINES, sayLines } from "./phrases";
@@ -117,6 +118,9 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
   const [, tick] = useState(0);
   const live = useRef<Live | null>(null);
   const earAudio = useRef<string | null>(null);
+  const greeted = useRef(false);
+  const lastStatus = useRef<Record<string, string>>({});
+  const wasOpen = useRef(false);
   const pressAt = useRef(0);
   const releaseTimer = useRef<number | null>(null);
 
@@ -129,6 +133,7 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
     const l = new Live(hub, station, (m: Msg) => {
       switch (m.type) {
         case "hello":
+          if (!greeted.current) { greeted.current = true; cue("joined"); }
           setStations(m.stations);
           setKeyed(m.keyed || {});
           setTrace([...m.traces].reverse().find((t: Trace) => t.callsign === station) ?? null);
@@ -141,6 +146,7 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
         case "stepon_live":
           setAlert({ stations: m.stations, uplink_ms: m.uplink_ms, at: Date.now() });
           if (m.stations.includes(station)) navigator.vibrate?.([60, 40, 60]);
+          cue(m.stations.includes(station) ? "stepped_on_me" : "stepped_on_others");
           return;
         case "onair": return void playWav(m.audio);
         case "advisory_chunk": return streamChunk(m.id, m.seq, m.sample_rate, m.pcm);
@@ -156,7 +162,12 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
           return;
         }
         case "trace":
-          if (m.trace.callsign === station) setTrace(m.trace);
+          if (m.trace.callsign === station) {
+            const c = readbackCue(m.trace.status, lastStatus.current[m.trace.event_id]);
+            lastStatus.current[m.trace.event_id] = m.trace.status;
+            if (c) cue(c);
+            setTrace(m.trace);
+          }
           return;
         case "status": return void say(m.text);
       }
@@ -167,13 +178,20 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
     return () => { l.close(); clearInterval(t); };
   }, [hub, station]);
 
+  // Eyes-free: say when the radio link drops and comes back.
+  useEffect(() => {
+    if (conn === "closed" && wasOpen.current) { wasOpen.current = false; cue("conn_lost"); }
+    else if (conn === "open") { if (greeted.current && !wasOpen.current) cue("conn_back"); wasOpen.current = true; }
+  }, [conn]);
+
   // ---- push to talk
 
   const down = () => {
     if (onAir) return;
     if (releaseTimer.current) { clearTimeout(releaseTimer.current); releaseTimer.current = null; }
-    if (!mic.ready) return void say("Mic is off: use a line below");
+    if (!mic.ready) { cue("mic_off"); return void say("Mic is off: use a line below"); }
     audio();
+    if (others.length) cue("busy"); // eyes-free: someone is already talking
     chirp(1400, 30);
     navigator.vibrate?.(30);
     pressAt.current = live.current!.now();
