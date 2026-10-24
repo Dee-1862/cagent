@@ -266,6 +266,19 @@ def default_tts():
 # ---------------------------------------------------------------- the agent
 
 
+@dataclass
+class _Advisory:
+    text: str
+    event_id: str
+    display: str | None
+    latency: dict
+    kind: str
+    done: asyncio.Future
+    held_at: float | None = None
+    replay: bool = False
+    cached: Any = None
+
+
 class CockpitEdge:
     def __init__(
         self,
@@ -314,6 +327,10 @@ class CockpitEdge:
         self._sent_at: dict[str, float] = {}
         self._tasks: set[asyncio.Task] = set()
         self._seq = 0
+        self._frequency_busy = False
+        self._advisories: list[_Advisory] = []
+        self._speech_worker: asyncio.Task | None = None
+        self._active_advisory: _Advisory | None = None
 
     # ------------------------------------------------------------ lifecycle
 
@@ -362,8 +379,87 @@ class CockpitEdge:
         if ms is not None:
             self.latency.setdefault(name, []).append(ms)
 
-    async def speak(self, text: str, event_id: str = "", display: str | None = None, **latency: float):
-        spoken = await self.voice.say(text)
+    async def set_frequency_busy(self, busy: bool) -> None:
+        """Hold/cancel speech while ATC is busy; await False to drain held speech.
+
+        Call on the edge's asyncio loop. Concurrent speak() calls wait for actual
+        delivery (or return None for a superseded hint). A new busy signal stops
+        draining; cancelled speech restarts with a fresh voice context.
+        """
+        self._frequency_busy = busy
+        if busy:
+            newly_held = []
+            for item in self._advisories:
+                if item.held_at is None:
+                    item.held_at = time.perf_counter()
+                    newly_held.append(item)
+            active = self._active_advisory
+            if active is not None and self.voice.current is not None:
+                active.replay = True
+                await self.voice.interrupt()  # same cancellation as turn.start
+            for item in newly_held:
+                await self.audit(item.event_id, "held", waited_ms=0.0, text=item.text)
+        else:
+            self._ensure_speech_worker()
+            if self._speech_worker is not None:
+                await asyncio.shield(self._speech_worker)
+
+    def _ensure_speech_worker(self) -> None:
+        if not self._frequency_busy and self._advisories:
+            if self._speech_worker is None or self._speech_worker.done():
+                self._speech_worker = self._spawn(self._drain_advisories())
+
+    async def speak(self, text: str, event_id: str = "", display: str | None = None,
+                    *, kind: str = "advisory", _cached=None, **latency: float):
+        """Speak in request order; wait while busy. Only explicit hints may expire."""
+        item = _Advisory(text, event_id, display, latency, kind,
+                         asyncio.get_running_loop().create_future(), cached=_cached)
+        # Replace a held hint in its original position, preserving event order.
+        replaced = False
+        if event_id and kind in {"directive", "rejection"}:
+            for i, old in enumerate(self._advisories):
+                if old.event_id == event_id and old.kind == "hint" and old.held_at is not None:
+                    item.held_at = old.held_at
+                    self._advisories[i] = item
+                    old.done.set_result(None)
+                    replaced = True
+                    break
+        if not replaced:
+            self._advisories.append(item)
+        if self._frequency_busy or item.held_at is not None:
+            item.held_at = item.held_at or time.perf_counter()
+            await self.audit(event_id, "held", waited_ms=_ms(item.held_at), text=text)
+        self._ensure_speech_worker()
+        return await asyncio.shield(item.done)
+
+    async def _drain_advisories(self) -> None:
+        while self._advisories and not self._frequency_busy:
+            item = self._advisories[0]
+            if item.held_at is not None:
+                await self.audit(item.event_id, "released", waited_ms=_ms(item.held_at), text=item.text)
+                if self._frequency_busy:
+                    break
+                if self._advisories[0] is not item:
+                    continue
+                item.held_at = None
+            item.replay = False
+            self._active_advisory = item
+            try:
+                spoken = item.cached if item.cached is not None else await self.voice.say(item.text)
+                if item.replay:
+                    continue
+                await self._speech_finished(spoken, item.text, item.event_id, item.display, **item.latency)
+                if not item.done.done():
+                    item.done.set_result(spoken)
+            except Exception as exc:
+                if not item.done.done():
+                    item.done.set_exception(exc)
+            finally:
+                self._active_advisory = None
+            if self._advisories and self._advisories[0] is item:
+                self._advisories.pop(0)
+
+    async def _speech_finished(self, spoken, text, event_id, display, **latency):
         first = self.tts.last_first_audio_ms
         self._measure("tts_first_audio_ms", first)
         self.out.add(spoken.stereo, self.voice.sample_rate)
@@ -506,7 +602,7 @@ class CockpitEdge:
                              source_doc_id=hint.source_doc_id, total_ms=hint_ms, spoken_text=advisory_text(hint),
                              display_text=readable(advisory_text(hint)))
         # Local hint rules: advisory_text only says "Likely" for a restrictive hint with a source.
-        await self.speak(advisory_text(hint), event_id=event_id, moss_ms=hint.moss_ms)
+        await self.speak(advisory_text(hint), event_id=event_id, kind="hint", moss_ms=hint.moss_ms)
         await self._record(f"adv-{event_id}", advisory_text(hint), "advisory")
         if not online:
             await self.offline()
@@ -516,6 +612,9 @@ class CockpitEdge:
     async def offline(self) -> None:
         """Gateway unreachable: play the pre-generated alert and keep working locally."""
         if self.offline_alert is not None:
+            if self._frequency_busy or self._advisories:
+                await self.speak(msg_say_again(), event_id="offline", _cached=self.offline_alert)
+                return
             self.out.add(self.offline_alert.stereo, self.voice.sample_rate)
             self._note("PILOT EAR", "[chime] " + self.offline_alert.text + " [offline alert, gateway unreachable]")
             spoken = self.offline_alert
@@ -543,7 +642,7 @@ class CockpitEdge:
 
     async def _on_rejected(self, msg: RejectedDirective) -> None:
         rt = self._round_trip(msg.event_id)
-        spoken = await self.speak(REQUEST_SAY_AGAIN, event_id=msg.event_id, round_trip_ms=rt)
+        spoken = await self.speak(REQUEST_SAY_AGAIN, event_id=msg.event_id, kind="rejection", round_trip_ms=rt)
         await self.audit(msg.event_id, "rejected_spoken", rt, rejected_via=msg.rejected_via, spoken_text=spoken.text,
                          display_text=readable(REQUEST_SAY_AGAIN))
         self._resolve(msg.event_id, "rejected")
@@ -552,7 +651,7 @@ class CockpitEdge:
         rt = self._round_trip(msg.event_id)
         display = f"{msg.instruction_text.rstrip('.')}. Read back."
         spoken = await self.speak(msg_directive(msg.instruction_text), event_id=msg.event_id,
-                                  display=display, round_trip_ms=rt)
+                                  display=display, kind="directive", round_trip_ms=rt)
         await self.audit(msg.event_id, "directive_spoken", self.tts.last_first_audio_ms,
                          round_trip_ms=rt, approved_via=msg.approved_via, spoken_text=spoken.text,
                          display_text=readable(display))
