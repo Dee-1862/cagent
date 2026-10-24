@@ -286,3 +286,53 @@ def test_real_cartesia_tts_first_audio():
 
     res = run(go())
     assert res.pcm and res.first_audio_ms is not None
+
+
+# ---------------------------------------------------------------- replaying clips into turn STT (no network)
+
+
+class _ScriptedTurnConn:
+    """Stands in for one CartesiaTurnSTT connection: ends the turn once speech has arrived."""
+
+    def __init__(self, text, speech_bytes, early=None):
+        self.text, self.speech_bytes, self.early = text, speech_bytes, early
+        self.got = 0
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return None
+
+    async def send_audio(self, pcm):
+        self.got += len(pcm)
+
+    async def events(self):
+        from unstep.cockpit.stt import TurnEvent
+
+        yield TurnEvent("turn.start")
+        if self.early:  # a pause mid-clip closes a turn before all speech is sent
+            yield TurnEvent("turn.end", self.early)
+        while self.got < self.speech_bytes:
+            await asyncio.sleep(0.01)
+        yield TurnEvent("turn.update", self.text)
+        yield TurnEvent("turn.end", "")  # transcript only in the last update
+
+
+def test_replay_turn_stt_one_turn_per_clip_and_merges_early_turn_end():
+    from unstep.cockpit.stt import ReplayTurnSTT
+
+    clip = b"\x01\x00" * 3200  # 0.2 s at 16 kHz
+    conns = iter([
+        _ScriptedTurnConn("Cessna one two three", len(clip), early="Hold short runway tree tree"),
+        _ScriptedTurnConn("Hold short runway three three, Cessna one two three", len(clip)),
+    ])
+    stt = ReplayTurnSTT(lambda: next(conns), [clip, clip], trailing_silence_s=0.1, timeout_s=5)
+
+    async def collect():
+        return [ev.transcript async for ev in stt.events() if ev.type == "turn.end"]
+
+    ends = run(collect())
+    assert ends == ["Hold short runway tree tree Cessna one two three",
+                    "Hold short runway three three, Cessna one two three"]
+    assert len(stt.turn_end_ms) == 2

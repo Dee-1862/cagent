@@ -382,14 +382,20 @@ class CockpitEdge:
 
     # ------------------------------------------------------------ audio in
 
-    async def run_audio(self, source: AudioSource) -> list[AnomalyEvent]:
-        """Process a whole audio source. Returns the AnomalyEvents raised."""
+    async def run_audio(self, source: AudioSource, realtime: bool = False) -> list[AnomalyEvent]:
+        """Process a whole audio source. Returns the AnomalyEvents raised.
+
+        `realtime=True` paces frames at real time, as a live radio would deliver
+        them (needed when replaying a file into Cartesia STT, docs/09 CF-10).
+        """
         raised: list[AnomalyEvent] = []
         stt = None
         windows: list[OverlapWindow] = []
         squelch_open_ts = last_end = None
         frame_ms: list[float] = []
         self.detector.reset()
+        paced_start = time.perf_counter()
+        audio_s = 0.0
 
         async def close_transmission(close_ts: int):
             nonlocal stt, windows
@@ -414,6 +420,11 @@ class CockpitEdge:
             windows += self.detector.process(frame)
             frame_ms.append((time.perf_counter() - t) * 1000)
             last_end = frame.end_ts
+            if realtime:
+                audio_s += len(frame.samples) / source.sample_rate
+                delay = paced_start + audio_s - time.perf_counter()
+                if delay > 0:
+                    await asyncio.sleep(delay)
             if not frame.squelch_open and stt is not None:
                 await close_transmission(frame.ts)
         if stt is not None:
@@ -432,6 +443,7 @@ class CockpitEdge:
         t = time.perf_counter()
         heard = (await stt.finalize()).text if stt is not None else ""
         stt_ms = _ms(t)
+        self._measure("stt_final_ms", stt_ms)
         self._note("RADIO", f"heard: {heard!r} (stepped-on {windows[0].start - open_ts}-"
                             f"{windows[-1].end - open_ts} ms into the call)", stt_final_ms=stt_ms)
 

@@ -17,12 +17,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import AsyncIterator, Iterable, Optional
 from urllib.parse import quote, urlencode
 
 from unstep.contracts import Word
+
+log = logging.getLogger("unstep.stt")
 
 CARTESIA_VERSION = "2026-08-14"
 STT_URL = "wss://api.cartesia.ai/stt/websocket"
@@ -236,3 +239,114 @@ class FakeTurnSTT:
             yield TurnEvent("turn.update", half)
             yield TurnEvent("turn.end", text)
             await asyncio.sleep(0)
+
+
+# ---------------------------------------------------------------- replay of recorded clips
+
+
+async def send_paced(stt, pcm: bytes, sample_rate: int = 16000, chunk_ms: int = 100,
+                     trailing_silence_s: float = 0.0, on_speech_sent=None) -> float:
+    """Send pcm_s16le in `chunk_ms` chunks at real time, then optional silence.
+
+    Real-time pacing matters: the turns endpoint returns empty transcripts when
+    audio arrives faster than real time (docs/09 CF-10). Returns the
+    perf_counter time at which the last speech chunk was sent, and also passes
+    it to `on_speech_sent` as soon as that happens (before the silence).
+    """
+    import time
+
+    step = sample_rate * 2 * chunk_ms // 1000
+    data = pcm + b"\x00\x00" * int(trailing_silence_s * sample_rate)
+    speech_end = len(pcm)
+    started = time.perf_counter()
+    speech_sent = started
+    for n, i in enumerate(range(0, len(data), step)):
+        await stt.send_audio(data[i:i + step])
+        if i + step >= speech_end and i < speech_end:
+            speech_sent = time.perf_counter()
+            if on_speech_sent:
+                on_speech_sent(speech_sent)
+        delay = started + (n + 1) * chunk_ms / 1000 - time.perf_counter()
+        if delay > 0:
+            await asyncio.sleep(delay)
+    return speech_sent
+
+
+class ReplayTurnSTT:
+    """Plays recorded clips (one per pilot turn) into a turn STT, paced at real time.
+
+    Opens one connection per clip from `factory` (e.g. CartesiaTurnSTT) and
+    yields its events until that clip's `turn.end`. A clip is only sent when
+    the consumer asks for the next event, so the cockpit can speak in between.
+    `turn_end_ms[i]` is the time from the end of clip i's speech to its turn.end.
+    """
+
+    def __init__(self, factory, clips: Iterable[bytes], sample_rate: int = 16000,
+                 trailing_silence_s: float = 2.5, timeout_s: float = 20.0):
+        self.factory = factory
+        self.clips = list(clips)
+        self.sample_rate = sample_rate
+        self.trailing_silence_s = trailing_silence_s
+        self.timeout_s = timeout_s
+        self.turn_end_ms: list[float] = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return None
+
+    async def send_audio(self, pcm: bytes) -> None:
+        return None
+
+    async def configure(self, **turn) -> None:
+        return None
+
+    async def events(self) -> AsyncIterator[TurnEvent]:
+        import time
+
+        while self.clips:
+            pcm = self.clips.pop(0)
+            async with self.factory() as stt:
+                sent = asyncio.get_running_loop().create_future()
+
+                async def sender():
+                    await send_paced(stt, pcm, self.sample_rate, trailing_silence_s=self.trailing_silence_s,
+                                     on_speech_sent=sent.set_result)
+
+                task = asyncio.create_task(sender())
+                last, parts = "", []
+                deadline = time.perf_counter() + self.timeout_s + len(pcm) / (2 * self.sample_rate)
+                try:
+                    it = stt.events().__aiter__()
+                    while True:
+                        try:
+                            ev = await asyncio.wait_for(it.__anext__(), max(0.1, deadline - time.perf_counter()))
+                        except (asyncio.TimeoutError, StopAsyncIteration):
+                            text = " ".join(parts + ([last] if last else []))
+                            if not text:
+                                raise RuntimeError("turn STT: no turn.end and no transcript for clip")
+                            log.warning("turn STT: no final turn.end; using partial transcript %r", text)
+                            yield TurnEvent("turn.end", text, {})
+                            break
+                        if ev.type == "error":
+                            raise RuntimeError(f"turn STT error: {ev.raw.get('title')}: {ev.raw.get('message')}")
+                        if ev.transcript:
+                            last = ev.transcript
+                        if ev.type == "turn.end":
+                            text = (ev.transcript or last).strip()
+                            if not sent.done():
+                                # A pause mid-clip ended a turn early: keep it and wait for the rest.
+                                if text:
+                                    parts.append(text)
+                                last = ""
+                                continue
+                            self.turn_end_ms.append(round((time.perf_counter() - sent.result()) * 1000, 1))
+                            yield TurnEvent("turn.end", " ".join(parts + ([text] if text else [])), ev.raw)
+                            break
+                        if ev.type == "turn.start" and parts:
+                            continue
+                        log.debug("turn STT %s %r", ev.type, ev.transcript)
+                        yield ev
+                finally:
+                    task.cancel()
