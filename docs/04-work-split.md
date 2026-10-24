@@ -4,7 +4,7 @@ How the two of us divide Unstep so we can build in parallel and get the full sys
 
 | Field | Value |
 | --- | --- |
-| Status | Draft v0.3 |
+| Status | Draft v0.4 |
 | Last updated | 2026-10-23 |
 | Related | [PRD](01-prd.md), [Changes](02-changes.md), [Mistakes and Lessons](03-mistakes-and-lessons.md), [Architecture](05-architecture.md), [Research](06-research.md), [Sponsor Review](07-sponsor-review.md), [Advice](08-advice.md) |
 
@@ -21,19 +21,19 @@ How the two of us divide Unstep so we can build in parallel and get the full sys
 
 | Role | Owner | Area | Sponsor owned |
 | --- | --- | --- | --- |
-| Dev A | _name_ | Cockpit edge, cockpit voice, readback check, all Moss work including the Frequency Monitor | **Moss** and Cartesia in the cockpit |
-| Dev B | _name_ | Gateway, tower transcription, all Elastic work, dashboard, audit | **Elastic** and Cartesia in the tower |
+| Dev A | _name_ | Cockpit edge, cockpit voice, readback check, pilot voice queries, all Moss work including the Frequency Monitor | **Moss** and Cartesia in the cockpit |
+| Dev B | _name_ | Gateway, tower transcription, controller voice approval, all Elastic work, dashboard, audit | **Elastic** and Cartesia on the ground |
 
-Fill in the names. Cartesia is split by side: Dev A owns TTS and readback STT in the cockpit, Dev B owns STT in the tower.
+Fill in the names. Cartesia is split by side: Dev A owns TTS, readback STT and pilot query STT in the cockpit. Dev B owns tower STT and the controller's voice approval loop on the ground.
 
 ### Why this split is balanced
 
 | | Dev A | Dev B |
 | --- | --- | --- |
-| Build tasks | 9 | 9 |
-| Effort (S = 1, M = 2, L = 3) | 18 | 18 |
-| Sponsor depth | Moss: hint search, three indexes, handoff, monitoring | Elastic: Workflow, three Agent Builder agents, hybrid search, ES\|QL |
-| Cartesia | TTS, pronunciation dictionary, interruption, turn STT readback, cockpit STT | Tower STT with key terms, PTT finalize, word timestamps, blocked words |
+| Build tasks | 10 | 10 |
+| Effort (S = 1, M = 2, L = 3) | 20 | 20 |
+| Sponsor depth | Moss: hint search, pilot queries, three indexes, handoff, monitoring | Elastic: Workflow, three Agent Builder agents, hybrid search, ES\|QL |
+| Cartesia | TTS, pronunciation dictionary, chime, interruption, turn STT for readbacks and pilot queries, cockpit STT | Tower STT with key terms, PTT finalize, word timestamps, blocked words, controller voice approval (TTS and turn STT) |
 | Hardest piece | Readback check with interruption (L) | Workflow with Intercept and Compliance agents (L) |
 | Main dependency on the other | Needs `ApprovedDirective` from B (mocked until M2) | Needs `AnomalyEvent` from A (mocked until M2) |
 
@@ -45,14 +45,17 @@ We agree on these before splitting up. They live in `contracts/` once code exist
 
 | Contract | Written by | Fields |
 | --- | --- | --- |
-| `TowerTranscript` | Tower STT (B) | `transcript_id`, `frequency`, `callsign`, `ptt_start`, `ptt_end`, `text`, `words` (`word`, `start`, `end`), `confidence` |
-| `AnomalyEvent` | Cockpit (A) | `event_id`, `callsign`, `frequency`, `overlap_start`, `overlap_end`, `heard_text`, `local_hint` (`text`, `moss_ms`), `gps`, `taxiway_node` |
+| `TowerTranscript` | Tower STT (B) | `transcript_id`, `frequency`, `callsign`, `ptt_start`, `ptt_end`, `text`, `words` (`word`, `start`, `end` as seconds from `ptt_start`), `confidence` |
+| `AnomalyEvent` | Cockpit (A) | `event_id`, `callsign`, `frequency`, `squelch_open`, `squelch_close`, `overlap_start`, `overlap_end`, `heard_text`, `local_hint` (`text`, `kind` restrictive or none, `source_doc_id`, `source_text`, `moss_ms`), `gps`, `taxiway_node` |
 | `ProposedDirective` | Compliance Agent (B) | `event_id`, `transcript_id`, `blocked_words`, `instruction_text`, `slots` (`callsign`, `action`, `runway`), `confidence`, `confidence_method`, `rule_citation` |
-| `ApprovedDirective` | Dashboard (B) | `event_id`, `instruction_text`, `slots`, `approved_by`, `approved_at` |
+| `VoiceApproval` | Controller voice loop (B) | `event_id`, `heard_text`, `decision` (approve, reject, unclear), `attempt`, `ts` |
+| `ApprovedDirective` | Gateway (B) | `event_id`, `instruction_text`, `slots`, `approved_by`, `approved_via` (voice or click), `approved_at` |
 | `ReadbackResult` | Cockpit (A) | `event_id`, `readback_text`, `slots`, `match`, `attempt` |
+| `PilotQuery` | Cockpit (A) | `query_id`, `callsign`, `question`, `answer`, `source_doc_id`, `moss_ms`, `ts` |
 | `Insight` | Frequency Monitor (A) | `insight_id`, `frequency`, `callsign`, `kind`, `text`, `ts` |
 | `AuditRecord` | Everyone | `event_id`, `stage`, `actor`, `ts`, `latency_ms`, `payload` |
 | Transport | B hosts, A connects | One WebSocket gateway on the ground laptop |
+| Clock | Both | Every `ts`, `*_start`, `*_end` and `*_at` field is epoch milliseconds from one clock (the gateway's). Only `TowerTranscript.words` uses seconds from `ptt_start` |
 
 **Done when:** the schemas are written as JSON examples and both of us have signed off.
 
@@ -82,16 +85,17 @@ Keep audio input behind one interface so the code can move to the Pi later.
 | --- | --- | --- | --- |
 | A1 | Audio input from file or mic, simulated PTT, plus the demo clips (clean call, stepped-on call, wrong readback) | S | Each clip plays through the pipeline |
 | A2 | Overlap detector that outputs the overlap window | M | Stepped-on clip flagged with the right window, clean clip ignored, under 10 ms |
-| A3 | Cockpit STT (Cartesia, finalize on PTT release) | S | Cockpit transcript reads "Cessna 1-2-3 [static]" for the stepped-on clip |
-| A4 | Moss `airport-<ICAO>` index and `flight-<callsign>` session, plus the local hint search | M | Fragment "Cessna 1-2-3" returns "hold short Runway 33" with `time_taken_ms` |
-| A5 | Moss `freq-<frequency>` session and the Frequency Monitor with two insights (repeated blocked calls, rising readback errors) | M | Insights appear on the gateway after a scripted run |
-| A6 | Advisory TTS: ATC number converter, pronunciation dictionary, calm voice, left channel only, word timestamps for highlighting | L | "Advisory. Cessna one two tree, hold short runway tree tree" plays left ear only, words highlight |
+| A3 | Cockpit STT (Cartesia, finalize on squelch close) | S | Cockpit transcript reads "Cessna 1-2-3 [static]" for the stepped-on clip |
+| A4 | Moss `airport-<ICAO>` index and `flight-<callsign>` session seeded with the earlier taxi clearance, plus the local hint search with the restrictive-only rule and source record | M | Fragment "Cessna 1-2-3" finds "Runway 33, taxi via Bravo" and returns "Likely hold short Runway 33" with `time_taken_ms`. A permissive guess returns no hint |
+| A5 | Frequency Monitor: subscribes to `TowerTranscript`, sole writer of the Moss `freq-<frequency>` session, two insights (repeated blocked calls, rising readback errors) | M | Insights appear on the gateway after a scripted run |
+| A6 | Advisory TTS: chime, ATC number converter, pronunciation dictionary, calm voice, left channel only, word timestamps for highlighting | L | Chime, then "Advisory. Cessna one two tree, hold short runway tree tree" plays left ear only, words highlight |
 | A7 | Readback check: turn STT on pilot mic, slot comparison, "Readback incorrect" repeat (max 2), interruption on `turn.start` | L | Wrong readback caught and repeated, right one confirmed, pilot can cut the voice off |
 | A8 | Offline: pre-generated alert audio, flight session `push_index()` at end of event | S | Alert plays with the network off, flight session visible on the ground after push |
-| A9 | Cockpit latency overlay (detection, Moss search, first audio) and measurements | S | Numbers show live and are written into [Research section 4](06-research.md#4-our-own-measurements) |
+| A9 | Cockpit latency overlay (detection, Moss search, first audio, pilot query) and measurements | S | Numbers show live and are written into [Research section 4](06-research.md#4-our-own-measurements) |
+| A10 | Pilot voice queries: Unstep key, Cartesia turn STT, intent for "last clearance", "say again" and "which taxiway", Moss search, spoken answer, `PilotQuery` audit | M | "Unstep, what was my last clearance?" is answered by voice with the Moss search time on the overlay |
 | AR | Research RA-1, RA-2, RA-4 to RA-8 (1 hour) | | Rows filled with links |
 
-Dev A total: S x4, M x3, L x2 = 4 + 6 + 6 = 16, plus the Moss section of the pitch and 30-second Moss version = 18.
+Dev A total: S x4, M x4, L x2 = 4 + 8 + 6 = 18, plus the Moss section of the pitch and 30-second Moss version = 20.
 
 ## 5. Dev B: Gateway, Tower and Elastic
 
@@ -103,12 +107,13 @@ Dev A total: S x4, M x3, L x2 = 4 + 6 + 6 = 16, plus the Moss section of the pit
 | B4 | FAA Order JO 7110.65 indexed in Elastic with hybrid search (BM25 plus vectors) | M | "hold short" query returns the right paragraph |
 | B5 | Elastic Workflow (endpoint, trigger, action) running the Intercept and Compliance agents in Agent Builder | L | Trigger with an `event_id` produces a `ProposedDirective` with a real citation and defined confidence (M-008) |
 | B6 | Readback Auditor agent | S | Every `ReadbackResult` gets an audit outcome in Elastic |
-| B7 | Controller dashboard: card with blocked words, Approve or Reject, readback status, monitoring panel, live word highlighting | L | One click sends `ApprovedDirective`, insights and readback status update live |
+| B7 | Controller dashboard: card with blocked words, Approve or Reject as the click fallback, readback status, monitoring panel, live word highlighting | L | One click sends `ApprovedDirective`, insights and readback status update live |
 | B8 | Audit and live ES\|QL: event trail, blocked calls per hour, readback error rate by frequency | M | Queries run live on screen (M-007) |
-| B9 | Ground latency measurements | S | Numbers written into [Research section 4](06-research.md#4-our-own-measurements) |
+| B9 | Ground latency measurements, including "Approve" spoken to directive sent | S | Numbers written into [Research section 4](06-research.md#4-our-own-measurements) |
+| B10 | Controller voice approval: chime and Cartesia TTS prompt in the controller headset, Unstep key with turn STT for "Approve" or "Reject", repeat-back, one retry, 10 second timeout, `VoiceApproval` contract | M | Saying "Approve" sends the directive and is repeated back. "Approve" played on the radio clip does nothing. Silence sends nothing |
 | BR | Research RB-1 to RB-9 (1 hour) | | Rows filled with links |
 
-Dev B total: S x4, M x3, L x2 = 4 + 6 + 6 = 16, plus the Elastic implementation write-up the sponsor asked for = 18.
+Dev B total: S x4, M x4, L x2 = 4 + 8 + 6 = 18, plus the Elastic implementation write-up the sponsor asked for = 20.
 
 ## 5a. Shared Tasks
 
@@ -128,7 +133,7 @@ Dev B total: S x4, M x3, L x2 = 4 + 6 + 6 = 16, plus the Elastic implementation 
 | M1: Halves alone | Each side runs against its own mock | A1, A2 and B1 |
 | **M2: First wire** | **Fake stepped-on event goes cockpit to gateway to dashboard, Approve comes back, text prints in the cockpit. WebSocket only** | **Both** |
 | M3: Real voice and search | Cartesia STT on both sides, Moss hint, FAA hybrid search | A3, A4 and B2, B3, B4 |
-| M4: Demo flow | The full [demo flow](01-prd.md#11-demo-flow-2-minutes) works, including readback and Workflow | A6, A7 and B5, B7 |
+| M4: Demo flow | The full [demo flow](01-prd.md#11-demo-flow-2-minutes) works by voice, including readback, pilot query, voice approval and Workflow | A6, A7, A10 and B5, B7, B10 |
 | M5: Depth and polish | Monitoring, auditor, ES\|QL stats, offline alert, latency overlay, README, pitch | A5, A8, A9 and B6, B8, B9, S2 to S5 |
 
 M2 is the main early target. If we fall behind, use the [cut list](01-prd.md#13-cut-list).
@@ -156,6 +161,7 @@ Research is time-boxed and never blocks the build.
 - If you're blocked on the other half, extend your mock instead of waiting.
 - Check every vendor claim against the vendor's own docs before it goes in the PRD or pitch (M-010, M-011).
 - Say "stepped-on" or "blocked," never "collision," for radio overlap (M-012).
+- Voice first: if a feature only works by clicking, add the voice path or ask why not (M-013).
 
 ## 9. Integration Checkpoints
 
@@ -164,5 +170,5 @@ Research is time-boxed and never blocks the build.
 | After M0 | Each of us sends a sample message through the gateway, and the other parses it |
 | After M2 | Full fake path 10 times in a row without errors |
 | After M3 | Real STT and Moss on the demo clip, latency recorded |
-| After M4 | Full demo flow 5 times in a row, including the wrong readback |
+| After M4 | Full demo flow 5 times in a row with the screens off until step 7, including the wrong readback and the pilot query |
 | Before demo | Full dry run, plus a dry run with the network off |

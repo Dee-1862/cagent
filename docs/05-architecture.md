@@ -4,7 +4,7 @@ How data flows through Unstep, from a stepped-on or misheard instruction to the 
 
 | Field | Value |
 | --- | --- |
-| Status | Draft v0.3 |
+| Status | Draft v0.4 |
 | Last updated | 2026-10-23 |
 | Related | [PRD](01-prd.md), [Work Split](04-work-split.md), [Research](06-research.md), [Sponsor Review](07-sponsor-review.md), [Advice](08-advice.md) |
 
@@ -12,6 +12,9 @@ How data flows through Unstep, from a stepped-on or misheard instruction to the 
 
 ## 1. Design Principles
 
+- **Voice first.** The pilot and the controller both talk to Unstep on a separate Unstep key. Screens are backup and audit.
+- **Only the Unstep key commands Unstep.** Radio speech is transcribed but never obeyed.
+- **One clock.** All timestamps are epoch milliseconds from one clock. Tower word times are offsets from `ptt_start`.
 - **Live messages go over WebSocket.** One gateway on the ground. Moss is not a message bus: handoff goes through Moss Cloud, `push_index()` replaces the whole index, and auto-refresh polls every 300 seconds.
 - **Moss is local memory.** Each agent keeps its own Moss session. One writer per index. Handoff at clear points (end of an event, end of a flight).
 - **Elastic is the ground's memory and orchestrator.** The gateway writes every message to an Elastic events index, so Agent Builder agents read from Elastic, not from Moss.
@@ -34,6 +37,8 @@ flowchart LR
         EAR[Headset left ear]
         MIC[Pilot mic]
         RSTT[Cartesia turn STT<br/>readback]
+        PKEY[Pilot Unstep key]
+        QSTT[Cartesia turn STT<br/>pilot queries]
     end
 
     subgraph Ground["Ground"]
@@ -48,7 +53,9 @@ flowchart LR
         RBA[Readback Auditor]
         FAA[(Elastic FAA JO 7110.65)]
         EV[(Elastic events and audit)]
-        UI[Controller dashboard]
+        UI[Controller dashboard<br/>click fallback]
+        CVOICE[Controller headset<br/>Cartesia TTS]
+        CKEY[Controller Unstep key<br/>Cartesia turn STT]
     end
 
     RADIO --> DET --> EDGE
@@ -57,25 +64,28 @@ flowchart LR
     MF <--> EDGE
     EDGE -- AnomalyEvent --> GW
     TOWER --> TSTT -- TowerTranscript --> GW
-    TSTT --> MQ
+    GW -- TowerTranscript --> MON
+    MON --> MQ
     GW --> EV
     GW -- trigger --> WF
     WF --> INT --> CMP
     EV --> INT
     FAA --> CMP
-    CMP -- ProposedDirective --> UI
+    CMP -- ProposedDirective --> GW
+    GW --> CVOICE
+    CKEY -- VoiceApproval --> GW
     UI -- ApprovedDirective --> GW -- ApprovedDirective --> EDGE
     EDGE --> TTS --> EAR
     MIC --> RSTT --> EDGE
+    PKEY --> QSTT --> EDGE
     EDGE -- ReadbackResult --> GW
     WF --> RBA
-    MQ --> MON
     EV --> MON
     MON -- Insight --> GW
     GW --> UI
 ```
 
-Ownership: the cockpit box, the Moss frequency session and the Frequency Monitor belong to Dev A (all Moss). Everything else on the ground belongs to Dev B (all Elastic plus tower STT). See [Work Split](04-work-split.md#2-owners).
+Ownership: the cockpit box, the Moss frequency session and the Frequency Monitor belong to Dev A (all Moss, plus pilot voice queries). Everything else on the ground belongs to Dev B (all Elastic, tower STT and controller voice approval). The Frequency Monitor is the only writer to the Moss frequency session. See [Work Split](04-work-split.md#2-owners).
 
 ## 3. Data Flow, Start to Finish
 
@@ -89,7 +99,7 @@ sequenceDiagram
     participant M as Moss (cockpit)
     participant WF as Elastic Workflow
     participant AG as Agents
-    participant UI as Dashboard
+    participant C as Controller (Unstep key)
     participant P as Pilot
 
     Note over E,M: Pre-flight: load airport index, open flight session. Ground opens frequency session
@@ -97,18 +107,20 @@ sequenceDiagram
     ATC->>TS: "Cessna 1-2-3, hold short Runway 33" (finalize on PTT release)
     TS->>GW: TowerTranscript with word timestamps
     ATC--xE: Stepped on by a second transmission
-    E->>E: Overlap window found, cockpit hears "Cessna 1-2-3 [static]"
+    E->>E: Overlap window found, cockpit hears "Cessna 1-2-3 [static]" (finalized on squelch close)
     E->>M: Search flight session and airport index with the fragment
-    M-->>E: Likely "hold short Runway 33" (time_taken_ms shown)
-    E->>P: "Advisory. Transmission blocked. Likely hold short Runway 33. Awaiting controller."
+    M-->>E: Source "Runway 33, taxi via Bravo" gives Likely "hold short Runway 33" (restrictive, time_taken_ms shown)
+    E->>P: Chime. "Advisory. Transmission blocked. Likely hold short Runway 33. Awaiting controller."
     E->>GW: AnomalyEvent (overlap window, fragment, hint)
     GW->>WF: Trigger with event_id (event also written to Elastic)
     WF->>AG: Intercept matches transcript, marks blocked words
     AG->>AG: Compliance cites FAA paragraph
-    AG->>UI: ProposedDirective
-    UI->>GW: ApprovedDirective (controller clicked Approve)
+    AG->>GW: ProposedDirective (also shown on dashboard)
+    GW->>C: Chime. "Blocked call to Cessna 1-2-3: hold short Runway 33. Approve?"
+    C->>GW: "Approve" on the Unstep key (turn STT). Click is the fallback
+    GW->>C: "Approved, sending to Cessna 1-2-3."
     GW->>E: ApprovedDirective
-    E->>P: "Advisory. Cessna one two tree, hold short runway tree tree. Read back."
+    E->>P: Chime. "Advisory. Cessna one two tree, hold short runway tree tree. Read back."
     P->>E: Readback (turn STT, interrupts voice on turn.start)
     E->>E: Compare callsign, action, runway
     alt Readback matches
@@ -117,7 +129,11 @@ sequenceDiagram
         E->>P: "Readback incorrect" and repeat (max 2, then flag controller)
     end
     GW->>WF: Readback Auditor records outcome
-    Note over GW,UI: Frequency Monitor posts insights. Every stage is stored in Elastic for live queries
+    P->>E: Unstep key: "Unstep, what was my last clearance?"
+    E->>M: Search flight session
+    M-->>E: "Hold short Runway 33, issued 14:02" (time_taken_ms shown)
+    E->>P: Chime. Spoken answer
+    Note over GW,C: Frequency Monitor posts insights. Every stage is stored in Elastic for live queries
 ```
 
 ## 4. Stage by Stage
@@ -134,9 +150,10 @@ sequenceDiagram
 | 7 | Store and trigger | Gateway, Elastic | Event in Elastic, Workflow started | B | TBD |
 | 8 | Intercept | Elastic agent | Matched transcript, blocked words | B | TBD |
 | 9 | Compliance | Elastic agent | `ProposedDirective` with FAA citation | B | TBD |
-| 10 | Approval | Dashboard | `ApprovedDirective` | B | Human-paced |
+| 10 | Approval | Controller headset and Unstep key (dashboard click fallback) | `VoiceApproval`, then `ApprovedDirective` | B | Human-paced |
 | 11 | Delivery | Gateway to cockpit (Cartesia TTS) | Advisory audio in left ear | A | Measure first audio |
 | 12 | Readback | Cockpit (Cartesia turn STT) | `ReadbackResult` | A | TBD |
+| 12a | Pilot query | Cockpit (Cartesia turn STT, Moss, Cartesia TTS) | Spoken answer, `PilotQuery` audit | A | Measure question to first audio |
 | 13 | Readback audit | Elastic agent | Audit outcome | B | Async |
 | 14 | Monitoring | Ground (Moss and Elastic) | `Insight` | A | Async |
 | 15 | Audit | Elastic | ES\|QL audit and stats | B | Async |
@@ -147,10 +164,12 @@ Fields are in [Work Split, section 3](04-work-split.md#3-shared-contracts-both-d
 
 | Message | From | To |
 | --- | --- | --- |
-| `TowerTranscript` | Tower STT | Gateway, Moss frequency session |
+| `TowerTranscript` | Tower STT | Gateway, Frequency Monitor (which writes the Moss frequency session) |
 | `AnomalyEvent` | Cockpit | Gateway, Workflow |
-| `ProposedDirective` | Compliance Agent | Dashboard |
-| `ApprovedDirective` | Dashboard | Cockpit |
+| `ProposedDirective` | Compliance Agent | Controller voice, dashboard |
+| `VoiceApproval` | Controller Unstep key | Gateway |
+| `ApprovedDirective` | Gateway (from voice or click) | Cockpit |
+| `PilotQuery` | Cockpit | Gateway, Elastic (audit only) |
 | `ReadbackResult` | Cockpit | Gateway, Readback Auditor, dashboard |
 | `Insight` | Frequency Monitor | Dashboard, Elastic |
 | `AuditRecord` | Every component | Elastic |
@@ -161,7 +180,7 @@ Fields are in [Work Split, section 3](04-work-split.md#3-shared-contracts-both-d
 | --- | --- | --- | --- | --- |
 | `airport-<ICAO>` | Long-term | Pre-flight setup | Cockpit, ground | Loaded with `load_index` before flight |
 | `flight-<callsign>` | Cockpit session | Cockpit only | Ground and audit | `push_index()` at end of each event and end of flight |
-| `freq-<frequency>` | Ground session | Ground only | Frequency Monitor, ground services | Local only |
+| `freq-<frequency>` | Ground session | Frequency Monitor only | Frequency Monitor, ground services | Local only |
 
 Moss does not compare readbacks. That is a slot comparison (callsign, action, runway) in our own code.
 
@@ -171,7 +190,10 @@ Moss does not compare readbacks. That is a slot comparison (callsign, action, ru
 | --- | --- |
 | No link to ground | Cockpit plays the pre-generated "Advisory. Transmission blocked, request say again" and keeps its local Moss session (M-003) |
 | No tower transcript | No directive is proposed. Dashboard shows "blocked transmission, content unknown" (M-002) |
-| No local hint found | Cockpit says "Advisory. Transmission blocked. Awaiting controller." |
+| No local hint found, or the guess is permissive | Cockpit says "Advisory. Transmission blocked. Awaiting controller." |
+| Controller's spoken answer not understood | Unstep asks once more. No clear answer in 10 seconds: nothing is sent, the card stays on screen for a click |
+| "Approve" heard on the radio frequency | Ignored. Only the controller's Unstep key counts |
+| Pilot query has no match | "Advisory. No record found. Ask the controller." |
 | Low confidence or no rule match | Card is marked low confidence. Controller reissues by voice |
 | Controller rejects | Cockpit hears "request say again." The rejection is audited |
 | Readback wrong twice | Cockpit stops repeating and the dashboard flags the controller |

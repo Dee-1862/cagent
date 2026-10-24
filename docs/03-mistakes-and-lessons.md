@@ -35,6 +35,8 @@ Each entry uses this template:
 | M-010 | Vendor claims written before checking the docs | Docs | Resolved |
 | M-011 | Moss used as a message bus and Cartesia as an overlap detector | Other | Resolved |
 | M-012 | "Collision" used for two different things | Docs | Resolved |
+| M-013 | Voice was only the output, screens were the interface | Audio | Resolved |
+| M-014 | Local hint could have suggested a permissive clearance | Edge device | Resolved |
 
 ---
 
@@ -176,3 +178,25 @@ Each entry uses this template:
 **Why it matters:** Judges would think we claim to prevent crashes, which is radar and TCAS territory, and the idea felt hazy.
 **What we learned:** One word, one meaning. Define key terms once and keep to them.
 **Action:** PRD v0.3 has a Terms section. Radio overlap is "stepped-on" or "blocked." "Collision" only means aircraft.
+
+## M-013: Voice was only the output, screens were the interface
+
+**Date found:** 2026-10-23
+**Status:** Resolved
+**Area:** Audio
+
+**What happened:** In v0.3 the controller clicked Approve on a dashboard and the pilot only listened. Voice was how Unstep spoke, not how people used it. Every past Cartesia track winner made the voice exchange the product.
+**Why it matters:** "Use of Cartesia" is 25% of the Cartesia score, and the judges asked for voice to be core, not a feature added for the demo. Pilots and controllers are also eyes-busy and hands-busy, so screens are the wrong main interface for them.
+**What we learned:** Test the product with the screens off. If it stops working, voice isn't core.
+**Action:** PRD v0.4 adds pilot voice queries (A10) and controller voice approval (B10), a chime before every Unstep message, and a demo where nobody touches a screen until the end. The click stays as a fallback.
+
+## M-014: Local hint could have suggested a permissive clearance
+
+**Date found:** 2026-10-23
+**Status:** Resolved
+**Area:** Edge device
+
+**What happened:** The v0.3 hint rules said "Likely" and "Awaiting controller," but didn't limit what could be hinted. A wrong "Likely cleared for takeoff" or "Likely cross Runway 33" could lead a pilot into a runway incursion. Also, the demo hint had no stated source, so it would look hardcoded.
+**Why it matters:** A wrong hold short is safe. A wrong permission to move is not. Responsibility judges will ask exactly this.
+**What we learned:** Classify every automated suggestion by what happens if it's wrong, and only automate the side where wrong is safe. Show where every suggestion came from.
+**Action:** PRD v0.4: hints for restrictive instructions only (hold short, stop, hold position, go around). Every hint shows its source Moss record. The demo seeds the flight session with the earlier taxi clearance the hint is drawn from.

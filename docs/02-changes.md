@@ -19,6 +19,22 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: Voice first in PRD v0.4
+
+**Type:** Changed
+**Area:** Audio
+
+- PRD v0.4: voice first. The pilot asks Unstep questions on a separate Unstep key, answered from Moss. The controller hears each proposed correction and approves by voice, with the click as a fallback. A chime starts every Unstep message.
+- Added voice approval rules: only the Unstep key counts, repeat back before sending, one retry, 10 second timeout to "nothing sent."
+- Local hint is now restrictive instructions only, and always shows its source Moss record.
+- Cockpit transcript finalizes on squelch close. One clock for all timestamps, tower word times as offsets from `ptt_start`.
+- Architecture v0.4: controller voice loop, pilot query path, Frequency Monitor as the only writer to the frequency session. New contracts `VoiceApproval` and `PilotQuery`.
+- Work split v0.4: new tasks A10 (pilot voice queries) and B10 (controller voice approval). Both developers now at 10 tasks and 20 points.
+- Demo flow: nobody touches a screen until step 7.
+- Mistakes: added M-013 and M-014. Advice: added section 10 with the reasoning.
+
+**Related:** [PRD](01-prd.md), [Advice, section 10](08-advice.md#10-voice-first-added-after-v03-folded-into-v04)
+
 ## 2026-10-23: Folded Rishit's advice into PRD v0.3
 
 **Type:** Changed

@@ -313,6 +313,51 @@ Never cut: the readback check, the blocked-word highlight, the Moss search time 
 
 The local hint is spoken before approval, as proposed in section 3.4. To keep it consistent with FR-6, PRD v0.3 adds local hint rules: it always says "Likely" and "Awaiting controller," is never phrased as a clearance, and never asks for a readback.
 
+## 10. Voice First (added after v0.3, folded into v0.4)
+
+### Why
+
+v0.3 still had the controller clicking Approve and the pilot only listening. Voice was the output channel and the screen was the interface. Every past Cartesia track winner (SpeakEasy, Form Wizard Pro, SheBeTalking, Stella) made the voice exchange the product, and the track text asks for voice to be core, not added for the demo. Pilots and controllers are also the clearest eyes-busy, hands-busy users there are, which matches the "hands-busy" and "ambient assistant" ideas Cartesia listed.
+
+**Test:** does the product still work with the screens off? In v0.3 it didn't. In v0.4 it does.
+
+### What we add
+
+| Feature | What happens | Why it scores |
+| --- | --- | --- |
+| Pilot voice queries | Pilot presses the Unstep key: "Unstep, what was my last clearance?", "say again", "which taxiway?" Cartesia turn STT, Moss search, Cartesia TTS answer | Turns Unstep from an alert system into a voice agent. It is also the Moss Voice AI category exactly, with Moss search inside the voice loop. One feature, two tracks |
+| Controller voice approval | Controller hears "Blocked call to Cessna 1-2-3: hold short Runway 33. Approve?" and answers on the Unstep key. Unstep repeats back what was approved | Controllers watch traffic, not dashboards. Approval by voice matches how they already work |
+| Chime | A short tone before every Unstep message | Pilots know it's Unstep, not ATC, before a word is spoken |
+| Screens as backup | Dashboard stays for fallback clicks, highlighting and audit | Nothing is lost if voice fails |
+
+### Safety rules, and why
+
+- **Only the Unstep key commands Unstep.** A pilot saying "approve" on the frequency must never trigger anything.
+- **Repeat back before sending.** The same principle as ATC readbacks.
+- **One retry, then 10 second timeout to "nothing sent."** Silence never sends a directive.
+- **Restrictive hints only.** A wrong "hold short" is safe. A wrong "cleared for takeoff" is not (M-014).
+
+### Expected effect on the Cartesia score
+
+| Criterion | Before | After | Reason |
+| --- | --- | --- | --- |
+| Use of Cartesia | 22 | 24 | Voice in and out for every user, turn-taking, interruption |
+| Problem and originality | 22 | 23 | Clear fit with the track's hands-busy ideas |
+| Impact and responsibility | 22 | 23 | Voice approval safety rules, chime, no cloning |
+| Execution | 18 | 17 | One more STT stream to make reliable |
+| **Total** | **84** | **about 87** | |
+
+Moss also gains from pilot queries. Cost: two medium tasks (A10, B10), which keeps the work split balanced at 20 points each.
+
+### Other fixes folded in at the same time
+
+| Fix | Why |
+| --- | --- |
+| Cockpit transcript finalized on squelch close, not PTT release | The cockpit can't see the tower's PTT. It only hears the channel open and close |
+| One clock: epoch milliseconds everywhere, tower word times as offsets from `ptt_start` | Otherwise the blocked-word highlight lands on the wrong words |
+| Frequency Monitor is the only writer to the Moss frequency session, fed from the gateway | v0.3's diagram had tower STT writing to it directly, which broke the one-writer rule |
+| Seed the flight session with the earlier taxi clearance and show the hint's source | Without a visible source, the hint looks hardcoded to a Moss judge |
+
 ## Sources
 
 **Moss**
