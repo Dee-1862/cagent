@@ -51,6 +51,10 @@ When a transmission is stepped on, the system:
 - No replacement of the primary VHF radio or of standard phraseology.
 - No control of the aircraft. Unstep only advises by audio.
 
+### Current Scope
+
+Raspberry Pi integration is on hold. The Pi 5 is still the target hardware, but for now the cockpit edge runs as a software simulator on a laptop, with recorded radio audio and a simulated PTT/squelch signal. See [Work Split, section 3a](04-work-split.md#3a-on-hold-raspberry-pi-integration).
+
 ## 4. Users
 
 | User | Need |
@@ -169,7 +173,7 @@ The pitch needs real numbers. Every claim must be backed by a source or by our o
 | Problem size | How often transmissions are blocked (NASA ASRS, FAA runway incursion data) | Dev B |
 | Safety impact | NTSB investigations naming blocked transmissions, plus the source for the February 2026 finding | Dev B |
 | Existing options | Why anti-blocking radios and CPDLC don't solve it | Dev B |
-| Feasibility | Published latency for Cartesia and Moss, plus Pi 5 audio latency | Dev A |
+| Feasibility | Published latency for Cartesia and Moss (Pi 5 audio latency on hold) | Dev A |
 | Detection | Evidence that collisions can be detected from audio | Dev A |
 | Our prototype | Measured latency for each segment in section 8 | Both |
 

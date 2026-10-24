@@ -8,12 +8,14 @@ How data flows through Unstep, from the moment a transmission is stepped on to t
 | Last updated | 2026-10-23 |
 | Related | [PRD](01-prd.md), [Work Split](04-work-split.md), [Research](06-research.md) |
 
+> **Current scope:** Raspberry Pi integration is on hold. The cockpit edge runs as a software simulator on a laptop, using recorded radio audio and a simulated PTT/squelch signal. The data flow below stays the same when we move to the Pi later.
+
 ## 1. System Overview
 
 ```mermaid
 flowchart LR
-    subgraph Air["Cockpit (Dev A)"]
-        RADIO[VHF audio panel<br/>and PTT/squelch]
+    subgraph Air["Cockpit edge simulator (Dev A)"]
+        RADIO[Recorded radio audio<br/>and simulated PTT/squelch]
         DET[Collision detector]
         MOSS[(Moss<br/>local cache)]
         EDGE[Edge agent]
@@ -55,7 +57,7 @@ sequenceDiagram
     autonumber
     participant ATC as Controller (voice)
     participant TWR as Tower capture + STT
-    participant PI as Cockpit edge (Pi 5)
+    participant PI as Cockpit edge (laptop sim)
     participant M as Moss
     participant INT as Intercept Agent
     participant REG as Compliance Agent
@@ -64,7 +66,7 @@ sequenceDiagram
     participant C as Cartesia
     participant P as Pilot headset
 
-    Note over PI,M: Pre-flight: Pi pulls NOTAMs and taxiway graph from Elastic into Moss
+    Note over PI,M: Pre-flight: edge pulls NOTAMs and taxiway graph from Elastic into Moss
 
     ATC->>TWR: "Hold short of Runway 33"
     ATC--xPI: Transmission blocked by overlap
@@ -88,17 +90,17 @@ sequenceDiagram
 
 | # | Stage | Where | Input | Output | Owner | Target |
 | --- | --- | --- | --- | --- | --- | --- |
-| 0 | Pre-flight sync | Pi | Elastic: NOTAMs, taxiway graph | Moss cache | A | Before pushback |
-| 1 | Audio capture | Pi | Audio panel, PTT/squelch line | Audio frames | A | Continuous |
-| 2 | Collision detection | Pi | Audio frames | Collision flag, duration | A | Under 10 ms |
-| 3 | Local lookup | Pi (Moss) | Aircraft ID, GPS | Taxiway node, active runway | A | Under 5 ms |
-| 4 | Event uplink | Pi to ground | Collision plus local state | `AnomalyEvent` | A | TBD (datalink) |
+| 0 | Pre-flight sync | Edge sim | Elastic: NOTAMs, taxiway graph | Moss cache | A | Before pushback |
+| 1 | Audio capture | Edge sim | Recorded radio audio, simulated PTT/squelch | Audio frames | A | Continuous |
+| 2 | Collision detection | Edge sim | Audio frames | Collision flag, duration | A | Under 10 ms |
+| 3 | Local lookup | Edge sim (Moss) | Aircraft ID, GPS | Taxiway node, active runway | A | Under 5 ms |
+| 4 | Event uplink | Edge sim to ground | Collision plus local state | `AnomalyEvent` | A | TBD (datalink) |
 | 5 | Tower transcript | Ground | Controller audio | Instruction text | B | TBD |
 | 6 | Intercept | Ground | `AnomalyEvent`, transcript | Matched event | B | TBD |
 | 7 | Compliance check | Ground (Elastic) | Matched event | `ProposedDirective` | B | TBD |
 | 8 | Human approval | Dashboard | `ProposedDirective` | `ApprovedDirective` | B | Human-paced |
-| 9 | Directive downlink | Ground to Pi | `ApprovedDirective` | Directive on device | B | TBD (datalink) |
-| 10 | Speech | Pi (Cartesia) | Directive text | Audio in left ear | A | Under 90 ms to first audio |
+| 9 | Directive downlink | Ground to edge sim | `ApprovedDirective` | Directive on device | B | TBD (datalink) |
+| 10 | Speech | Edge sim (Cartesia) | Directive text | Audio in left ear | A | Under 90 ms to first audio |
 | 11 | Audit | Elastic | Every stage | `AuditRecord` | Both | Async |
 
 ## 4. Message Contracts
@@ -116,7 +118,7 @@ See [Work Split, section 3](04-work-split.md#3-shared-contracts-both-do-first) f
 
 | Failure | Behavior |
 | --- | --- |
-| No datalink to ground | Pi plays a local alert: "Transmission blocked, request say again" (M-003) |
+| No datalink to ground | Edge plays a local alert: "Transmission blocked, request say again" (M-003) |
 | No tower transcript | Directive is not proposed. Dashboard shows "blocked transmission, content unknown" (M-002) |
 | Low confidence or no rule match | Card is marked low confidence. The controller must reissue by voice |
 | Controller rejects | Nothing is sent to the cockpit. The rejection is audited |

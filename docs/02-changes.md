@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: Put Raspberry Pi integration on hold
+
+**Type:** Changed
+**Area:** Edge device
+
+- Raspberry Pi integration is on hold and not assigned to anyone.
+- The cockpit edge now runs as a laptop simulator with recorded audio and a simulated PTT/squelch signal.
+- Added an "On hold" section to the work split and a current scope note to the PRD and architecture.
+- Marked research question RA-3 (Pi 5 audio latency) as on hold.
+
+**Related:** [Work Split, section 3a](04-work-split.md#3a-on-hold-raspberry-pi-integration)
+
 ## 2026-10-23: Added architecture and research plan
 
 **Type:** Docs

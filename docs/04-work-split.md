@@ -13,13 +13,13 @@ How the two of us divide Unstep so we can build in parallel and get the full sys
 1. **Agree on the contracts first.** We fix the message formats between cockpit and ground before writing anything else. After that, neither of us waits on the other.
 2. **Mock the other side.** Each person builds against a fake version of the other's half, so both halves work alone from day one.
 3. **Wire early, improve later.** The first goal is a thin end-to-end path with fake data. We swap in real Moss, Elastic and Cartesia one at a time after that.
-4. **Simulate the aircraft.** We use recorded or generated radio audio on a laptop or Pi, not a real audio panel (see M-006).
+4. **Simulate the aircraft.** We use recorded or generated radio audio on a laptop, not a real audio panel (see M-006). Raspberry Pi integration is on hold (see section 3a).
 
 ## 2. Owners
 
 | Role | Owner | Area |
 | --- | --- | --- |
-| Dev A | _name_ | Cockpit edge device: audio, detection, Moss, Cartesia |
+| Dev A | _name_ | Cockpit edge simulator (laptop): audio, detection, Moss, Cartesia |
 | Dev B | _name_ | Ground side: Elastic, agents, controller dashboard, audit |
 
 Fill in the names and swap roles if that fits our skills better.
@@ -38,7 +38,20 @@ We agree on these together before splitting up. They live in `contracts/` once c
 
 **Done when:** the schemas are written down as JSON examples and both of us have signed off.
 
-## 4. Dev A: Cockpit Edge Device
+## 3a. On Hold: Raspberry Pi Integration
+
+Not assigned to anyone for now. We pick this up after the demo path works on a laptop.
+
+| Item | Why it waits |
+| --- | --- |
+| Running the edge stack on a Raspberry Pi 5 | The laptop simulator proves the flow first |
+| Audio intercept board and audio panel connection | Needs hardware and raises certification questions (M-006) |
+| Real PTT/squelch line tap | Simulated signal is enough for the demo |
+| Pi 5 audio latency research (RA-3) | Only matters once we run on the Pi |
+
+Write the edge code so it can move to the Pi later: keep audio input behind one interface and avoid laptop-only libraries where an easy alternative exists.
+
+## 4. Dev A: Cockpit Edge Simulator
 
 | # | Task | Done when |
 | --- | --- | --- |
@@ -49,8 +62,8 @@ We agree on these together before splitting up. They live in `contracts/` once c
 | A5 | Receive `ApprovedDirective` | Directive text arrives from a mock sender |
 | A6 | Cartesia TTS into the left headset channel | Approved text is spoken in the left ear only |
 | A7 | Offline fallback: plain "transmission blocked, request say again" alert | Works with the network unplugged (see M-003) |
-| A8 | Measure on-device latency for each segment | Numbers added to PRD section 8 |
-| AR | Research RA-1 to RA-5 (time-boxed, 1 hour) | Rows filled in the [evidence table](06-research.md#3-evidence-table) with links |
+| A8 | Measure edge latency for each segment on the laptop | Numbers added to PRD section 8 |
+| AR | Research RA-1, RA-2, RA-4 and RA-5 (time-boxed, 1 hour) | Rows filled in the [evidence table](06-research.md#3-evidence-table) with links |
 
 ## 5. Dev B: Ground Side
 

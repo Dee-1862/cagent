@@ -23,8 +23,8 @@ The numbers that justify Unstep, and where each one comes from. A number only co
 | ID | Question | Why it matters |
 | --- | --- | --- |
 | RA-1 | What is Cartesia Sonic's published time to first audio? Is there an on-device option? | Backs up the 90 ms claim (M-001, M-004) |
-| RA-2 | What lookup latency does Moss publish, and what do we measure on a Pi 5? | Backs up the 5 ms claim |
-| RA-3 | What audio latency does a Pi 5 with a USB or HAT audio interface add? | Sets the detection budget |
+| RA-2 | What lookup latency does Moss publish, and what do we measure on our laptop? | Backs up the 5 ms claim |
+| RA-3 | **On hold.** What audio latency does a Pi 5 with a USB or HAT audio interface add? | Only needed once Pi integration resumes |
 | RA-4 | Can simultaneous VHF transmissions be detected from audio (heterodyne tone, squelch)? Any papers or existing products? | Shows detection is feasible |
 | RA-5 | What datalinks could carry events (CPDLC, ACARS, cellular on the ground)? What latency does each have? | Fills the TBD uplink and downlink rows |
 
@@ -46,7 +46,7 @@ The numbers that justify Unstep, and where each one comes from. A number only co
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | RA-1 | | | | | | | A |
 | RA-2 | | | | | | | A |
-| RA-3 | | | | | | | A |
+| RA-3 | On hold | | | | | | n/a |
 | RA-4 | | | | | | | A |
 | RA-5 | | | | | | | A |
 | RB-1 | | | | | | | B |
