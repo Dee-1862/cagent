@@ -176,13 +176,14 @@ async def run_bench(speech, n: int, conditions: list[str], stepped: int, seed: i
     rng = random.Random(seed)
 
     async def limited(make):
-        """`make()` builds the call; a Cartesia 429 (rate limit) is retried with backoff, not fatal."""
+        """`make()` builds the call; a 429, timeout or dropped connection is retried with backoff, not fatal."""
         for attempt in range(6):
             async with sem:
                 try:
                     return await make()
                 except Exception as exc:
-                    if "429" not in str(exc) or attempt == 5:
+                    transient = "429" in str(exc) or isinstance(exc, (TimeoutError, OSError))
+                    if not transient or attempt == 5:
                         raise
             await asyncio.sleep(2 ** attempt)
 
