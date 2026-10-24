@@ -19,6 +19,17 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Recorder for a live-room demo video (R24)
+
+**Type:** Added
+**Area:** Other
+
+- `scripts/record_live_video.py` starts the hub, opens one 1920x1080 page with the ATC console and two pilot phones (Plane A, Plane B) side by side, and drives only real clicks: auto-resend off, the tower's hold short while Plane B talks, TALKED OVER, Approve and send, "From Tower" on Plane A, the correct readback, the recovery line for Plane B, then the waterfall and Elastic panel. Each step must appear within 15 s or the run stops naming the step.
+- Sound: the room's audio arrives over the socket, so a socket probe logs each clip's time in every frame and the same ffmpeg muxing as `record_demo_video.py` places it. Radio clips heard in several frames are kept once; streamed advisory chunks are joined.
+- Checked here: the hub starts offline and serves the console and the pilot app; 2 tests for the layout and audio placement. The browser part can't run in our sandbox; Rishit's side runs it live.
+
+**Related:** agent mail R24
+
 ## 2026-10-24: Render blueprint ready for going live, with a checklist
 
 **Type:** Changed
