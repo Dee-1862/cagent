@@ -400,6 +400,7 @@ class CockpitEdge:
             meta["speakers"] = ",".join(speakers)
         if event_id:
             meta["event_id"] = event_id
+            meta["exchange"] = event_id  # the blocked call this belongs to, for "the whole exchange"
         try:
             await self.memory.add_docs(self.flight_idx, [Doc(id=doc_id, text=text.strip(), metadata=meta)],
                                        writer=COCKPIT)
@@ -411,7 +412,8 @@ class CockpitEdge:
     async def _record(self, doc_id: str, text: str, kind: str) -> None:
         """Write to the flight session; a memory failure is logged, never fatal mid-event."""
         try:
-            await record(self.memory, self.flight_idx, self.callsign, doc_id, text, kind)
+            exchange = doc_id.split("-", 1)[1] if doc_id.startswith(("adv-", "clr-")) else None  # the event id
+            await record(self.memory, self.flight_idx, self.callsign, doc_id, text, kind, exchange=exchange)
         except Exception:
             log.exception("could not record %s in %s", doc_id, self.flight_idx)
 

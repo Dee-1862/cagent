@@ -696,6 +696,13 @@ class LiveRoom:
             msg["cue"] = cue
         self.send_to({station, "atc"} & set(self.stations) if station != "atc" else {"atc"}, msg)
 
+    def _open_event(self, callsign: str | None) -> str | None:
+        """The newest blocked call for this plane that has a decision: what its next readback answers."""
+        for trace in reversed(list(self.traces.values())):
+            if callsign and trace.get("callsign") == callsign and trace.get("decision"):
+                return trace["event_id"]
+        return None
+
     def _key_overlaps(self, station: str, start_ms: int, end_ms: int) -> list[dict]:
         """Other stations keyed during [start, end], from key timing (the dataset's ground truth)."""
         now = now_ms()
@@ -1560,11 +1567,13 @@ class LiveRoom:
         if turns is None or not clean or turns.listening == 0:
             self.stream_results.pop(tx.tx_id, None)
             if edge is not None and tx.text:  # what the pilot said, even if nobody heard it (P4)
-                await edge.index_heard(tx.text, tx.station, tx.start_ms, stepped_on=not clean, kind="readback")
+                await edge.index_heard(tx.text, tx.station, tx.start_ms, stepped_on=not clean, kind="readback",
+                                       event_id=self._open_event(tx.station))
             return  # a stepped-on readback is lost, as it would be on the radio
         text = tx.text or await self._streamed(tx)
         if edge is not None and text:
-            await edge.index_heard(text, tx.station, tx.start_ms, stepped_on=False, kind="readback")
+            await edge.index_heard(text, tx.station, tx.start_ms, stepped_on=False, kind="readback",
+                                   event_id=self._open_event(tx.station))
         if text is None and self.live and env("CARTESIA_API_KEY"):
             async with CartesiaManualSTT(keyterms=build_keyterms(callsigns=[tx.station], runways=["33", "28L"])) as stt:
                 for i in range(0, len(tx.pcm), 1600):
@@ -1745,6 +1754,8 @@ class LiveRoom:
             p = msg.payload
             found = (f"top hit \"{p.get('top_hit_text')}\" (score {p.get('score')})" if p.get("top_hit_text")
                      else "no matching clearance")
+            if p.get("below_floor"):
+                found = (f"best match {p.get('best_score')} is below the {p.get('floor')} floor, so no hit is shown")
             agree = {True: ", the newest clearance", False: ", older than the newest clearance"}.get(p.get("agrees"), "")
             no_hint = f". No hint: {p['no_hint']}" if p.get("no_hint") else ""
             self._step(trace, f"cockpit:{cs}", "moss_search",

@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: M-2: the memory layer orders, groups and floors results itself
+
+**Type:** Changed
+**Area:** Edge device
+
+- **Ordering:** `memory.fetch(..., sort_by, ascending, limit)` orders by a metadata field with numbers as numbers (Moss stores metadata as strings, so "ts" would sort as text otherwise). The Moss backend also asks Moss to sort, falling back if it refuses, but our ordering is the authority because Moss's behaviour on string metadata is unverified. "Newest clearance" and the hint now fetch newest first through this.
+- **Grouping:** `fetch(..., group_by=(parent_field, order_field))` returns one doc per unit in order. Done in our code too, because the shape of Moss's own `ParentGrouping` result is unverified. First use: a new pilot question, "what was the whole exchange?", answered as one ordered unit (what the plane heard, what Unstep said, what was approved, what the pilot read back) for the newest blocked call. Clearances, advisories, heard calls and readbacks now carry an `exchange` field (the blocked call's event id).
+- **Score floor:** Moss documents `min_score` for loaded indexes, not for session queries, so the floor is ours (`UNSTEP_MOSS_MIN_SCORE`, default 0.25, a placeholder to tune on real Moss). It gates only the hint's search evidence: when the best match is below the floor the trace says "best match 0.31 is below the 0.25 floor, so no hit is shown". The hint rule is unchanged (newest clearance; Moss search is evidence), so this adds no new spoken hint.
+- Checked: 7 tests (numeric ordering, grouping, floor, evidence below the floor, the exchange answer, a room run, and a fake Moss session that refuses `sort_by`). Live: the floor value and whether Moss's own sort and grouping behave need a run on real Moss (steps in [19-elastic-moss-plan.md](19-elastic-moss-plan.md)).
+
+**Related:** [19-elastic-moss-plan.md](19-elastic-moss-plan.md) M-2, agent mail R29
+
 ## 2026-10-24: Claim wording made truthful, live latency numbers recorded, smoke test no longer pushes
 
 **Type:** Docs
