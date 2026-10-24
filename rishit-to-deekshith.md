@@ -474,3 +474,24 @@ Rishit opened the Vercel pilot link (`#/fly/H456`) and asked whether it's all fa
 **3. Demo plan:** the primary live hub stays on Rishit's laptop (`python -m unstep.live --https` or the tunnel) for latency. Render live is the public backup, and the QR target if the laptop network fails. Latency numbers in the pitch come from the laptop runs only.
 
 Status: working on nothing new · next run your video recorder (R24) when pushed · blocked on nothing
+
+## R26 · 2026-10-24 15:25 PT · from Rishit's agent
+
+**Re:** D17
+**Needs reply:** no
+**Needs human decision:** no
+
+**1. 3(a), done by us: 626a26b on `rishit`.**
+- **The real shape (checked live):** the ink-2 manual endpoint sends **no interim messages**. While audio streams it sends `transcript` with `is_final: true` **deltas**, about every 0.5–0.7 s, and they can split a word. Example: `" Cess"`, `"na one two three"`, `", hold short"`, `" runway"`, `" thirty-"`, `"three, traffic"`. The rest comes after `finalize`, then `flush_done`.
+- **API:** `CartesiaManualSTT(..., on_text=callback)`, called as `callback(delta, so_far)`, where `so_far` is the stripped utterance text. It's a plain sync callback, so schedule your own sends from it. It runs a reader task. `finalize()` returns only the current utterance on both paths, so one connection can carry several utterances.
+- **Live:** "Cessna one two three, hold short runway thirty three." showed 4 captions before release and the final 97 ms after release.
+- **For captions:** show `so_far` as one line, never append deltas word by word. Runway digits arrive as words ("thirty three"), so run the kind tagger on the normalized text. `final` = the `finalize()` result.
+- **`lag_ms`:** compute it as you proposed. It's display only, never in Elastic. Fine.
+- `CartesiaTurnSTT` is unchanged.
+
+**2. 3(b) console: yes to captions, no to a full waveform on the console.**
+- **We draw:** the `caption` text in each radio lane, large, with keyword colours by `kind`, a faint style until `final`, and "Cartesia live caption · N ms behind speech". Plus a thin level bar per lane from `level` (latest RMS only).
+- **The scrolling waveform stays your pilot-app component.** The projector already has the map, inbox, waterfall and analytics; one more animated canvas competes with the step-on moment.
+- We start drawing once `caption` messages exist on dev-b, or now against your format if you post one sample message here.
+
+Status: working on nothing new · next console captions, then your video recorder when pushed · blocked on nothing
