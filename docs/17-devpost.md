@@ -4,7 +4,7 @@ Draft text for the Devpost submission and the Moss social post. Every number her
 
 | Field | Value |
 | --- | --- |
-| Status | Draft v0.1 |
+| Status | Draft v0.2 (Deekshith's side finished the lines that commits and tests prove; [confirm live] lines still need a run with keys) |
 | Last updated | 2026-10-24 |
 | Tracks | Cartesia, Moss, Elastic |
 
@@ -31,13 +31,17 @@ An FAA study (CAMI, DOT/FAA/AM-05/19) found about 1 in 100 transmissions in a bu
 - **Checks the readback** and corrects a wrong one, more slowly.
 - **Tells the pilot whose call was blocked** to say again, and tells the controller who was blocked.
 - **Never talks over anyone.** Advisories wait for a gap in the frequency, and the console proves it: "waited 1.2 s for a gap, overlapped nobody: 0 ms".
+- **Live captions while people talk:** the words appear as Cartesia recognises them, on the projector and on the phone (lyrics-style card), with key words (callsign, action, runway) marked and the measured lag shown. The hold button turns into a scrolling waveform while you talk, red where you were talked over.
+- **Walk-up pilots:** a full room answers "All 6 planes are taken. Watch on the projector."; a seat frees itself when its phone leaves, and the presenter can reset the room.
 
 The demo: the laptop is the control tower on the projector, and phones are the planes. **Scan the QR code and you're a pilot.** Hold to talk, step on someone, and watch Unstep catch it.
 
 ## How we built it
 
 **Cartesia: the voice of everyone in the loop**
-- **Ink-2 streaming speech-to-text** while the key is held, with ATC key terms (callsigns, runways, "hold short").
+- **Ink-2 streaming speech-to-text** while the key is held, with ATC key terms (callsigns, runways, "hold short"). Streamed text drives the live captions.
+- **Transcribing while the call is still on air:** the tower's and every cockpit's speech-to-text are fed during the transmission (each cockpit hears a live mix of the frequency) and finalized when it ends. In an offline timing model this cut the time from call end to the recovered proposal from about 5.1 s to 0.4 s. **[confirm live: measured on the console waterfall in a run with keys]**
+- **Tower and cockpit words aligned:** ink-2's words (with key terms) get ink-whisper's word times, so the console strikes exactly the words lost in the overlap.
 - **Sonic-3.6** for the private advisory, streamed to the phone from the first chunk:
   - first audio in roughly 100 ms (measured 85–131 ms in our live runs);
   - context cancel when the pilot starts talking;
@@ -45,6 +49,7 @@ The demo: the laptop is the control tower on the projector, and phones are the p
   - speed control (0.85) for corrections;
   - **multilingual output in the same voice.**
 - A TTS → STT evaluation loop over 40 ATC lines. **Live: callsign, action and runway 100%, every wrong readback caught, zero false alarms.**
+- A larger benchmark harness: 200 lines through our VHF radio channel at several noise levels, three voices, a key-terms A/B, stepped-on mixes, and 95% confidence intervals. **[confirm live: numbers come from `scripts/eval_bench.py --live`]**
 
 **Moss: the plane's own memory, on board**
 - **One local Moss session per plane:** every clearance it hears is indexed live, with no cloud index.
@@ -65,7 +70,7 @@ The demo: the laptop is the control tower on the projector, and phones are the p
 **Stack**
 - **Hub:** Python 3.12, FastAPI WebSocket hub with role-based routing; Pydantic contracts.
 - **Interfaces:** a React pilot app, and a plain HTML/JS ATC console.
-- **Tests:** 416 passing.
+- **Tests:** about 430 Python tests and 25 pilot-app tests passing (offline, with fakes for the vendor services).
 
 ## Challenges we ran into
 
@@ -95,7 +100,8 @@ The demo: the laptop is the control tower on the projector, and phones are the p
 
 ## What's next
 
-- False-alarm rates on real recorded ATC audio (ATCO2, UWB-ATCC), licence permitting.
+- False-alarm rates on real recorded ATC audio (ATCO2, UWB-ATCC), licence permitting. The benchmark already has an ATCO2 loader behind a licence check.
+- A small recorded dataset of our own team and friends talking over each other on purpose, with key presses as ground truth.
 - Replaying the controller's own recorded words, cut by word timestamps, instead of a synthesized voice, once a slot-match safety check exists.
 - Integration with real radios (a Raspberry Pi edge box).
 
@@ -109,7 +115,7 @@ cartesia, sonic, ink, moss, elastic, elasticsearch, es-ql, agent-builder, python
 
 > We gave every airplane its own memory. ✈️
 >
-> At #CalHacks we built Unstep. When two radio calls collide and a pilot only hears a squeal, the plane's own @Moss session searches what it was told and finds "hold short Runway 33" from the garbled fragment, in under a millisecond, locally, no cloud.
+> At #CalHacks we built Unstep. When two radio calls step on each other and a pilot only hears a squeal, the plane's own @Moss session searches what it was told and finds "hold short Runway 33" from the garbled fragment, in under a millisecond, locally, no cloud.
 >
 > A human controller approves, and @Cartesia speaks it privately into the pilot's left ear.
 >

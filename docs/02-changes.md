@@ -19,6 +19,15 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Devpost draft: lines we can prove filled in
+
+**Type:** Docs
+**Area:** Docs
+
+- [17-devpost.md](17-devpost.md) (handed over by Rishit's side, R27 item 4): added live captions and the waveform, walk-up seats, transcribing while on air, word alignment, the benchmark harness, the ATCO2 loader and the test counts, each traceable to a commit. New numbers that need a live run are marked [confirm live]. The social post no longer calls stepped-on calls a "collision".
+
+**Related:** agent mail R27 item 4
+
 ## 2026-10-24: Console fixes taken over from Rishit's side (R27)
 
 **Type:** Fixed
