@@ -36,11 +36,11 @@ from unstep import scenario
 from unstep.clock import now_ms
 from unstep.cockpit.audio import AudioSource, WavFileSource
 from unstep.cockpit.hint import advisory_text, derive_hint
-from unstep.cockpit.memory import LocalMemory, Memory, create_memory
+from unstep.cockpit.memory import LocalMemory, Memory, airport_index, create_memory, flight_index
 from unstep.cockpit.overlap import OverlapDetector, OverlapWindow
 from unstep.cockpit.queries import answer_query, record
 from unstep.cockpit.readback import ReadbackSession
-from unstep.cockpit.seed import seed
+from unstep.cockpit.seed import AIRPORT_ICAO, seed
 from unstep.cockpit.stt import FakeManualSTT, FakeTurnSTT, TurnEvent
 from unstep.cockpit.tts import (
     AdvisoryVoice,
@@ -300,6 +300,14 @@ class CockpitEdge:
     # ------------------------------------------------------------ lifecycle
 
     async def start(self, connect: bool = True) -> bool:
+        # Open Moss sessions now, while online: opening checks credentials with Moss
+        # Cloud, so a lazy open mid-flight would fail once the link is gone.
+        opener = getattr(self.memory, "open", None)
+        if opener is not None:
+            try:
+                await opener(airport_index(AIRPORT_ICAO), flight_index(self.callsign))
+            except Exception:
+                log.exception("memory open failed at startup")
         self.airport_idx, self.flight_idx = await seed(self.memory, self.callsign, t0=now_ms())
         # Pre-generate the offline alert so it plays even with no network (PRD 6.2).
         self.offline_alert = await self.voice.say(msg_say_again())
@@ -318,6 +326,13 @@ class CockpitEdge:
         self.out.save()
 
     # ------------------------------------------------------------ helpers
+
+    async def _record(self, doc_id: str, text: str, kind: str) -> None:
+        """Write to the flight session; a memory failure is logged, never fatal mid-event."""
+        try:
+            await record(self.memory, self.flight_idx, self.callsign, doc_id, text, kind)
+        except Exception:
+            log.exception("could not record %s in %s", doc_id, self.flight_idx)
 
     def _note(self, party: str, text: str, **latency: float) -> Line:
         line = Line(now_ms(), party, text, {k: v for k, v in latency.items() if v is not None})
@@ -426,8 +441,7 @@ class CockpitEdge:
         self._measure("moss_ms", hint.moss_ms)
         # Local hint rules: advisory_text only says "Likely" for a restrictive hint with a source.
         await self.speak(advisory_text(hint), moss_ms=hint.moss_ms)
-        await record(self.memory, self.flight_idx, self.callsign, f"adv-{event_id}",
-                     advisory_text(hint), "advisory")
+        await self._record(f"adv-{event_id}", advisory_text(hint), "advisory")
 
         event = AnomalyEvent(
             event_id=event_id, callsign=self.callsign, frequency=self.frequency,
@@ -484,8 +498,7 @@ class CockpitEdge:
         await self.speak(msg_directive(msg.instruction_text), round_trip_ms=rt)
         await self.audit(msg.event_id, "directive_spoken", self.tts.last_first_audio_ms,
                          round_trip_ms=rt, approved_via=msg.approved_via)
-        await record(self.memory, self.flight_idx, self.callsign, f"clr-{msg.event_id}",
-                     msg.instruction_text, "clearance")
+        await self._record(f"clr-{msg.event_id}", msg.instruction_text, "clearance")
         outcome = await self.readback(msg)
         self._resolve(msg.event_id, outcome)
 

@@ -19,6 +19,23 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: Blue-team fixes to the Moss layer, local hint and pilot queries
+
+**Type:** Fixed
+**Area:** Edge device
+
+- `MossMemory` translates our filters into the Moss SDK form (`{"field", "condition"}`, string values, `$and`/`$or` lists) via `to_moss_filter`. Local filter semantics unchanged.
+- New `fetch()` (filter-only, unranked) on both backends. The local hint and "last clearance" now use the newest record by `ts`, so a superseded clearance can't win on score. Hints need a clearance from the last 15 minutes.
+- `likely_instruction` picks the runway the hold short applies to. A "go around" or "stop" fragment gets no hold short hint. Permissive fragment check normalizes case, hyphens and spacing and covers take off, cleared, clear, depart, cross, line up.
+- "Say again" never reads back a "Likely" hint, and repeats the newer approved clearance once one exists. "Repeat the last clearance" is a last-clearance question.
+- `record()` never overwrites an existing id (writes `<id>-v2`). Records naming another aircraft are ignored for this aircraft.
+- Memory errors give no hint or "No record found" instead of crashing. The edge opens Moss sessions at startup.
+- Regression tests in `tests/test_blue_team.py`.
+
+**Related:** [PRD section 7, local hint rules](01-prd.md)
+
+---
+
 ## 2026-10-23: Overlap detector retuned for real speech
 
 **Type:** Fixed

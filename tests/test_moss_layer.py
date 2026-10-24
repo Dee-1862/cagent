@@ -60,7 +60,8 @@ def test_one_writer_per_index(mem):
 
 def test_demo_hint_is_restrictive_with_source(mem):
     m, airport, flight = mem
-    hint = run(derive_hint(m, CALLSIGN, "Cessna 1-2-3 [static]", flight, airport))
+    # `now` pinned to the seed clock: hints only come from a recent clearance.
+    hint = run(derive_hint(m, CALLSIGN, "Cessna 1-2-3 [static]", flight, airport, now=T0))
     assert hint.kind == "restrictive"
     assert hint.text == "hold short Runway 33"
     assert hint.source_doc_id == f"{flight}/clr-0007"
@@ -144,7 +145,8 @@ def test_queries_answer_with_sources(mem):
 
 def test_say_again_and_unknown(mem):
     m, airport, flight = mem
-    assert run(answer_query(m, flight, CALLSIGN, "say again")).answer == NO_RECORD
+    # No advisory yet: say again repeats the last approved clearance (blue-team fix 4).
+    assert run(answer_query(m, flight, CALLSIGN, "say again")).answer.startswith("Advisory. Last clearance:")
     run(record(m, flight, CALLSIGN, "adv-1", "Advisory. Transmission blocked. Likely hold short Runway 33. Awaiting controller.", "advisory", ts=T0 + 2700))
     q = run(answer_query(m, flight, CALLSIGN, "Unstep, say again"))
     assert q.answer.startswith("Advisory. Transmission blocked") and q.source_doc_id.endswith("adv-1")
