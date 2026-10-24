@@ -27,7 +27,7 @@ import soundfile as sf
 
 from unstep import scenario
 from unstep.clock import now_ms
-from unstep.config import ROOT, env, realtime_replay
+from unstep.config import ROOT, env, moss_aircraft, realtime_replay
 from unstep.contracts import (AnomalyEvent, ApprovedDirective, AuditRecord, Insight, PilotQuery,
                               ProposedDirective, ReadbackResult, RejectedDirective, TowerTranscript,
                               VoiceApproval, Word, unwrap, wrap)
@@ -336,6 +336,7 @@ class LiveRoom:
         self._start_lock = asyncio.Lock()
         self.links: dict[str, InProcLink] = {}
         self.policy: PolicyAgent | None = None
+        self.monitor: FrequencyMonitor | None = None  # writes the hub's freq-<frequency> session
         self.graph = [dict(n) for n in GRAPH_NODES]
         self.key_since: dict[str, int] = {}  # station -> hub time its radio key went down
         self.stepons: list[dict] = []  # live two-keys-down detections, matched to events for timings
@@ -361,6 +362,10 @@ class LiveRoom:
             return CartesiaTTS()
         return FakeTTS()
 
+    @property
+    def started(self) -> bool:
+        return self._started
+
     async def start(self) -> None:
         async with self._start_lock:
             if self._started:
@@ -372,10 +377,20 @@ class LiveRoom:
             self.policy = PolicyAgent(lambda m: self.links["policy"].send(m))
             self.links["policy"] = InProcLink(gw, "policy", self.policy.on_message,
                                               on_error=lambda t: self._status(f"policy: {t}"))
-            monitor = FrequencyMonitor(LocalMemory())
+            # The hub's frequency session (freq-<frequency>): a Moss session when live, written
+            # only by the Frequency Monitor, never pushed. Local memory offline or if Moss fails.
+            monitor = self.monitor = FrequencyMonitor(create_memory() if self.live else LocalMemory())
 
             async def monitor_on(msg):
-                for insight in await monitor.handle(msg, now_ms()):
+                try:
+                    insights = await monitor.handle(msg, now_ms())
+                except Exception:
+                    if monitor.memory.backend == "local":
+                        raise
+                    log.exception("Moss frequency session failed; the monitor uses local memory from now on")
+                    monitor.memory, monitor.registered = LocalMemory(), set()
+                    insights = await monitor.handle(msg, now_ms())
+                for insight in insights:
                     await self.links["monitor"].send(insight)
 
             self.links["monitor"] = InProcLink(gw, "monitor", monitor_on)
@@ -395,9 +410,9 @@ class LiveRoom:
         """One cockpit agent per aircraft, with its own flight session."""
         turns = StationTurns()
         # A Moss session indexes in memory and only reaches the cloud index on push_index(),
-        # so the plan's index limit should not cap sessions. Until that is checked live,
-        # UNSTEP_MOSS_AIRCRAFT (default 1) aircraft get Moss and the rest local memory.
-        use_moss = self.live and self._moss_used < int(env("UNSTEP_MOSS_AIRCRAFT") or 1)
+        # which per-aircraft sessions never call, so the plan's index limit does not cap them
+        # (six real sessions checked by Rishit, R3). UNSTEP_MOSS_AIRCRAFT (default 6) planes get Moss.
+        use_moss = self.live and self._moss_used < moss_aircraft()
         memory = create_memory() if use_moss else LocalMemory()
         self._moss_used += 1
 
@@ -556,8 +571,17 @@ class LiveRoom:
         s = self.stations.get(station)
         if s is None or s.kind == "observer" or not text.strip():
             return None
-        speech = await self.tts_factory(self.voices.get(s.voice_role or "")).speak(text)
+        try:
+            speech = await self.tts_factory(self.voices.get(s.voice_role or "")).speak(text)
+        except Exception as e:
+            log.exception("TTS failed for %s's line %r", station, text)
+            self._status(f"Not sent: speech failed ({type(e).__name__}). Try again.", to={station, "atc"})
+            return None
         pcm = to_mono16k(speech.pcm, speech.sample_rate)
+        if len(pcm) < SAMPLE_RATE * 2 // 10:  # under 100 ms: nothing would go on air (R13 item 2)
+            log.warning("TTS returned %d bytes for %s's line %r; not sent", len(pcm), station, text)
+            self._status("Not sent: no audio came back for that line. Try again.", to={station, "atc"})
+            return None
         tx = Transmission(station, now_ms(), pcm, text=text, words=list(speech.words))
         await self.transmit(tx)
         return tx

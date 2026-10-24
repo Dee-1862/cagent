@@ -110,6 +110,22 @@ def cartesia_stt_timestamp_model() -> str:
     return env("CARTESIA_STT_TIMESTAMP_MODEL", default=DEFAULT_CARTESIA_STT_TIMESTAMP_MODEL)
 
 
+DEFAULT_MOSS_AIRCRAFT = 6
+
+
+def moss_aircraft() -> int:
+    """How many aircraft get their own Moss session (UNSTEP_MOSS_AIRCRAFT, default 6, the whole fleet).
+
+    A Moss session is a local in-memory index; only push_index() writes a cloud index,
+    and per-aircraft sessions are never pushed. Rishit ran six real sessions at once
+    (agent mail R3): 0 to 1 ms searches and no new cloud indexes.
+    """
+    try:
+        return max(0, int(env("UNSTEP_MOSS_AIRCRAFT", default=str(DEFAULT_MOSS_AIRCRAFT))))
+    except ValueError:
+        return DEFAULT_MOSS_AIRCRAFT
+
+
 def realtime_replay() -> bool:
     """Pace replayed audio to the manual STT endpoint at real time (UNSTEP_REALTIME_REPLAY=1).
 

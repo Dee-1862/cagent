@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote, urlencode, urlsplit
 
@@ -26,12 +27,42 @@ from unstep.live.room import LiveRoom
 log = logging.getLogger("unstep.live")
 WEB = ROOT / "web" / "live"
 PILOT_APP = ROOT / "app" / "dist"
+WARMING_NOTICE_S = 0.5  # a seat waiting longer than this for the room to start is told so
+STATS_CACHE_MS = 2000  # consoles poll /live/stats every 5 s; Elastic is asked at most this often
 
 
-def create_live_app(live: bool, sink=None, room: LiveRoom | None = None) -> FastAPI:
+def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_start: bool = False) -> FastAPI:
+    """`warm_start=True` (the real server) starts the room when the server starts, so the
+    first call isn't spent starting cockpit agents and Moss sessions (R13 item 2). Tests
+    keep the lazy start on the first authenticated socket."""
     app = create_app(sink)
     room = room or LiveRoom(app.state.gateway, live=live)
     app.state.room = room
+    stats_cache: dict[int, tuple[int, dict]] = {}
+
+    # Start the room (cockpit agents, Moss sessions, links) when the server starts, not on
+    # the first socket, so the first call isn't spent waiting for it (R13 item 2).
+    gateway_lifespan = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def lifespan(a):
+        async with gateway_lifespan(a) as state:
+            async def warm():
+                try:
+                    await room.start()
+                    log.info("live room ready")
+                except Exception:
+                    log.exception("live room failed to start; the first socket will retry")
+
+            task = asyncio.create_task(warm())
+            try:
+                yield state
+            finally:
+                if not task.done():
+                    task.cancel()
+
+    if warm_start:
+        app.router.lifespan_context = lifespan
 
     @app.get("/live")
     @app.get("/live/")
@@ -90,6 +121,19 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None) -> Fast
                               "spoken": st.spoken, "name": st.name} for st in room.stations.values()],
                 "connected": {sid: len(c) for sid, c in room.clients.items()}}
 
+    @app.get("/live/stats")
+    async def live_stats(since_ms: int = 0):
+        """Per-frequency counts for the console (W4): Elastic ES|QL when configured, else the room's traces."""
+        from unstep.ground.stats import frequency_stats
+
+        now = now_ms()
+        if (cached := stats_cache.get(since_ms)) and now - cached[0] < STATS_CACHE_MS:
+            return cached[1]
+        result = await frequency_stats(room.frequency, since_ms, room.traces)
+        stats_cache.clear()  # one console polls one since_ms; keep the cache tiny
+        stats_cache[since_ms] = (now, result)
+        return result
+
     @app.post("/live/join")
     async def live_join(request: Request):
         """"Join as a pilot": hands out a free aircraft, adding one from the fleet if needed."""
@@ -132,7 +176,14 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None) -> Fast
                     await ws.close(code=4003, reason="Incorrect or missing ATC password. Return to the seat picker.")
                     return
             await ws.send_json({"type": "auth_status", "password_set": bool(password)})
-        await room.start()
+        # Normally already started at server start. If not, say so instead of going quiet:
+        # anything the seat sends meanwhile waits in the socket and is handled once ready.
+        starting = asyncio.ensure_future(room.start())
+        done, _ = await asyncio.wait({starting}, timeout=WARMING_NOTICE_S)
+        if not done:
+            await ws.send_json({"type": "status", "ts": now_ms(),
+                                "text": "Room is warming up. Anything you send now goes out in a few seconds."})
+        await starting
         await room.join(station, ws)
         try:
             while True:

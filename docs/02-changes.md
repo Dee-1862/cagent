@@ -19,6 +19,55 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Moss session for every plane, and a Moss frequency session on the hub (P4, part 1)
+
+**Type:** Changed
+**Area:** Edge device
+
+- `UNSTEP_MOSS_AIRCRAFT` now defaults to 6 (`config.moss_aircraft()`), so every plane that joins gets its own Moss session when live. Rishit checked six real sessions at once (agent mail R3): 0 to 1 ms searches, no new cloud indexes. Per-aircraft sessions are never pushed.
+- The hub's Frequency Monitor now keeps `freq-<frequency>` in Moss when live (local memory offline). It stays the only writer; any other writer is refused. If Moss fails, the monitor switches to local memory and keeps raising insights.
+- Next (needs Rishit's yes, his files): index every transmission a plane hears and every readback into its own session, and answer "what did the tower tell me in the last minute?" with a Moss search filtered on `ts`.
+- Checked: 2 tests with local memory and a failing stand-in for Moss; not run against live Moss here.
+
+**Related:** PRD 6.4, [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md) section 5, agent mail R3, R4
+
+## 2026-10-24: First call after the hub starts is no longer lost
+
+**Type:** Fixed
+**Area:** Other
+
+- Rishit saw the tower's first line after a server start never go on air, with no error (R13 item 2).
+- `python -m unstep.live` now starts the room (cockpit agents, Moss sessions, links) when the server starts (`create_live_app(warm_start=True)`), not on the first socket. Tests keep the lazy start, so the ATC password check still runs before the room starts there.
+- A seat that connects while the room is still starting gets a `status` "Room is warming up" within 0.5 s; what it sends meanwhile waits in the socket and is handled once the room is ready (checked with a slow start in a test).
+- A typed line whose speech fails or comes back with no audio is no longer dropped quietly: the seat and the console get a `status` "Not sent: ... Try again." and the server logs it.
+- Checked: 3 new tests; not reproduced live here (no Cartesia), so the root cause of Rishit's case is not confirmed.
+
+**Related:** agent mail R13
+
+## 2026-10-24: Live Elastic stats per frequency for the console (W4)
+
+**Type:** Added
+**Area:** Audit
+
+- `GET /live/stats?since_ms=<run start>` returns `{frequency, since_ms, window_s, backend, blocked_calls, readback_errors, auto_resends, per_callsign: [{callsign, blocked, readback_errors, auto_resends}], esql, took_ms}`. Answers are cached for 2 s, so many consoles polling every 5 s ask Elastic at most once per 2 s.
+- With Elastic configured, two ES|QL queries run over the events index (`unstep/ground/stats.py`): blocked calls per event and callsign on this frequency, and readback errors and auto-relays per event. Readbacks and approvals carry no frequency or callsign, so they are joined to their blocked call by `event_id`. The query text goes back in `esql` so the console can show it. The frequency and time are checked and inlined, never free text.
+- Without Elastic, or if the cluster fails, the same counts come from the room's traces (`backend: "local"`, plus `elastic_error`).
+- `auto_resends` means directives the policy agent re-sent on its own (`approved_via: "auto"`).
+- Checked: 6 tests, Elastic mocked with `httpx.MockTransport`; not run against a real cluster here.
+
+**Related:** agent mail R10 (W4), R11 item 2
+
+## 2026-10-24: Hub serves https for phone microphones on the LAN (W5)
+
+**Type:** Added
+**Area:** Other
+
+- Phones only allow the microphone on https. `python -m unstep.live --https` makes a self-signed certificate for localhost, 127.0.0.1 and the laptop's LAN address (`unstep/live/certs.py`, stored in `data/certs/`, gitignored) and serves https and wss. `--cert` and `--key` use your own. Uses the `cryptography` package if installed, otherwise the `openssl` tool.
+- The tunnel in docs/15 section 2 stays the main path; this is the no-internet fallback. Each phone accepts the certificate warning once.
+- Checked: 3 tests, including a real hub process answering https and a wss socket with the generated certificate. Not yet tried on a real phone.
+
+**Related:** [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md) section 2, agent mail R10 (W5)
+
 ## 2026-10-24: Cockpit voices hold while the frequency is busy (P5 hook)
 
 **Type:** Added
