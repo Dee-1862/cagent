@@ -77,7 +77,7 @@ Every script prints `skipped: ...` and exits 0 when its keys are missing.
 | Ink-2 STT with key terms (callsigns, runways, "hold short", "niner") | `unstep/cockpit/stt.py` `build_keyterms`, `CartesiaManualSTT` | Correct ATC words. Verified live: "likely hold short runway tree tree" came back exactly |
 | Manual `finalize` on squelch close / PTT release | `CartesiaManualSTT.finalize`, used by `unstep/cockpit/edge.py` when a key is set | Transcript is final the moment the transmission ends |
 | Turns endpoint (`turn.start` / `turn.end`, tuned end threshold) | `CartesiaTurnSTT` | Readbacks and pilot queries. Client works live (`smoke_cartesia.py`); the edge uses a scripted fake by default. Controller voice approval on this endpoint is planned (task B10) |
-| `ink-whisper` for word timestamps | Not in code yet | Planned workaround for CF-9, to get tower word times for blocked-word marking |
+| `ink-whisper` for word timestamps | Not in code yet | Planned workaround (Cartesia feedback item 2), to get tower word times for blocked-word marking |
 
 ## Moss and Elastic
 
@@ -100,7 +100,7 @@ Every script prints `skipped: ...` and exits 0 when its keys are missing.
 - **Overlap detection is narrow.** It finds the heterodyne beat tone, not a second voice, and is only proven on clips we mixed ourselves. A full overlap, where the stronger signal captures the receiver, can't be detected from audio at all ([research RA-4](docs/06-research.md#3-evidence-table)). The reliable signal is comparing tower and cockpit transcripts.
 - **Simulator, not avionics.** A laptop stands in for the audio panel. Nothing here is certified.
 - **Moss real backend untested end to end.** Filters are translated to Moss's format and covered by tests, but the full demo has only run on the local fallback.
-- **Cartesia workarounds.** `ink-2` returns no word timestamps and `ink-whisper` has no key terms (CF-9), so tower word times need a second stream. The turns endpoint returns empty transcripts if audio arrives faster than real time (CF-10), so replays are paced at real time.
+- **Cartesia workarounds.** `ink-2` returns no word timestamps and `ink-whisper` has no key terms (Cartesia feedback item 2), so tower word times need a second stream. The turns endpoint returns empty transcripts if audio arrives faster than real time (Cartesia feedback item 1), so replays are paced at real time.
 - **Readback parser is regex-based.** It compares callsign, action and runway only; unusual phrasing can be misread.
 - Ground agents, Elastic and controller voice approval are mocked today (tasks B5, B10).
 

@@ -62,7 +62,7 @@ What changed and why, in a few lines.
 - Red team found 18 issues across the gateway and cockpit. All fixed with regression tests (130 tests pass).
 - `python scripts/run_demo.py` runs offline. `--live` runs on the real Cartesia API.
 - Cartesia feedback logged in [09-cartesia-feedback.md](09-cartesia-feedback.md).
-- **For Dev B:** tower STT must choose between `ink-2` (key terms) and `ink-whisper` (word timestamps), see CF-9. The gateway now enforces per-role senders and rebuilds directives from the stored proposal.
+- **For Dev B:** tower STT must choose between `ink-2` (key terms) and `ink-whisper` (word timestamps), see Cartesia feedback item 2. The gateway now enforces per-role senders and rebuilds directives from the stored proposal.
 
 **Related:** [README](../README.md), [Work Split](04-work-split.md)
 
