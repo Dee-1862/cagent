@@ -3,13 +3,14 @@
 Loads `airport-KUNS` (run ingest_airport.py first) and seeds `flight-N123AB`
 through MossMemory, runs the demo hint query, runs a `$gte` filter on `ts`, prints
 Moss `time_taken_ms`, and checks that numeric filters work on `ts` even though
-Moss stores metadata as strings. Pushes only the flight session to Moss Cloud unless
---no-push is given.
+Moss stores metadata as strings. Pushes nothing by default: per-aircraft sessions are never
+pushed (the cloud index limit; a push replaces the index). Pass --push to also push
+`flight-N123AB` once, deliberately.
 
 Needs MOSS_PROJECT_ID and MOSS_PROJECT_KEY in .env; otherwise prints
 "skipped: ..." and exits 0.
 
-Run from the repo root: python scripts/smoke_moss.py [--no-push]
+Run from the repo root: python scripts/smoke_moss.py [--push]
 """
 
 from __future__ import annotations
@@ -92,4 +93,4 @@ async def main(push: bool) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main(push="--no-push" not in sys.argv)))
+    sys.exit(asyncio.run(main(push="--push" in sys.argv)))

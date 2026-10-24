@@ -37,7 +37,7 @@ At the NTSB hearing on the 2025 Washington DC midair collision, the DCA tower op
 | --- | --- | --- | --- |
 | 0:00 | Space | Audio mode | *(say nothing; the tower call and the squeal play)* |
 | 0:07 | | | "That was a controller telling a pilot to stop before a runway. Another radio stepped on it. The pilot heard only noise, and nobody knows it was lost." |
-| 0:15 | | Hint caption | "Unstep heard the squeal. **Moss** searched the cockpit's own memory in under a millisecond and found the likely instruction. It only ever guesses the safe kind: stop or wait." |
+| 0:15 | | Hint caption | "Unstep heard the squeal. **Moss** searched the cockpit's own memory in under a millisecond, and the newest clearance gave the likely instruction. It only ever guesses the safe kind: stop or wait." |
 | 0:28 | Space | Controller caption | "The controller gets it in their ear and approves by voice. A human approves every directive." |
 | 0:40 | Space | Directive, then readbacks | "**Cartesia** speaks it into the pilot's left ear, then listens to the readback." *(pause while 23 is caught and corrected)* |
 | 1:00 | Space | Pilot questions | "And the pilot can just ask. Hands stay on the yoke." |
@@ -53,10 +53,10 @@ The 1.16% figure is from the FAA CAMI study DOT/FAA/AM-05/19 (research RB-1). Sa
 "Listen." *(squeal)* "That instruction was lost. Unstep caught it, and now Cartesia speaks the fix in the pilot's left ear, then checks the readback." *(23 caught, corrected)* "Voice in and voice out for every person in the loop: Ink with ATC key terms, Sonic with our pronunciation dictionary for 'tree' and 'fife', barge-in with context cancel. First audio in about a hundred milliseconds, measured right here."
 
 **Moss (lead with speed and memory):**
-"Listen." *(squeal)* "The cockpit only heard noise. Moss searched the aircraft's own clearance history locally, under a millisecond, and found the likely instruction, with its source record on screen. Then the pilot asks 'what runway was I told to stop at?' and Moss plus Moss Inference answer with an exact quote of the approved clearance. Nothing it says can be invented: every answer must quote a real record."
+"Listen." *(squeal)* "The cockpit only heard noise. Moss searched the aircraft's own clearance history locally, under a millisecond, and the search result sits on screen beside the likely instruction, which comes from the newest clearance. Then the pilot asks 'what runway was I told to stop at?' and Moss plus Moss Inference answer with an exact quote of the approved clearance. Nothing it says can be invented: every answer must quote a real record."
 
 **Elastic (lead with agents and analytics):**
-"Listen." *(squeal)* "Every message lands in Elastic. A Workflow runs narrow agents: one matches the tower transcript, one cites the FAA rule, and the controller approves. Then ES|QL turns it into safety analytics: blocked calls and readback errors per frequency, live." *(Only claim the agents once B5 is built; until then lead with the event store and ES|QL.)*
+"Listen." *(squeal)* "Every message lands in Elastic, which checks and remembers. A Workflow runs narrow agents: one matches the tower transcript, one cites the FAA rule, and the controller approves. Then ES|QL turns it into safety analytics: blocked calls and readback errors per frequency, live." *(Only claim the agents once B5 is built; until then lead with the event store and ES|QL.)*
 
 ## 4. Likely questions and honest answers
 

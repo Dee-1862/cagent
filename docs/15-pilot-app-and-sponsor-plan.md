@@ -125,7 +125,7 @@ Rishit has found and fixed several Cartesia issues: idle TTS sockets reopened (5
 
 | Today | Push it to |
 | --- | --- |
-| Every message bulk-written to an events index | Keep it, and make Elastic decide things in the hot path |
+| Every message bulk-written to an events index | Keep it, and have Elastic check things beside the hot path (the percolator verdict is advisory; the gateway and the human decide) |
 | Mock ground agents | **Percolator clearance matcher:** each delivered directive is stored as a percolator query (callsign plus runway plus action). Every pilot transcript is percolated: a match confirms the readback, no match flags it. Expect tens of ms on a small set (check) |
 | Planned Compliance agent | `semantic_text` over FAA JO 7110.65 with a pinned `inference_id`, hybrid with BM25, reranked, to cite the paragraph for each directive (check defaults on Serverless) |
 | Planned Workflow per event | The hub calls the Workflow's manual trigger after each blocked call: percolate, then the Readback Auditor agent (`ai.agent` step) only on a mismatch, then index the finding. Keep it off the radio path because of LLM latency. No per-document trigger was found in the docs |

@@ -133,8 +133,13 @@ def section_latency() -> str:
 | | Value | Source |
 | --- | --- | --- |
 | Before transcribing during the call: call end to the pilot hearing the fix | 6.1 s | Live run on Rishit's laptop (R27), measured on the console waterfall |
-| After (8d526bf): call end to the recovered proposal | 0.43 s in an offline timing model (Cartesia at 1.5 times real time, finalize 100 ms after catching up) | `tests/test_on_air_stt.py` |
-| After, live | [confirm live] | Needs a run with keys |
+| After (8d526bf), live: call end to the pilot hearing the fix | 2.9 s, including the human approval | Live run on Rishit's laptop (R28), console waterfall |
+| Tower transcript final after release | 155 ms (was 2702 ms) | Same live run |
+| Cockpit transcript final after release | 172 ms (was 2875 ms) | Same live run |
+| First audio of the private advisory | 201 ms | Same live run |
+| After, in an offline timing model | 0.43 s call end to the recovered proposal (Cartesia at 1.5 times real time, finalize 100 ms after catching up) | `tests/test_on_air_stt.py`; a model, not a measurement |
+
+Still slow after the fix: call end to "cockpit flagged a lost call" is about 1.0 s, and approved to spoken.
 """
 
 

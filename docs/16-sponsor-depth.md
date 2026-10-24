@@ -19,7 +19,7 @@ Every sponsor gets one moment in the demo that only that sponsor makes possible,
 | # | Moment | Sponsor | Number on screen |
 | --- | --- | --- | --- |
 | 1 | **Three-way recovery (C1).** After a stepped-on call, everyone hears exactly what they need, privately: the plane gets the tower's lost words, the tower hears who was blocked and what they said, the blocked caller hears "your call was blocked, say again" | Cartesia | Time from the call ending to each person hearing their line |
-| 2 | **Moss recovers the instruction (M3).** From the garbled fragment the cockpit heard ("Cessna 123, short runway 30" in Rishit's live run), the plane's own Moss session finds "hold short Runway 33", offline | Moss | Query text, top hit, score, search ms |
+| 2 | **Moss searches the plane's own memory (M3).** From the garbled fragment the cockpit heard ("Cessna 123, short runway 30" in Rishit's live run), the plane's own Moss session is searched offline and the result is shown beside the hint. The newest clearance gives the hint; Moss's search is the evidence | Moss | Query text, top hit, score, search ms |
 | 3 | **Elastic agents cite the rule (E2).** The decision card shows the FAA JO 7110.65 paragraph the Compliance agent found | Elastic | Workflow time, Elastic ES\|QL stats panel |
 
 ## 3. Moss: "The Plane's Own Memory, Built Live, On Board"
@@ -28,12 +28,12 @@ Every sponsor gets one moment in the demo that only that sponsor makes possible,
 | --- | --- | --- | --- |
 | M1 | A Moss session per plane (default 6), a frequency session on the hub written only by the Frequency Monitor, local fallback | Built (248d276). Six real sessions checked by Rishit: 0 to 1 ms searches, no cloud indexes | Deekshith's side |
 | M2 | Every call a plane hears (static and gaps included) and every readback indexed into its own session as it arrives, with callsign, speaker, ts, stepped_on | Built (0b62b64), reviewed in R18 | Deekshith's side (in Rishit's `edge.py` with his yes) |
-| M3 | **Hint as real search:** hybrid query of the plane's session with the garbled fragment, filtered on callsign and the last minutes. A ranked hit becomes a hint only if no newer clearance supersedes it, restrictive only, source shown | Agreed (R18) | Deekshith's side builds, Rishit's side reviews (`hint.py` is theirs) |
+| M3 | **Hint search as evidence (agreed R18, R23; Moss does not pick the hint, R29):** hybrid query of the plane's session with the garbled fragment, filtered on callsign and the last minutes. A ranked hit becomes a hint only if no newer clearance supersedes it, restrictive only, source shown | Agreed (R18) | Deekshith's side builds, Rishit's side reviews (`hint.py` is theirs) |
 | M4 | "What did the tower tell me in the last minute?" as a session search filtered on ts | Built (0b62b64) | Deekshith's side |
 | M6 | Flight log: when a flight ends (seat freed, reset, hub stop) the plane's session is copied into one shared `flightlog-<frequency>` session (writer "archive"), pushed once to Moss Cloud in the background, and the plane's session is dropped from the shared client. Per-aircraft sessions are still never pushed. `GET /live/flightlog?q=&callsign=` searches past flights | Built (this commit), offline with fakes; live push needs keys | Deekshith's side |
 | M5 | Moss Inference answers may only quote records (`quoted_source`); it also translates the private repeat with a glossary | Built (Rishit's side, d711e89 for translation) | Rishit's side |
 
-## 4. Elastic: "Elastic Decides and Remembers"
+## 4. Elastic: "Elastic Checks and Remembers"
 
 | # | Item | Status | Owner |
 | --- | --- | --- | --- |

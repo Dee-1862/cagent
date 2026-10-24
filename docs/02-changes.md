@@ -19,6 +19,17 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Claim wording made truthful, live latency numbers recorded, smoke test no longer pushes
+
+**Type:** Docs
+**Area:** Docs
+
+- Applied the wording agreed with Rishit's side (R29) in docs/12, 15, 16 and 17 and the social post: "Moss searches the plane's own memory; the newest clearance gives the hint" (the search is evidence beside the hint, as approved in R23), and "Elastic checks and remembers" (the percolator is advisory; the gateway and the human decide). No remaining "Moss recovers" or "Elastic decides" in the docs outside the plan that explains the change.
+- Rishit's live numbers (R28) are now recorded as measured live in docs/17 and docs/18: tower transcript final 155 ms after release (was 2702 ms), cockpit 172 ms (was 2875 ms), call end to the pilot hearing the fix 2.9 s including the human approval (was 6.1 s), first audio 201 ms. Still slow: about 1.0 s from call end to the cockpit flagging the lost call. docs/18 comes from `scripts/benchmark_report.py`, so the table is edited there.
+- `scripts/smoke_moss.py` pushes nothing by default (it used to push the per-aircraft `flight-N123AB` session, breaking the agreed rule). Pass `--push` to push once on purpose.
+
+**Related:** [19-elastic-moss-plan.md](19-elastic-moss-plan.md) section 2, agent mail R28, R29
+
 ## 2026-10-24: Faster-feeling live captions, a Cartesia probe, and a leak fix
 
 **Type:** Changed
