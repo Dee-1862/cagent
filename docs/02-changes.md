@@ -19,6 +19,17 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: Added sponsor review and benchmark
+
+**Type:** Docs
+**Area:** Docs
+
+- Added [07-sponsor-review.md](07-sponsor-review.md) with the Cartesia and Moss prize criteria, concerns S-1 to S-10, notes from sponsor conversations and a benchmark against past winning projects.
+- Main findings: Cartesia is only used for final TTS, and the Moss use case is a lookup rather than search. Both need to change before the demo.
+- No changes to the PRD yet. Accepted items will be folded in separately.
+
+**Related:** [Sponsor Review](07-sponsor-review.md)
+
 ## 2026-10-23: Put Raspberry Pi integration on hold
 
 **Type:** Changed
