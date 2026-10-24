@@ -19,6 +19,18 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-23: Gateway stores every message in Elastic (task B1)
+
+**Type:** Added
+**Area:** Audit
+
+- `ElasticSink` in `unstep/gateway/sink.py` writes every gateway message to the `unstep-events` index with the `_bulk` API.
+- `write` never waits on the network. Documents go on a bounded queue and a background task sends them, retries a failed request once, and counts sent, failed and dropped documents (shown on `/health`).
+- The index has a strict mapping. Query fields (`type`, `source`, `event_id`, `callsign`, `frequency`, `decision`, `approved_via`, `match`, `kind`, `stage`) are promoted to the top for ES\|QL (task B8). The full message is kept in `data` but not indexed, so no message type can cause a mapping conflict.
+- The gateway loads `.env` through `unstep/config.py` and picks the Elastic sink when the URL and key are set, otherwise the JSONL file. It accepts `ELASTIC_API_KEY` or `ELASTIC_CLOUD_KEY`.
+- Verified on the real Elastic Serverless project: 10 mock cockpit runs stored 40 documents, 0 failed.
+- 8 new tests with a fake Elastic, plus a live round-trip test that runs with `UNSTEP_LIVE_ELASTIC=1`.
+
 ## 2026-10-23: Merged master into the Dev B branch and removed duplicate code
 
 **Type:** Changed

@@ -16,6 +16,7 @@ import json
 import logging
 import os
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -24,6 +25,7 @@ from fastapi.responses import FileResponse
 from pydantic import ValidationError
 
 from unstep.clock import now_ms
+from unstep.config import load_env
 from unstep.contracts import (
     ApprovedDirective,
     ProposedDirective,
@@ -32,7 +34,7 @@ from unstep.contracts import (
     unwrap,
     wrap,
 )
-from unstep.gateway.sink import JsonlSink
+from unstep.gateway.sink import sink_from_env
 
 log = logging.getLogger("unstep.gateway")
 
@@ -63,6 +65,7 @@ ALLOWED_SENDERS: dict[str, set[str]] = {
 }
 ROLES = set(ALLOWED_SENDERS)
 
+load_env()
 PENDING_TTL_S = float(os.getenv("UNSTEP_PENDING_TTL_S", "60"))
 TOKEN = os.getenv("UNSTEP_GATEWAY_TOKEN")  # optional shared secret, FR-13
 
@@ -171,13 +174,27 @@ def origin_ok(ws: WebSocket) -> bool:
 
 
 def create_app(sink=None, pending_ttl_s: float = PENDING_TTL_S) -> FastAPI:
-    app = FastAPI(title="Unstep gateway")
-    gw = Gateway(sink or JsonlSink(ROOT / "data" / "events.jsonl"), pending_ttl_s)
+    sink = sink or sink_from_env(ROOT / "data" / "events.jsonl")
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        yield
+        if hasattr(sink, "aclose"):
+            await sink.aclose()  # send what is still queued
+
+    app = FastAPI(title="Unstep gateway", lifespan=lifespan)
+    gw = Gateway(sink, pending_ttl_s)
     app.state.gateway = gw
 
     @app.get("/health")
     async def health():
-        return {"ok": True, "clients": {r: len(c) for r, c in gw.clients.items()}, "pending": len(gw.pending)}
+        stored = {k: getattr(gw.sink, k) for k in ("sent", "failed", "dropped") if hasattr(gw.sink, k)}
+        return {
+            "ok": True,
+            "clients": {r: len(c) for r, c in gw.clients.items()},
+            "pending": len(gw.pending),
+            "sink": {"kind": type(gw.sink).__name__, **stored},
+        }
 
     @app.get("/")
     async def dashboard():
