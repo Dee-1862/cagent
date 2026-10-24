@@ -46,6 +46,7 @@ log = logging.getLogger("unstep.live")
 
 VOICES_FILE = ROOT / "assets" / "clips" / "real" / "voices.json"
 GAP_MS = 300  # quiet time after the last transmission before a cluster is processed
+CHIME_MS = 220  # length of the advisory chime (unstep.cockpit.tts.chime default)
 RECOVERY_STALE_MS = 30_000  # C1: a recovery line older than this is dropped, never spoken late
 RECOVERY_WAIT_GAP_MS = 10_000  # how long a recovery waits for the controller to stop talking
 TRANSCRIPT_WAIT_S = 12.0  # how long ground agents wait for the tower transcript
@@ -267,8 +268,17 @@ class StreamingTTS(SerialTTS):
                 seq += 1
 
             cancelled = True
+            started = now_ms()
+            samples = 0
+            original_chunk = chunk
+
+            def counted(pcm: bytes) -> None:
+                nonlocal samples
+                samples += len(pcm) // 2
+                original_chunk(pcm)
+
             try:
-                result = await self.engine.speak(text, context_id=context_id, on_chunk=chunk)
+                result = await self.engine.speak(text, context_id=context_id, on_chunk=counted)
                 cancelled = bool(getattr(result, "cancelled", False))
                 return result
             finally:
@@ -277,6 +287,8 @@ class StreamingTTS(SerialTTS):
                                                        "chunks": seq, "cancelled": cancelled})
                     if not cancelled:
                         self.room.streamed_advisory.add(self.station)
+                    self.room.advisory_report(self.station, stream_id, started,
+                                              samples * 1000 / sample_rate + CHIME_MS, cancelled)
 
 
 class BrowserAudioOut(AudioOut):
@@ -297,6 +309,11 @@ class LiveEdge(CockpitEdge):
     """CockpitEdge that also shows its transcript lines in the pilot's browser."""
 
     room: "LiveRoom | None" = None
+
+    async def audit(self, event_id: str, stage: str, latency_ms=None, **payload) -> None:
+        if self.room is not None and stage in ("held", "released"):  # C5: how long it waited for a gap
+            self.room.last_wait[self.callsign] = float(payload.get("waited_ms") or 0.0)
+        await super().audit(event_id, stage, latency_ms, **payload)
 
     def _note(self, party: str, text: str, **latency: float) -> Line:
         line = super()._note(party, text, **latency)
@@ -383,6 +400,9 @@ class LiveRoom:
         self.stream_stt_factory = stream_stt_factory
         self.streams: dict[str, dict] = {}  # station -> push-to-talk stream in progress (P3)
         self.stream_results: dict[str, asyncio.Task] = {}  # tx_id -> streamed transcript
+        self.key_log: list[tuple[str, int, int]] = []  # (station, down_ms, up_ms), recent key presses
+        self.last_wait: dict[str, float] = {}  # callsign -> ms its last advisory waited for a gap (C5)
+        self.advisory_reports: list[dict] = []
         self.languages: dict[str, str | None] = {}  # station -> pilot language for the private repeat
         self.streamed_advisory: set[str] = set()  # stations whose last advisory was streamed (R14)
         self.alignments: dict[str, dict] = {}  # transcript_id -> tower word alignment report (P7b)
@@ -522,6 +542,27 @@ class LiveRoom:
 
     def stations_info(self) -> list[dict]:
         return [asdict(s) for s in self.stations.values()]
+
+    def advisory_report(self, station: str, stream_id: str, started_ms: int, spoke_ms: float,
+                        cancelled: bool) -> dict:
+        """C5: one line per private advisory for the console: how long it waited for a gap,
+        how long it spoke, and how much of it overlapped anyone talking on the frequency."""
+        end = started_ms + spoke_ms
+        overlapped, by = 0.0, set()
+        now = now_ms()
+        for st, down, up in [*self.key_log, *((k, v, now) for k, v in self.key_since.items())]:
+            o = min(end, up) - max(started_ms, down)
+            if o > 0:
+                overlapped += o
+                by.add(st)
+        s = self.stations.get(station)
+        report = {"type": "advisory_report", "station": station, "id": stream_id,
+                  "waited_ms": round(self.last_wait.pop(s.callsign if s else station, 0.0), 1),
+                  "spoke_ms": round(spoke_ms, 1), "overlapped_ms": round(overlapped, 1),
+                  "overlapped_by": sorted(by), "cancelled": cancelled, "ts": now}
+        self.advisory_reports = [*self.advisory_reports[-49:], report]
+        self.send_to({"atc", "observer", station} & set(self.stations), report)
+        return report
 
     def set_language(self, station: str, language: str | None) -> str | None:
         """The pilot's language for the private repeat of directives (R17 a). Only languages
@@ -804,8 +845,10 @@ class LiveRoom:
             self.key_since[station] = pressed
             self.keyed.add(station)
         else:
-            if self.key_since.pop(station, None) is None:
+            since = self.key_since.pop(station, None)
+            if since is None:
                 return
+            self.key_log = [*self.key_log[-199:], (station, since, received)]
             self.keyed.discard(station)
         if len(self.key_since) == (1 if down else 0):  # the frequency just became busy or free (P5)
             for edge in list(self.edges.values()):

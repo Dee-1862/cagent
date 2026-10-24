@@ -19,6 +19,17 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: Console data for each private advisory: waited, spoke, overlapped (C5)
+
+**Type:** Added
+**Area:** Audio
+
+- After every private advisory the room sends `advisory_report {station, id, waited_ms, spoke_ms, overlapped_ms, overlapped_by, cancelled, ts}` to the ATC console, the observer and that pilot. `waited_ms` is how long the cockpit held it for a gap (Rishit's held/released audits), `spoke_ms` the chime plus speech, `overlapped_ms` how much of it ran while anyone was keyed on the frequency (should be 0: the voice is cut when someone keys).
+- The room now keeps a short log of key presses for this. Drawing is Rishit's side.
+- Checked: 2 tests (numbers from a scripted key overlap, and a real room run).
+
+**Related:** [16-sponsor-depth.md](16-sponsor-depth.md) C5, agent mail R18
+
 ## 2026-10-24: A pilot whose call was stepped on is told to say again (C1, blocked caller)
 
 **Type:** Added
