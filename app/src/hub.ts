@@ -21,6 +21,12 @@ export function hubFromLocation(loc: Location = window.location): Hub | null {
       if (saved?.raw) ({ raw, token } = saved);
     } catch { /* ignore */ }
   }
+  // A hosted build (Vercel) can bake in its hub: VITE_UNSTEP_HUB=https://<service>.onrender.com.
+  const built = import.meta.env.VITE_UNSTEP_HUB as string | undefined;
+  if (!raw && built) {
+    raw = built;
+    token = token || (import.meta.env.VITE_UNSTEP_TOKEN as string | undefined) || null;
+  }
   if (!raw && !loc.hostname.endsWith(".vercel.app")) raw = loc.origin; // served by the hub itself
   return raw ? parseHub(raw, token) : null;
 }
