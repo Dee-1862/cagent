@@ -497,7 +497,9 @@ function obey(key, stationId, text) {
     text: `${shortName(stationId)} was told “${text}”. Waiting for the readback before it moves.`});
   renderFeed();
 }
+const lastAction = new Map();  // station -> the last instruction it carried out
 function execute(stationId, instruction) {
+  lastAction.set(stationId, instruction.action);
   sceneCall("command", stationId, instruction.action, {via: instruction.via, runway: instruction.runway, dest: instruction.dest});
 }
 function readbackConfirmed(stationId) {
@@ -572,10 +574,50 @@ async function trackGeo() {
       }
       renderFeed();
     }
+    proposeNextSteps(planes, res);
   } catch (error) { console.warn("Geo", error); }
   finally { geoBusy = false; }
 }
 if (globalThis.window) setInterval(trackGeo, 1000);
+
+// The Clearance agent also works unasked, as a controller does: when a plane arrives somewhere (lined up, holding
+// short, stopped at a taxiway point it was sent to) it proposes the next instruction. A plane waiting for traffic
+// is checked again every second against Elastic's geo answer and gets its card the moment the runway is clear.
+const stepDone = new Map();  // station -> the arrival it already has a proposal for
+const plans = new Map();     // station -> flight plan, read once per flight
+async function proposeNextSteps(planes, geo) {
+  if (!Clearance?.nextStep) return;
+  const onRunway = Object.entries(geo.planes || {}).filter(([, g]) => g.areas.some((a) => a.startsWith("Runway"))).map(([id]) => id);
+  for (const plane of planes) {
+    const id = plane.id, arrival = `${plane.state}:${plane.runway || ""}`;
+    let card = requests.get(id);
+    if (card?.auto && card.arrival !== arrival) { requests.delete(id); state.actions.delete(`clearance-${id}`); card = null; renderRequests(); renderFeed(); }
+    if (!["lined_up", "holding", "stopped"].includes(plane.state)) { stepDone.delete(id); continue; }
+    if (plane.state === "stopped" && lastAction.get(id) === "stop") continue;  // told to hold position: the controller decides when
+    if (awaitingReadback.has(id) || (requests.has(id) && !card?.auto)) continue;
+    if (stepDone.get(id) === arrival && !card) continue;  // proposed already and sent or dismissed
+    if (!plans.has(id)) {
+      try { const ctx = await (await fetch(`/live/clearance-context/${encodeURIComponent(id)}`)).json(); plans.set(id, ctx.flight_plan || null); }
+      catch { plans.set(id, null); }
+    }
+    const plan = plans.get(id) || {runway: plane.runway || "33", route: "Bravo", source: "console"};
+    const station = state.stations.get(id);
+    const traffic = geo.backend === "elastic" ? onRunway.filter((o) => o !== id).map(shortName) : null;
+    const step = Clearance.nextStep({callsign: station?.spoken || station?.callsign || id, plan, plane, runwayTraffic: traffic,
+      others: planes.filter((o) => o.id !== id).map((o) => ({...o, name: shortName(o.id)}))});
+    if (!step) {  // waiting for the runway: withdraw a card that is no longer safe, look again next second
+      if (card?.auto) { requests.delete(id); state.actions.delete(`clearance-${id}`); stepDone.delete(id); renderRequests(); renderFeed(); }
+      continue;
+    }
+    if (card?.auto) continue;  // still valid: keep the card on screen
+    stepDone.set(id, arrival);
+    requests.set(id, {stationId: id, auto: true, arrival, text: `${shortName(id)} ${step.situation}`, plan,
+      traffic: traffic ? {planes: traffic, took_ms: geo.took_ms} : null, proposal: step});
+    state.actions.set(`clearance-${id}`, {id: `clearance-${id}`, ts: now(), agent: "Clearance agent", kind: "rule", status: "needs_you", station: id,
+      text: `${shortName(id)} ${step.situation}. Next: “${step.text}”`, sponsor: traffic ? "Elastic" : null});
+    renderRequests(); renderFeed();
+  }
+}
 
 function sendClearance(stationId) {
   const r = requests.get(stationId);
@@ -591,7 +633,7 @@ function renderRequests() {
   if (!box) return;
   box.replaceChildren(...[...requests.values()].map((r) => {
     const card = el("article", undefined, "decision clearance");
-    card.append(el("h3", `${shortName(r.stationId)} asks`), el("p", `“${r.text}”`, "words"));
+    card.append(el("h3", r.auto ? `Next for ${shortName(r.stationId)}` : `${shortName(r.stationId)} asks`), el("p", r.auto ? r.text : `“${r.text}”`, "words"));
     const facts = el("p", undefined, "reason");
     facts.append(el("small", "What the agent checked"));
     facts.append(el("span", `Flight plan: ${r.plan.summary || `runway ${r.plan.runway} via ${r.plan.route}`} (${r.plan.source === "elastic" ? `Elastic · ${r.plan.ms} ms` : "console default"})`));

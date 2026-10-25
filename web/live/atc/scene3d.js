@@ -7,6 +7,10 @@ import * as Taxi from "./taxi.js";  // the ground network: one source for drawin
 
 const colors = {blue:0x0a84ff, green:0x30d158, amber:0xffd60a, red:0xff453a, violet:0xbf5af2};
 const models = ["small-plane", "helicopter", "jet", "airliner-747"];
+// Where each model's nose points in its own file, as the yaw that turns it to +X (measured from a top view: the
+// wingspan of the small plane and the jet is as long as the body, so the longest-side guess gets them 90 degrees off).
+const NOSE_YAW = {"small-plane": -Math.PI / 2, "helicopter": -Math.PI / 2, "jet": Math.PI / 2, "regional-jet": Math.PI / 2,
+                  "airliner-747": Math.atan2(-0.96, 0.28)};
 const modelFor = (s, i) => {
   const name = `${s.name || ""} ${s.callsign || ""} ${s.spoken || ""} ${s.kind || ""}`.toLowerCase();
   return /helicopter|rotor/.test(name) ? models[1] : /cessna|small/.test(name) ? models[0] : /airliner|heavy|747/.test(name) ? models[3] : /jet/.test(name) ? models[2] : models[i % models.length];
@@ -154,7 +158,7 @@ export function createAirport(container, {quality = "high", followStation} = {})
     gateSpots.push({x:x0+side*6.0,z,noseYaw:side>0?Math.PI:0});           // nose points back at the pier
   }
   const tmpV=new THREE.Vector3();
-  function prepareAircraft(root,length) {
+  function prepareAircraft(root,length,noseYaw) {
     // A group whose +X is the aircraft's nose (the tail fin is the model's highest point), scaled to `length`.
     root.updateMatrixWorld(true);
     root.traverse(o=>{ if(o.isMesh && o.geometry && !o.geometry.attributes.normal) o.geometry.computeVertexNormals(); });
@@ -164,7 +168,7 @@ export function createAirport(container, {quality = "high", followStation} = {})
       for(let i=0;i<pos.count;i+=step){ tmpV.fromBufferAttribute(pos,i).applyMatrix4(o.matrixWorld); if(tmpV.y>top){top=tmpV.y; along=longX?tmpV.x:tmpV.z;} } });
     const mid=longX?(box0.min.x+box0.max.x)/2:(box0.min.z+box0.max.z)/2, tailPositive=along>mid;
     const turn=new THREE.Group(); turn.add(root);
-    turn.rotation.y = longX ? (tailPositive?Math.PI:0) : (tailPositive?-Math.PI/2:Math.PI/2);
+    turn.rotation.y = noseYaw ?? (longX ? (tailPositive?Math.PI:0) : (tailPositive?-Math.PI/2:Math.PI/2));
     const holder=new THREE.Group(); holder.add(turn); holder.updateMatrixWorld(true);
     const size1=new THREE.Box3().setFromObject(holder).getSize(new THREE.Vector3());
     holder.scale.setScalar(length/Math.max(size1.x,size1.z)); holder.updateMatrixWorld(true);
@@ -176,8 +180,9 @@ export function createAirport(container, {quality = "high", followStation} = {})
   const parkedTypes=["airliner-a","airliner-b","regional-jet","airliner-747","airliner-a","airliner-b"];
   // "low" (narrow screens, the headless recorder) skips the parked fleet: it's decoration and the heaviest part.
   if (quality!=="low") gateSpots.filter((_,i)=>i%4!==3).forEach(async (spot,i)=>{ try {
-    const gltf=await new GLTFLoader().loadAsync(`/live/static/atc/models/${parkedTypes[i%parkedTypes.length]}.glb`); if(disposed) return;
-    const plane=prepareAircraft(gltf.scene,5.6); plane.position.set(spot.x,0,spot.z); plane.rotation.y=spot.noseYaw; scene.add(plane);
+    const type=parkedTypes[i%parkedTypes.length];
+    const gltf=await new GLTFLoader().loadAsync(`/live/static/atc/models/${type}.glb`); if(disposed) return;
+    const plane=prepareAircraft(gltf.scene,5.6,NOSE_YAW[type]); plane.position.set(spot.x,0,spot.z); plane.rotation.y=spot.noseYaw; scene.add(plane);
   } catch(e) { console.warn("Parked aircraft unavailable",e); } });
 
   // ---- taxi routes: every gate -> lead-in line -> taxiway A (pier tips) -> connector -> taxiway B -> hold short -> runway ----
@@ -286,7 +291,7 @@ export function createAirport(container, {quality = "high", followStation} = {})
     try {
       const gltf=await loader.loadAsync(`/live/static/atc/models/${type}.glb`);
       if(disposed || entries.get(entry.id)!==entry) return;
-      entry.group.add(prepareAircraft(gltf.scene,/helicopter/.test(type)?3.6:4.6));
+      entry.group.add(prepareAircraft(gltf.scene,/helicopter/.test(type)?3.6:4.6,NOSE_YAW[type]));
     } catch(error) {console.warn("Aircraft model unavailable",type,error);}
   }
   function setStations(list) {

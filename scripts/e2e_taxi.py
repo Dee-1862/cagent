@@ -157,16 +157,19 @@ with sync_playwright() as p:
     check("hold position stops the plane at once, without a readback", p1["state"] == "stopped" and p1["x"] == p2["x"] and p1["z"] == p2["z"], f"{p1} {p2}")
 
     # 8. the Clearance agent: request -> proposal from the flight plan -> controller sends -> readback -> moves
+    def asked(who="Plane A"):  # the card for a pilot's request (the agent also proposes next steps unasked)
+        return atc.locator("#requests .clearance", has_text=f"{who} asks")
+
     def proposal(timeout=20):
         for _ in range(timeout * 2):
-            cards = atc.locator("#requests .clearance .proposal")
+            cards = asked()
             if cards.count():
-                return cards.first.inner_text(), atc.locator("#requests .clearance").first.inner_text()
+                return cards.first.locator(".proposal").inner_text(), cards.first.inner_text()
             atc.wait_for_timeout(500)
         return "", ""
 
     def send_proposal():
-        atc.locator("#requests .clearance button.approve").first.click()
+        asked().first.locator("button.approve").click()
 
     pilot_says("N123AB", "Tower, Cessna one two three, request taxi")
     text, card = proposal()
@@ -186,7 +189,7 @@ with sync_playwright() as p:
     text, card = proposal()
     check("ready for departure with traffic on the runway -> hold short", "hold short of runway 33, traffic on the runway" in text, text)
     check("...because Elastic's geo query found Plane B inside the runway area", "Elastic geo: Plane B" in card, card[:400])
-    atc.locator("#requests .clearance button.reject").first.click()
+    asked().first.locator("button.reject").click()
 
     tower_then_readback("H456", "Helicopter 456 cleared for takeoff runway 15", "cleared for takeoff runway 15, helicopter 456")
     wait_for(lambda ps: ps["H456"]["alt"] > 1, 40)
@@ -201,6 +204,22 @@ with sync_playwright() as p:
     pilot_says("N123AB", "runway 33 cleared for takeoff, Cessna 123")
     ps = wait_for(lambda ps: ps["N123AB"]["alt"] > 1, 50)
     check("sent takeoff clearance + readback -> Plane A departs", ps["N123AB"]["alt"] > 1, str(ps["N123AB"]))
+
+    # 9. unasked next steps: lined up -> the agent proposes the takeoff clearance by itself
+    tower_then_readback("H456", "Helicopter 456 line up and wait runway 15", "line up and wait runway 15, helicopter 456")
+    wait_for(lambda ps: ps["H456"]["state"] == "lined_up", 60)
+    nxt = ""
+    for _ in range(20):
+        c = atc.locator("#requests .clearance", has_text="Next for Plane B")
+        if c.count():
+            nxt = c.first.inner_text(); break
+        atc.wait_for_timeout(500)
+    check("lined up -> the agent proposes 'cleared for takeoff' unasked", "Helicopter 4-5-6, runway 15, cleared for takeoff" in nxt, nxt[:300])
+    atc.locator("#requests .clearance", has_text="Next for Plane B").first.locator("button.approve").click()
+    atc.wait_for_timeout(1500); await_readback_window("H456")
+    pilot_says("H456", "runway 15 cleared for takeoff, helicopter 456")
+    ps = wait_for(lambda ps: ps["H456"]["alt"] > 1, 50)
+    check("...sent and read back -> Plane B departs", ps["H456"]["alt"] > 1, str(ps["H456"]))
 
     OUT.mkdir(exist_ok=True)
     atc.screenshot(path=str(OUT / "e2e-taxi-end.png"))

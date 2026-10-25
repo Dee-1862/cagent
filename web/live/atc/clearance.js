@@ -32,3 +32,28 @@ export function proposeClearance({callsign, request, plan, plane, others = [], r
   if (busy) return {text: `${callsign}, hold short of runway ${rw}, traffic on the runway`, reason: `runway occupied by ${busy.name || busy.id}`};
   return {text: `${callsign}, runway ${rw}, cleared for takeoff`, reason: "runway clear and the plane is at the runway"};
 }
+
+/**
+ * What the tower says next when a plane reaches a point, without being asked; null while it should wait.
+ * Lined up: cleared for takeoff once the runway ahead is clear. Holding short: cleared for takeoff once the
+ * runway is clear (keeps holding while it isn't). Stopped on a taxiway: taxi on to its flight plan's runway.
+ * `runwayTraffic` is who Elastic's geo query has on the runway (null: judge from the other planes' states).
+ * Returns {text, situation, reason} or null.
+ */
+export function nextStep({callsign, plan, plane, others = [], runwayTraffic = null}) {
+  if (!plane) return null;
+  const rw = plane.runway || plan.runway, route = plan.route || "Bravo";
+  const busy = runwayTraffic ?? others.filter((o) => ["lined_up", "takeoff"].includes(o.state)).map((o) => o.name || o.id);
+  const how = runwayTraffic ? "Elastic geo" : "plane states";
+  if (plane.state === "lined_up" || plane.state === "holding") {
+    if (busy.length) return null;
+    return {text: `${callsign}, runway ${rw}, cleared for takeoff`,
+      situation: plane.state === "lined_up" ? `is lined up on runway ${rw}` : `is holding short of runway ${rw}`,
+      reason: `${how}: runway ${rw} clear`};
+  }
+  if (plane.state === "stopped") {
+    return {text: `${callsign}, taxi to runway ${rw} via ${route}, hold short of runway ${rw}`,
+      situation: "has stopped on the taxiway", reason: `flight plan: departure runway ${rw} via ${route}`};
+  }
+  return null;
+}
