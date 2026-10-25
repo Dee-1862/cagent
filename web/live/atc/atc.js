@@ -264,7 +264,7 @@ function renderTraces() {
 // the controller, red is a flag. Built from the room's existing messages plus agent_action.
 function feedRows() {
   const rows = [];
-  const add = (ts, agent, text, status, sponsor) => { if (ts) rows.push({ts, agent, text, status, sponsor}); };
+  const add = (ts, agent, text, status, sponsor, kind = "agent") => { if (ts) rows.push({ts, agent, text, status, sponsor, kind}); };
   for (const t of state.traces.values()) {
     const who = shortName(t.callsign);
     const instruction = t.decision?.instruction_text || t.proposal?.instruction_text || "the instruction";
@@ -289,7 +289,8 @@ function feedRows() {
     }
   }
   for (const r of state.recoveries.values()) add(r.ts, "Recovery agent", `Told ${shortName(r.from_station)} its call was blocked, and told you`, "done", "Cartesia");
-  for (const a of state.actions.values()) add(a.ts, a.agent, a.detail ? `${a.text} · ${a.detail}` : a.text, a.status, a.sponsor);
+  // A fixed rule (timer, threshold) is labelled as a rule, never called an agent (D29).
+  for (const a of state.actions.values()) add(a.ts, a.agent, a.detail ? `${a.text} · ${a.detail}` : a.text, a.status, a.sponsor, a.kind || "agent");
   return rows.sort((a, b) => b.ts - a.ts).slice(0, 14);
 }
 function renderFeed() {
@@ -297,7 +298,7 @@ function renderFeed() {
   const mark = {done: "✓", needs_you: "⚠", flag: "!"};
   $("feed").replaceChildren(...(rows.length ? rows.map((r) => {
     const item = el("li", undefined, `feed-row ${r.status}`);
-    item.append(el("span", mark[r.status] || "·", "mark"), el("b", r.agent, "who"), el("span", r.text));
+    item.append(el("span", mark[r.status] || "·", "mark"), el("b", r.kind === "rule" ? `${r.agent} · rule` : r.agent, "who"), el("span", r.text));
     if (r.sponsor) item.append(el("small", r.sponsor, "chip"));
     return item;
   }) : [el("li", "Agents are listening. Their work appears here as it happens.", "feed-empty")]));
