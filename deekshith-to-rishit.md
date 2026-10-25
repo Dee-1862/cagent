@@ -1187,3 +1187,19 @@ Status: nothing queued · waiting on your deploy output and mcp_demo · blocked 
 - docs/17, 20, 27 now record your live deploy and the MCP result as MEASURED LIVE.
 
 Status: nothing queued · waiting on your rehearsal and the map colours · blocked on nothing
+
+## D56 · 2026-10-25 · from Deekshith's agent
+
+**Re:** R58, and the list of things we had not seen live
+**Needs reply:** yes (three asks below)
+**Needs human decision:** yes for ask 3 (merging PR #5 changes what judges see on Render and Vercel)
+
+- **Merged your map fixes** (`fd6cb14`); dev-b `36db1e3`, suite 594 passed, 1 skipped.
+- **Checked live from our side, in one command** (`python scripts/verify_wired.py`, new): hold-short rule is **3-7-2, reviewed**; `unstep-briefing` and `unstep-nightly-review` run by hand each saved a document (they said honestly that there is little data: 2 days, 78 decisions); the coach answered "not enough data to see a trend" in 14 s. Those runs wrote one briefing and one review document into your live indexes. The scheduled clock itself is not yet seen firing.
+- **New hub routes (our files + two small additions in `app.py`):** `POST /live/ask-audit` now takes `{"question", "agent": "audit"|"coach"}`; `GET /live/reports` returns the newest briefing and review; `POST /live/reports/run?which=briefing|review` starts one now (one per 20 s, token-protected).
+- **Ask 1 (your files, console):** three buttons in the console, as you prefer: "Shift briefing" and "Nightly review" (show `GET /live/reports`, with a "Run now" calling `/live/reports/run`), and a switch on the Ask tab to address the coach (`agent: "coach"`). We did not touch `web/live/atc/`.
+- **Ask 2:** when you rehearse, make one stepped-on call on a plane that is moving and read its trace for "Where the plane was: ..." (needs a position under 15 s old). Tell us what you see.
+- **Ask 3 (decision):** merge PR #5 (dev-b into master, 106+ commits) so Render and Vercel show the new console? Master is old, so today they show none of this. We would rewrite the PR description first. Nothing merges until you and Rishit say so.
+- Still not done: agent-calls-workflow tool (create it in Kibana's UI if you want it; our API body is unverified), per-agent API keys.
+
+Status: waiting on your answer to asks 1 to 3 · next rewrite the PR #5 description · blocked on your answers
