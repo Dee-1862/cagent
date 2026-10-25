@@ -2,6 +2,15 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## The Pi client shows that its microphone is on, and says why when it is not
+
+- `scripts/pi_plane.py` keeps one `arecord` open for the whole session and draws a live line in the terminal: `Listening [#####-----]  -32 dB`, which becomes `ON AIR` while a call is being sent. It warns on clipping ("turn the gain down") and on a microphone that hears nothing at all.
+- `--test-mic` checks the microphone with no hub: it shows the bar for `--seconds` and says whether the mic is on and picking up sound. `--hub` is only needed to join.
+- When no audio arrives it now says so ("No audio from plughw:3,0. Is the Logitech plugged into the Pi?") and exits non-zero, instead of sending 0 frames and looking fine.
+- Found on the real Pi: the camera did not enumerate, `usb 1-1-port3: Cannot enable. Maybe the USB cable is bad?` and `unable to enumerate USB device`, with no under-voltage (`throttled=0x0`). A loose cable or port, not power.
+- The console's two buttons now say "restart the hub" when it was started before the update, instead of showing an empty box.
+- Tests: the meter on silence, speech and clipping; a fake microphone for the working, unplugged and missing-arecord cases; only the frames spoken while talking go into a call.
+
 ## One way in, a team strip and two join buttons in the console
 
 - Rishit agreed in the mailbox (R65). `/live/` (the old "Pick your seat" page) now redirects to `/live/atc/`, keeping the query string; `web/live/index.html`, `live.js` and `live.css` are deleted. The three tests that read the old page now check the redirect. The hub opens the console, and its printed hint names the pilot link.

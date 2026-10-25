@@ -3,6 +3,7 @@
 
     python scripts/pi_plane.py --hub http://192.168.2.53:8765 --wav assets/clips/real/clean_call.wav
     python scripts/pi_plane.py --hub http://192.168.2.53:8765 --mic plughw:3,0     # Enter = start/stop talking
+    python scripts/pi_plane.py --test-mic --mic plughw:3,0     # no hub: a live level bar shows the mic works
     python scripts/pi_plane.py --hub https://unstep.onrender.com --token <room code> --mic plughw:3,0
 
 It needs only `websockets` and the standard library. Live audio comes from `arecord` (alsa-utils), the
@@ -17,9 +18,11 @@ Push to talk here is the Enter key. Covering the camera or a GPIO pin is planned
 from __future__ import annotations
 
 import argparse
+import array
 import asyncio
 import base64
 import json
+import math
 import shutil
 import ssl
 import subprocess
@@ -70,24 +73,84 @@ def wav_frames(path: str):
         yield data[i:i + FRAME_BYTES]
 
 
-async def mic_frames(device: str, stop: asyncio.Event):
-    """100 ms frames from the microphone through arecord, until `stop` is set."""
-    if not shutil.which("arecord"):
-        raise SystemExit("arecord not found: install alsa-utils (sudo apt install alsa-utils)")
-    proc = await asyncio.create_subprocess_exec(
-        "arecord", "-q", "-D", device, "-f", "S16_LE", "-r", str(SAMPLE_RATE), "-c", "1", "-t", "raw",
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
-    try:
-        while not stop.is_set():
+def level(frame: bytes) -> tuple[float, int]:
+    """(loudness in dB below full scale, loudest sample) of 16-bit mono PCM. Silence is -90 dB."""
+    samples = array.array("h")
+    samples.frombytes(frame[: len(frame) // 2 * 2])
+    if not samples:
+        return -90.0, 0
+    rms = math.sqrt(sum(x * x for x in samples) / len(samples))
+    return (20 * math.log10(rms / 32768) if rms > 0 else -90.0), max(abs(x) for x in samples)
+
+
+def meter(state: str, db: float, peak: int, width: int = 24) -> str:
+    """One terminal line, e.g. `Listening [#####-------]   -32 dB`. The bar runs from -60 dB (empty) to 0 dB (full)."""
+    filled = max(0, min(width, round((db + 60) / 60 * width)))
+    note = ""
+    if peak >= 32000:
+        note = "  CLIPPING: turn the microphone gain down (alsamixer)"
+    elif peak == 0:
+        note = "  no sound at all: is the microphone muted or unplugged?"
+    return f"{state:<10}[{'#' * filled}{'-' * (width - filled)}] {db:5.0f} dB{note}"
+
+
+class Mic:
+    """One arecord for the whole session. It feeds the level meter all the time, so you can see the microphone is
+    on and working, and it feeds the call only while someone is talking."""
+
+    def __init__(self, device: str, show: bool = True):
+        self.device, self.show = device, show
+        self.talking = False
+        self.frames = 0
+        self.loudest_db, self.loudest_peak = -90.0, 0
+        self.failed = None  # why no audio is coming, when it is not
+        self._calls: asyncio.Queue = asyncio.Queue()
+
+    def _draw(self, line: str) -> None:
+        if self.show:
+            sys.stdout.write("\r" + line + "\x1b[K")
+            sys.stdout.flush()
+
+    async def run(self, seconds: float | None = None) -> None:
+        if not shutil.which("arecord"):
+            self.failed = "arecord not found: install alsa-utils (sudo apt install alsa-utils)"
+            return
+        proc = await asyncio.create_subprocess_exec(
+            "arecord", "-q", "-D", self.device, "-f", "S16_LE", "-r", str(SAMPLE_RATE), "-c", "1", "-t", "raw",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+        started = time.monotonic()
+        try:
+            while seconds is None or time.monotonic() - started < seconds:
+                try:
+                    frame = await asyncio.wait_for(proc.stdout.readexactly(FRAME_BYTES), timeout=3)
+                except (asyncio.IncompleteReadError, asyncio.TimeoutError):
+                    self.failed = (f"No audio from {self.device}. Is the Logitech plugged into the Pi? "
+                                   "Run `arecord -l` and use the card number it shows (plughw:CARD,0)."
+                                   if not self.frames else
+                                   f"{self.device} stopped sending audio. Was the Logitech unplugged?")
+                    self._draw("")
+                    return
+                self.frames += 1
+                db, peak = level(frame)
+                self.loudest_db = max(self.loudest_db, db)
+                self.loudest_peak = max(self.loudest_peak, peak)
+                if self.talking:
+                    self._calls.put_nowait(frame)
+                self._draw(meter("ON AIR" if self.talking else "Listening", db, peak))
+        finally:
+            if proc.returncode is None:
+                proc.terminate()
+            await proc.wait()
+
+    async def call_frames(self, stop: asyncio.Event):
+        """The frames of one call: from the moment talking starts until `stop` is set."""
+        while not self._calls.empty():  # nothing left over from an earlier call
+            self._calls.get_nowait()
+        while not (stop.is_set() and self._calls.empty()):
             try:
-                frame = await asyncio.wait_for(proc.stdout.readexactly(FRAME_BYTES), timeout=2)
-            except (asyncio.IncompleteReadError, asyncio.TimeoutError):
-                break
-            yield frame
-    finally:
-        if proc.returncode is None:
-            proc.terminate()
-        await proc.wait()
+                yield await asyncio.wait_for(self._calls.get(), timeout=0.2)
+            except asyncio.TimeoutError:
+                continue
 
 
 class Plane:
@@ -171,20 +234,51 @@ class Plane:
             self.handle(json.loads(raw))
 
 
-async def hold_to_talk(plane: Plane, device: str) -> None:
-    """Enter starts talking, Enter again stops: one press per call."""
+async def hold_to_talk(plane: Plane, mic: Mic) -> None:
+    """Enter starts talking, Enter again stops: one press per call. The meter runs the whole time."""
     loop = asyncio.get_running_loop()
-    print("Press Enter to start talking, Enter again to stop. Ctrl+C to quit.")
-    while True:
-        if await loop.run_in_executor(None, sys.stdin.readline) == "":  # input closed: quit
-            return
-        stop = asyncio.Event()
-        talking = asyncio.ensure_future(plane.talk(mic_frames(device, stop)))
-        print("  on air...")
-        await loop.run_in_executor(None, sys.stdin.readline)
-        stop.set()
-        n = await talking
-        print(f"  sent {n / 10:.1f} s")
+    runner = asyncio.ensure_future(mic.run())
+    print(f"Microphone {mic.device}: the line below shows what it hears. "
+          "Press Enter to talk, Enter again to stop, Ctrl+C to quit.")
+    try:
+        while True:
+            line = loop.run_in_executor(None, sys.stdin.readline)
+            done, _ = await asyncio.wait({line, runner}, return_when=asyncio.FIRST_COMPLETED)
+            if runner in done:
+                print(f"\n{mic.failed or 'The microphone stopped.'}")
+                return
+            if line.result() == "":  # input closed: quit
+                return
+            stop = asyncio.Event()
+            mic.talking = True
+            talking = asyncio.ensure_future(plane.talk(mic.call_frames(stop)))
+            await loop.run_in_executor(None, sys.stdin.readline)
+            mic.talking = False
+            stop.set()
+            n = await talking
+            print(f"\n  sent {n / 10:.1f} s")
+    finally:
+        runner.cancel()
+
+
+async def test_mic(device: str, seconds: float) -> int:
+    """No hub needed: show the level meter for a few seconds and say whether the microphone works."""
+    mic = Mic(device)
+    print(f"Listening on {device} for {seconds:.0f} s. Talk or clap: the bar should move.")
+    await mic.run(seconds)
+    print()
+    if mic.failed and not mic.frames:
+        print(mic.failed)
+        return 1
+    heard = mic.loudest_db > -50
+    print(f"Loudest: {mic.loudest_db:.0f} dB (peak {mic.loudest_peak} of 32767) over {mic.frames / 10:.0f} s. "
+          + ("The microphone is on and picking up sound." if heard
+             else "It is on but heard almost nothing: talk louder or check the gain."))
+    if mic.loudest_peak >= 32000:
+        print("It clipped: turn the gain down (alsamixer, then F4 for capture).")
+    if mic.failed:
+        print(mic.failed)
+    return 0 if heard else 2
 
 
 async def run(args: argparse.Namespace) -> dict:
@@ -207,7 +301,7 @@ async def run(args: argparse.Namespace) -> dict:
         else:
             reader = asyncio.ensure_future(plane.listen())
             try:
-                await hold_to_talk(plane, args.mic)
+                await hold_to_talk(plane, Mic(args.mic))
             finally:
                 reader.cancel()
     return {"station": seat["station"], "callsign": seat.get("callsign"), "frames_sent": plane.frames_sent,
@@ -216,19 +310,26 @@ async def run(args: argparse.Namespace) -> dict:
 
 def parse(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="A Raspberry Pi as one plane's radio")
-    p.add_argument("--hub", required=True, help="the hub's address, e.g. http://192.168.2.53:8765")
+    p.add_argument("--hub", help="the hub's address, e.g. http://192.168.2.53:8765 (not needed with --test-mic)")
     p.add_argument("--token", help="the room code, when the hub has one (UNSTEP_GATEWAY_TOKEN)")
     p.add_argument("--wav", help="talk once from this 16 kHz mono 16-bit WAV, listen, and exit")
     p.add_argument("--mic", default="default", help="arecord device for live talking, e.g. plughw:3,0 (see arecord -l)")
     p.add_argument("--listen", type=float, default=8.0, help="seconds to listen after a --wav call")
     p.add_argument("--fast", action="store_true", help="send a --wav as fast as possible instead of at speaking pace")
+    p.add_argument("--test-mic", action="store_true", help="only check the microphone: show its level for --seconds, no hub")
+    p.add_argument("--seconds", type=float, default=10.0, help="how long --test-mic listens")
     p.add_argument("--no-sound", action="store_true", help="print what the hub sends but do not play audio")
     return p.parse_args(argv)
 
 
 if __name__ == "__main__":
     try:
-        result = asyncio.run(run(parse()))
+        args = parse()
+        if args.test_mic:
+            raise SystemExit(asyncio.run(test_mic(args.mic, args.seconds)))
+        if not args.hub:
+            raise SystemExit("--hub is required (or use --test-mic to only check the microphone)")
+        result = asyncio.run(run(args))
         print(f"Done: sent {result['frames_sent']} frames, heard {len(result['heard'])} messages")
     except KeyboardInterrupt:
         print("\nStopped.")

@@ -43,8 +43,11 @@ async function changeLink() {
   const list = el("div", "join-list");
   p.append(list);
   let data;
-  try { data = await (await fetch("/live/addresses")).json(); }
-  catch { list.append(el("p", "join-note", "Could not read this hub's addresses.")); return; }
+  try {
+    const response = await fetch("/live/addresses");
+    if (!response.ok) throw new Error(String(response.status));
+    data = await response.json();
+  } catch { list.append(el("p", "join-note join-warn", "This hub does not list addresses yet. Restart it (it was started before this update).")); return; }
   const current = $("join-url").textContent;
   for (const option of data.options) {
     const row = el("button", "join-opt");
@@ -74,8 +77,11 @@ async function addPi() {
   const body = el("div", "join-list");
   p.append(body);
   let info;
-  try { info = await (await fetch("/live/pi-join")).json(); }
-  catch { body.append(el("p", "join-note", "Could not read the Pi join details.")); return; }
+  try {
+    const response = await fetch("/live/pi-join");
+    if (!response.ok) throw new Error(String(response.status));
+    info = await response.json();
+  } catch { body.append(el("p", "join-note join-warn", "This hub cannot give the Pi command yet. Restart it (it was started before this update).")); return; }
   body.append(el("p", "join-note", "The Pi joins as one more plane and talks with its own microphone."));
   const code = el("code", "join-code", info.command);
   const copy = el("button", "pill", "Copy");
