@@ -154,8 +154,10 @@ def main() -> int:
             base = es.rstrip("/") if path.startswith("es/") else kb.rstrip("/")
             if body and "_ndjson" in body:  # saved-objects import: a multipart file, no JSON body
                 headers_no_ct = {k: v for k, v in headers.items() if k != "Content-Type"}
-                r = client.request(method, f"{base}/{path[3:]}", headers=headers_no_ct,
-                                   files={"file": ("objects.ndjson", body["_ndjson"] + "\n", "application/ndjson")})
+                # Not through `client`: httpx merges request headers onto the client's, so its JSON Content-Type
+                # would replace the multipart boundary and Kibana answers 415.
+                r = httpx.request(method, f"{base}/{path[3:]}", headers=headers_no_ct, timeout=30,
+                                  files={"file": ("objects.ndjson", body["_ndjson"] + "\n", "application/ndjson")})
                 if r.is_success and r.json().get("success") is False:  # 200 with errors inside
                     r.status_code = 400
             else:
