@@ -71,3 +71,26 @@ def test_full_room_gets_a_friendly_answer(monkeypatch):
         full = client.post("/live/join")
         assert full.status_code == 409
         assert full.json() == {"error": "All 2 planes are taken. Watch on the projector.", "full": True}
+
+
+def test_a_freed_seat_closes_its_cockpit_speech_connection(monkeypatch):
+    r = make_join_room(monkeypatch)
+
+    async def go():
+        await r.start()
+        seats = [await r.claim_aircraft() for _ in range(3)]
+        walk_up = next(s for s in seats if s.id not in room_mod.TEAM_STATIONS)
+        closed = []
+        engine = r.edges[walk_up.callsign].tts
+        while getattr(engine, "engine", None) is not None:
+            engine = engine.engine
+
+        async def close():
+            closed.append(walk_up.callsign)
+
+        engine.close = close
+        await r.free_seat(walk_up.id, "phone gone for 20 s")
+        assert closed == [walk_up.callsign]
+        await r.stop()
+
+    asyncio.run(go())

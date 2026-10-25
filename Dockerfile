@@ -18,5 +18,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 COPY --from=app /app/dist ./app/dist
 EXPOSE 8765
-# PORT is set by the host. UNSTEP_OFFLINE=1 runs with fake speech and no API calls.
+# PORT is set by the host. The hub is live when CARTESIA_API_KEY is set; UNSTEP_OFFLINE=1 forces fake speech and no API calls.
 CMD ["sh", "-c", "python -m unstep.live --host 0.0.0.0 --port ${PORT:-8765} --no-browser ${UNSTEP_OFFLINE:+--offline}"]

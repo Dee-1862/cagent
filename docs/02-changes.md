@@ -19,6 +19,29 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: No more speech connection per line from cues, recovery lines or freed seats
+
+**Type:** Fixed
+**Area:** Audio
+
+- Rishit's benchmark hit HTTP 429 from Cartesia because a connection was opened per line and never closed (R29), and asked us to check the hub. Main's 76428c0 fixed the typed-line and controller paths. Two of our own paths had the same fault: the spoken eyes-free cues and the tower's "was blocked" recovery line each built a fresh live voice per call. Both now use the shared controller voice.
+- A walk-up plane's own cockpit voice connection was never closed when its seat was freed or the hub stopped. It is now (`_close_engine`), so seat churn at the demo can't pile up sockets.
+- Checked: 2 tests (cues and recovery share one connection; a freed seat closes its cockpit engine). The 429 itself needs a live run with six phones to be sure.
+
+**Related:** agent mail R29
+
+## 2026-10-24: Audit trail and benchmark in Elastic, "ask the audit trail", and a Moss live check (E-3, E-2, M-1)
+
+**Type:** Added
+**Area:** Audit
+
+- **E-3, audit and benchmark in Elastic:** explicit mappings for `unstep-eval` and `unstep-sim-events` (and the events index), created by `scripts/deploy_elastic.py` with Kibana data views for Discover and Lens (a failed data view is a warning, not a failed deploy). Each benchmark or simulation run is stored in `unstep-eval` as flat headline numbers plus its summary, with `kind` and `simulated` fields (`unstep/evaluation.py`, `eval_bench.py --store`, `simulate_traffic.py --elastic`). `UNSTEP_STATS_INCLUDE_SIMULATED=1` makes `/live/stats` include simulated runs so the console's "Simulated traffic" badge (Rishit's a4e2033) lights; real counts exclude them otherwise. The console was not passing `include_simulated`, so the badge could never have shown before.
+- **E-2, ask the audit trail:** a read-only Agent Builder agent `unstep-audit` with four ES|QL tools over the real events index (blocked per callsign, readback outcomes, blocked per minute, auto-resends; `STATS`, `BUCKET` and `CASE` only, no preview commands), `POST /live/ask-audit` (timeout, length limit, one question at a time, never on the radio path, off without Elastic), and a box under the console's safety panel that shows the ES|QL that answered.
+- **M-1, Moss live proof script:** `scripts/moss_live_check.py` prints the fragment-search scores to tune the floor, the "last minute" and "whole exchange" answers, whether Moss's own sort and grouping behave, and the flight log restart (two flights, one push, a brand new client, what came back). It uses a throwaway `flightlog-check-<time>` index and deletes it. `--dry-run` proves the script's own flow only.
+- Checked offline: 14 new tests (mapping fit, labels, fake and simulated runs never mixed in, mocked converse API and its failures, the route, the agent and tools as definitions, the script's dry run) and a headless browser run of the console box with a stub agent. **Nothing here has touched a real cluster or real Moss.** Step-by-step live commands are in [19-elastic-moss-plan.md](19-elastic-moss-plan.md) section 8.
+
+**Related:** [19-elastic-moss-plan.md](19-elastic-moss-plan.md), agent mail R29
+
 ## 2026-10-24: M-2: the memory layer orders, groups and floors results itself
 
 **Type:** Changed

@@ -1,0 +1,10 @@
+{
+  "id": "unstep_audit_auto_resends",
+  "type": "esql",
+  "description": "How many directives the policy agent re-sent on its own, and how many the controller approved or rejected, in the last 60 minutes. Real traffic only.",
+  "tags": ["unstep", "audit"],
+  "configuration": {
+    "query": "FROM unstep-events | WHERE @timestamp >= NOW() - 60 minutes AND type IN (\"ApprovedDirective\", \"RejectedDirective\") | STATS decisions = COUNT(*) BY type, how = COALESCE(approved_via, rejected_via)",
+    "params": {}
+  }
+}

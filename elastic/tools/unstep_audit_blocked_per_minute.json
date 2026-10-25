@@ -1,0 +1,10 @@
+{
+  "id": "unstep_audit_blocked_per_minute",
+  "type": "esql",
+  "description": "Blocked (stepped-on) calls per minute over the last 60 minutes, oldest first, to show when the frequency got busy. Real traffic only.",
+  "tags": ["unstep", "audit"],
+  "configuration": {
+    "query": "FROM unstep-events | WHERE type == \"AnomalyEvent\" AND @timestamp >= NOW() - 60 minutes | STATS blocked = COUNT(*) BY minute = BUCKET(@timestamp, 1 minute) | SORT minute ASC",
+    "params": {}
+  }
+}

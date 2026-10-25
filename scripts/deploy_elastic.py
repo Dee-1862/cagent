@@ -29,6 +29,20 @@ from unstep.config import elastic_settings, kibana_url  # noqa: E402
 
 DEFS = ROOT / "elastic"
 
+def _audit_indexes() -> dict:
+    """The audit trail and the benchmark in Elastic: simulated records live in their own index, labelled."""
+    from unstep.evaluation import EVAL_INDEX, EVAL_MAPPINGS
+    from unstep.gateway.sink import MAPPINGS
+
+    from unstep.config import elastic_events_index
+
+    return {elastic_events_index(): {"mappings": MAPPINGS}, "unstep-sim-events": {"mappings": MAPPINGS},
+            EVAL_INDEX: {"mappings": EVAL_MAPPINGS}}
+
+
+DATA_VIEWS = {  # Kibana data views, so Discover and Lens can chart the audit trail and the benchmark
+    "unstep-events": "@timestamp", "unstep-sim-events": "@timestamp", "unstep-eval": "@timestamp"}  # events: see below
+
 INDEXES = {
     # The workflow writes the agents' answers here, keyed by event id; the hub reads them back.
     "unstep-proposals": {"mappings": {"properties": {"event_id": {"type": "keyword"},
@@ -52,8 +66,14 @@ def plan(replace: bool) -> list[tuple[str, str, str, dict | None]]:
     """(label, method, "es"|"kb" + path, body) for every request, in order."""
     d = load_definitions()
     steps: list[tuple[str, str, str, dict | None]] = []
-    for name, body in INDEXES.items():
+    for name, body in {**INDEXES, **_audit_indexes()}.items():
         steps.append((f"index {name}", "PUT", f"es/{name}", body))
+    from unstep.config import elastic_events_index
+
+    views = {**DATA_VIEWS, elastic_events_index(): "@timestamp"}
+    for name, time_field in views.items():  # path from Kibana's data views API: check on first run (E-3)
+        steps.append((f"data view {name}", "POST", "kb/api/data_views/data_view",
+                      {"data_view": {"title": name, "name": name, "timeFieldName": time_field}, "override": False}))
     for tool in d["tools"]:
         steps.append((f"tool {tool['id']}", "POST", "kb/api/agent_builder/tools", tool))
     for agent in d["agents"]:
@@ -96,9 +116,10 @@ def main() -> int:
                 r = _update(client, kb.rstrip("/"), label, body)
                 exists = False
             ok = r.is_success or exists
-            failed += not ok
-            print(f"{'ok  ' if ok else 'FAIL'} {label}: {r.status_code}{' (exists, kept)' if exists else ''}"
-                  + ("" if ok else f" {r.text[:300]}"))
+            soft = label.startswith("data view")  # a convenience for Discover and Lens: never fails the deploy
+            failed += not ok and not soft
+            print(f"{'ok  ' if ok else ('warn' if soft else 'FAIL')} {label}: {r.status_code}"
+                  f"{' (exists, kept)' if exists else ''}" + ("" if ok else f" {r.text[:300]}"))
     return 1 if failed else 0
 
 

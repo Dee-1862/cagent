@@ -304,21 +304,10 @@ def summary(result: dict) -> dict:
 
 
 def store(doc: dict, transport=None) -> str | None:
-    """Index the summary in unstep-eval when Elastic is configured. Fake runs are never stored."""
-    import httpx
+    """Index the run in unstep-eval (headline numbers plus the summary). Fake runs are never stored."""
+    from unstep.evaluation import store_eval
 
-    from unstep.config import elastic_settings
-
-    if doc.get("mode") == "fake":
-        return None
-    settings = elastic_settings()
-    if not settings:
-        return None
-    url, key = settings
-    with httpx.Client(headers={"Authorization": f"ApiKey {key}"}, timeout=15, transport=transport) as client:
-        r = client.post(f"{url.rstrip('/')}/{EVAL_INDEX}/_doc", json=doc)
-        r.raise_for_status()
-        return r.json().get("_id")
+    return store_eval(doc, transport=transport)
 
 
 def fmt(p: dict | None) -> str:

@@ -205,6 +205,12 @@ async def main_async(args) -> dict:
         print(f"session {k + 1}/{args.sessions}: {len(rows)} calls so far")
     if inner is not None:
         await inner.aclose()
+        from unstep.evaluation import store_eval
+
+        try:  # the run's summary, labelled simulated, next to the benchmark runs
+            store_eval({**summarize(rows, run_id, {"seed": args.seed}), "mode": "simulated"})
+        except Exception as exc:  # the per-record index already has everything; this is the convenience copy
+            print(f"summary not stored in unstep-eval ({type(exc).__name__})")
     (out / "calls.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
     summary = summarize(rows, run_id, {k: v for k, v in vars(args).items() if k != "out"} | {"out": str(args.out)})
     (out / "summary.json").write_text(json.dumps(summary, indent=1))

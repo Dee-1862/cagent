@@ -133,11 +133,13 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
                 "languages": dict(LANGUAGES)}  # offered for the private repeat; English always first
 
     @app.get("/live/stats")
-    async def live_stats(since_ms: int = 0, include_simulated: bool = False):
+    async def live_stats(since_ms: int = 0, include_simulated: bool | None = None):
         """Per-frequency counts for the console (W4): Elastic ES|QL when configured, else the room's traces."""
         from unstep.ground.stats import frequency_stats
 
         now = now_ms()
+        if include_simulated is None:  # a screen that shows benchmark history sets this on the hub, not per request
+            include_simulated = env("UNSTEP_STATS_INCLUDE_SIMULATED", default="0").lower() in ("1", "true", "yes", "on")
         key = (since_ms, include_simulated)
         if (cached := stats_cache.get(key)) and now - cached[0] < STATS_CACHE_MS:
             return cached[1]
@@ -146,6 +148,30 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
         stats_cache.clear()  # one console polls one window; keep the cache tiny
         stats_cache[key] = (now, result)
         return result
+
+    from unstep.ground.audit_chat import audit_chat_from_env
+
+    app.state.audit_chat = audit_chat_from_env() if live else None  # tests may set their own
+
+    @app.get("/live/ask-audit")
+    async def ask_audit_available():
+        """Whether "ask the audit trail" can run here (Elastic and Kibana configured and the room is live)."""
+        return {"available": app.state.audit_chat is not None, "agent": "unstep-audit"}
+
+    @app.post("/live/ask-audit")
+    async def ask_audit(request: Request):
+        """A controller's question about the last hour, answered from the audit trail by an Elastic agent.
+        Never on the radio path; one question at a time; read-only."""
+        if gateway_token() and request.query_params.get("token") != gateway_token():
+            return JSONResponse({"error": "wrong room token"}, status_code=403)
+        chat = app.state.audit_chat
+        if chat is None:
+            return {"ok": False, "available": False, "error": "Elastic isn't connected here, so there is no audit trail to ask."}
+        try:
+            question = str((await request.json()).get("question", ""))
+        except ValueError:
+            question = ""
+        return {"available": True, **(await chat.ask(question))}
 
     @app.get("/live/flightlog")
     async def flightlog(q: str = "", callsign: str = "", since_ms: int = 0):

@@ -1,0 +1,10 @@
+{
+  "id": "unstep_audit_readback_outcomes",
+  "type": "esql",
+  "description": "How many pilot readbacks were checked in the last 60 minutes and how many did not match the instruction. Real traffic only.",
+  "tags": ["unstep", "audit"],
+  "configuration": {
+    "query": "FROM unstep-events | WHERE type == \"ReadbackResult\" AND @timestamp >= NOW() - 60 minutes | STATS readbacks = COUNT(*), wrong = SUM(CASE(match == false, 1, 0))",
+    "params": {}
+  }
+}

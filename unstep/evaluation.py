@@ -133,5 +133,76 @@ def iou(a: tuple[int, int], b: tuple[int, int]) -> float:
     return inter / union if union > 0 else 0.0
 
 
+EVAL_INDEX = "unstep-eval"
+
+EVAL_MAPPINGS = {
+    "dynamic": "strict",
+    "properties": {
+        "@timestamp": {"type": "date"},
+        "run_id": {"type": "keyword"},
+        "kind": {"type": "keyword"},  # "benchmark" (speech under radio conditions) or "simulation" (simulated traffic)
+        "mode": {"type": "keyword"},  # "live" or "fake" (fake runs are never stored)
+        "simulated": {"type": "boolean"},  # true only for kind "simulation": scripted traffic, not real use
+        "n": {"type": "integer"},
+        "seed": {"type": "integer"},
+        # Headline numbers, one flat field each, so they can be charted and queried with ES|QL.
+        "headline": {"type": "object", "dynamic": True},
+        # The whole summary, kept for reading, not indexed.
+        "summary": {"type": "object", "enabled": False},
+    },
+}
+
+
+def _val(x) -> float | None:
+    return x.get("value") if isinstance(x, dict) else None
+
+
+def eval_document(summary: dict) -> dict:
+    """The document stored in `unstep-eval` for one run: identifying fields, flat headline numbers, the summary.
+
+    Works for an eval_bench summary (kind "benchmark") and a simulate_traffic summary (kind "simulation",
+    labelled `simulated: true`)."""
+    from datetime import datetime, timezone
+
+    simulated = bool(summary.get("simulated"))
+    headline: dict = {}
+    if simulated:
+        for key in ("detected_stepped_on", "false_events_on_clean_calls", "proposal_correct_when_detected",
+                    "delivered_restrictive", "readback_error_precision", "readback_error_recall"):
+            headline[key] = _val(summary.get(key))
+        n = summary.get("calls")
+    else:
+        for cond, c in (summary.get("conditions") or {}).items():
+            tag = cond.replace("-", "_")
+            headline[f"callsign_{tag}"], headline[f"runway_{tag}"] = _val(c.get("callsign")), _val(c.get("runway"))
+            headline[f"wer_{tag}"] = _val(c.get("wer"))
+        rb, det = summary.get("readbacks") or {}, summary.get("detection_audio_only") or {}
+        headline.update({"readback_recall": _val(rb.get("recall")), "readback_false_alarm_rate": _val(rb.get("false_alarm_rate")),
+                         "overlap_detector_recall": _val(det.get("recall_iou_0_5"))})
+        n = summary.get("n")
+    return {"@timestamp": datetime.now(timezone.utc).isoformat(), "run_id": summary.get("run_id"),
+            "kind": "simulation" if simulated else "benchmark", "mode": summary.get("mode", "live"),
+            "simulated": simulated, "n": n, "seed": (summary.get("params") or {}).get("seed", summary.get("seed")),
+            "headline": {k: v for k, v in headline.items() if v is not None}, "summary": summary}
+
+
+def store_eval(summary: dict, transport=None) -> str | None:
+    """Index one run in `unstep-eval` when Elastic is configured. Fake runs are never stored."""
+    import httpx
+
+    from unstep.config import elastic_settings
+
+    if summary.get("mode") == "fake":
+        return None
+    settings = elastic_settings()
+    if not settings:
+        return None
+    url, key = settings
+    with httpx.Client(headers={"Authorization": f"ApiKey {key}"}, timeout=15, transport=transport) as client:
+        r = client.post(f"{url.rstrip('/')}/{EVAL_INDEX}/_doc", json=eval_document(summary))
+        r.raise_for_status()
+        return r.json().get("_id")
+
+
 def slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
