@@ -1,17 +1,15 @@
 """Record the live room demo (R24): ATC console plus two pilot phones, one 1920x1080 video with sound.
 
-Starts `python -m unstep.live` (warm start) on a free port, opens one browser page that holds
-three frames side by side (the ATC console, Plane A = N123AB, Plane B = H456) and drives only
-real UI clicks and taps:
+Starts `python -m unstep.live` (warm start) on a free port, or connects to a hub with --port.
+One browser page holds three frames side by side (ATC, Plane A = N123AB, Plane B = H456).
+Pilot calls and readbacks use the same websocket clients as e2e_taxi.py:
 
-  1. Auto-resend off on the console, so the decision card appears.
-  2. The tower says "hold short Runway 33" to Plane A (console suggestion button) and,
-     at the same moment, Plane B taps "Request transition": a real step-on.
-  3. TALKED OVER on the console.  4. The decision card: Approve and send.
-  5. Plane A's private advisory, "From Tower".  6. Plane A taps the correct readback.
-  7. The recovery line to the tower for Plane B.  8. The waterfall and the Elastic panel.
+  1. Both planes queue on Taxiway B; Plane A requests taxi and receives clearance.
+  2. Plane A reads back and taxis to the Runway 33 hold short line.
+  3. Plane B reads back line up and wait, then a clearance card and takeoff readback.
+  4. A stepped-on stop call, private advisory, and a wrong then corrected readback.
 
-Every step must appear within 15 s or the run stops with an error naming the step.
+Every step has a timeout and the run stops with an error naming the step.
 
 Sound: the room sends its audio over the socket (radio clips, advisory chunks, recovery
 lines), not as files, so `AUDIO_PROBE` from record_demo_video.py can't see it. A socket probe
@@ -26,6 +24,7 @@ UNSTEP_ATC_PASSWORD and UNSTEP_GATEWAY_TOKEN are read from the environment if se
 from __future__ import annotations
 
 import argparse
+import asyncio
 import base64
 import io
 import json
@@ -34,13 +33,14 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-STEP_TIMEOUT_MS = 15_000
+STEP_TIMEOUT_MS = 60_000
 WIDTH, HEIGHT = 1920, 1080
 
 # Logs every audio-bearing socket message with Date.now(), in every frame.
@@ -141,6 +141,53 @@ class StepFailed(RuntimeError):
     pass
 
 
+class Pilots:
+    """Keep both pilot websocket stations connected while the console records."""
+
+    def __init__(self, port: int):
+        import websockets
+
+        self.port = port
+        self.websockets = websockets
+        self.loop = asyncio.new_event_loop()
+        self.sockets = {}
+        self.ready = threading.Event()
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+        if not self.ready.wait(30):
+            raise RuntimeError("pilot websocket clients did not connect")
+
+    async def _pilot(self, station: str):
+        async with self.websockets.connect(f"ws://127.0.0.1:{self.port}/live/ws/{station}") as ws:
+            self.sockets[station] = ws
+            if len(self.sockets) == 2:
+                self.ready.set()
+            async for _ in ws:
+                pass
+
+    def _run(self):
+        asyncio.set_event_loop(self.loop)
+        self.task = self.loop.create_task(self._connect_both())
+        self.loop.run_forever()
+        self.loop.run_until_complete(self.task)
+        self.loop.close()
+
+    async def _connect_both(self):
+        await asyncio.gather(self._pilot("N123AB"), self._pilot("H456"))
+
+    def say(self, station: str, text: str):
+        asyncio.run_coroutine_threadsafe(
+            self.sockets[station].send(json.dumps({"type": "say", "text": text})), self.loop
+        ).result(10)
+
+    def close(self):
+        async def disconnect():
+            await asyncio.gather(*(ws.close() for ws in self.sockets.values()))
+        asyncio.run_coroutine_threadsafe(disconnect(), self.loop).result(30)
+        self.loop.call_soon_threadsafe(self.loop.stop)
+        self.thread.join(timeout=10)
+
+
 def step(name: str, fn) -> None:
     started = time.time()
     try:
@@ -165,7 +212,7 @@ def start_hub(port: int, offline: bool) -> subprocess.Popen:
     raise RuntimeError("the hub did not start")
 
 
-def run_story(page, password: str | None) -> None:
+def run_story(page, password: str | None, pilots: Pilots) -> None:
     from playwright.sync_api import expect
 
     atc, a, b = (page.frame_locator(f"#{i}") for i in ("atc", "a", "b"))
@@ -182,19 +229,84 @@ def run_story(page, password: str | None) -> None:
             atc.locator("#autonomy").click()
         expect(atc.locator("#autonomy")).not_to_be_checked(timeout=t)
 
-    def phones_ready():
-        for f in (a, b):
-            f.get_by_role("button", name="More").click(timeout=t)  # 325cdf7 put the typed lines behind "More"
-            expect(f.get_by_role("button", name="Request transition").or_(
-                f.get_by_role("button", name="Request taxi"))).to_be_visible(timeout=t)
+    def feed_has(text):
+        return atc.locator("#feed .feed-row", has_text=text).count() > 0
+
+    def wait_feed(text, timeout=t):
+        expect(atc.locator("#feed .feed-row", has_text=text).first).to_be_visible(timeout=timeout)
+
+    def planes():
+        return atc.locator("body").evaluate("() => window.unstepAirport?.inspect?.() || []")
+
+    def wait_plane(station, predicate, timeout=t):
+        deadline = time.monotonic() + timeout / 1000
+        while time.monotonic() < deadline:
+            plane = next((p for p in planes() if p["id"] == station), None)
+            if plane and predicate(plane):
+                return
+            page.wait_for_timeout(500)
+        raise AssertionError(f"{station} did not reach expected state: {planes()}")
+
+    def await_readback_window(station, instruction):
+        # Match the current instruction so an older feed row cannot open this window.
+        who = "Plane A" if station == "N123AB" else "Plane B"
+        wait_feed(f"{who} was told")
+        wait_feed(instruction)
+
+    def readback(station, instruction, text):
+        await_readback_window(station, instruction)
+        pilots.say(station, text)
+
+    def tower(text):
+        atc.locator("#say").fill(text)
+        atc.locator("#transmit").click()
+
+    def card(title):
+        return atc.locator("#requests .clearance", has_text=title).first
+
+    def queue():
+        expect(a.get_by_role("button", name="More")).to_be_visible(timeout=t)
+        expect(b.get_by_role("button", name="More")).to_be_visible(timeout=t)
+        wait_plane("N123AB", lambda p: p["state"] == "queue" and p["z"] == 14)
+        wait_plane("H456", lambda p: p["state"] == "queue" and p["z"] == 14)
+        wait_feed("Plane A now in Taxiway B at 37.")
+
+    def request_taxi():
+        pilots.say("N123AB", "Tower, Cessna one two three, request taxi")
+        expect(card("Plane A asks")).to_be_visible(timeout=t)
+        expect(card("Plane A asks").locator(".proposal")).to_contain_text("taxi to runway 33 via Bravo, hold short of runway 33")
+        card("Plane A asks").locator("button.approve").click()
+        readback("N123AB", "taxi to runway 33 via Bravo, hold short", "taxi to runway 33 via bravo, hold short of runway 33, Cessna 123")
+        wait_feed("Plane A read it back correctly")
+        wait_plane("N123AB", lambda p: p["state"] == "holding" and p["x"] == -33)
+
+    def plane_b_lineup():
+        tower("Helicopter 456 line up and wait runway 15")
+        readback("H456", "line up and wait runway 15", "line up and wait runway 15, helicopter 456")
+        wait_feed("Plane B read it back correctly")
+        wait_plane("H456", lambda p: p["state"] == "lined_up")
+
+    def plane_b_departure():
+        expect(card("Next for Plane B")).to_be_visible(timeout=t)
+        expect(card("Next for Plane B").locator(".proposal")).to_contain_text("cleared for takeoff")
+        card("Next for Plane B").locator("button.approve").click()
+        readback("H456", "runway 15, cleared for takeoff", "runway 15 cleared for takeoff, helicopter 456")
+        wait_plane("H456", lambda p: p["alt"] > 1)
 
     def step_on():
-        atc.locator('[data-say*="hold short runway three three"]').click()
-        b.get_by_role("button", name="Request transition").click()
+        # DOM clicks dispatch at once; Playwright's actionability waits can separate the
+        # two radio calls by several seconds after the scene gets busy.
+        atc.locator('[data-say*="hold short runway three three"]').evaluate("button => button.click()")
+        b.get_by_role("button", name="Request transition").evaluate("button => button.click()")
 
     step("console signed in", login)
     step("auto-resend off, so the decision card shows", autonomy_off)
-    step("both phones on the radio", phones_ready)
+    step("both planes queue on Taxiway B with Geo rows", queue)
+    step("Plane A requests, reads back, and taxis to runway 33", request_taxi)
+    step("Plane B reads back line up and wait runway 15", plane_b_lineup)
+    step("Next for Plane B is sent and read back; Plane B departs", plane_b_departure)
+    b.get_by_role("button", name="More").click(timeout=t)
+    expect(b.get_by_role("button", name="Request transition")).to_be_visible(timeout=t)
     step("tower says hold short 33 while Plane B talks", step_on)
     step("TALKED OVER on the console", lambda: expect(atc.locator(".talked-over >> visible=true").first).to_be_visible(timeout=t))  # the Legend also says "talked over"
     page.wait_for_timeout(1500)
@@ -203,11 +315,21 @@ def run_story(page, password: str | None) -> None:
     step("Plane A hears 'From Tower' privately",
          lambda: expect(a.get_by_text("From Tower").first).to_be_visible(timeout=t))
     page.wait_for_timeout(2500)
-    step("Plane A reads back correctly",
-         lambda: a.get_by_role("button", name="Read back: hold short 33").click(timeout=t))
     step("recovery line to the tower for Plane B",
          lambda: expect(atc.get_by_text("was blocked").locator("visible=true").first).to_be_visible(timeout=t))
     page.wait_for_timeout(3000)
+
+    def wrong_then_correct():
+        tower("Cessna 123 line up and wait runway 33")
+        readback("N123AB", "line up and wait runway 33", "line up and wait runway 13, Cessna 123")
+        wait_feed("Wrong readback from Plane A")
+        if next(p for p in planes() if p["id"] == "N123AB")["state"] != "holding":
+            raise AssertionError("Plane A moved after a wrong readback")
+        pilots.say("N123AB", "line up and wait runway 33, Cessna 123")
+        wait_feed("Plane A read it back correctly")
+        wait_plane("N123AB", lambda p: p["state"] == "lined_up")
+
+    step("wrong readback flagged, then corrected", wrong_then_correct)
 
     def panels():  # the calm console keeps these behind the evidence sheet and the Safety tab
         atc.locator("#show-evidence").click(timeout=t)
@@ -224,16 +346,18 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--offline", action="store_true", help="fake speech, no Cartesia, Moss or Elastic")
     p.add_argument("--out", default=str(ROOT / "data" / "video" / "unstep-live.mp4"))
+    p.add_argument("--port", type=int, help="use an already running hub on this port")
     args = p.parse_args(argv)
     if not (ROOT / "app" / "dist" / "index.html").is_file():
         print("Build the pilot app first: cd app && npm install && npm run build", file=sys.stderr)
         return 1
     from playwright.sync_api import sync_playwright
 
-    port = free_port()
-    server = start_hub(port, args.offline)
+    port = args.port or free_port()
+    server = None if args.port else start_hub(port, args.offline)
     try:
         with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
+            pilots = Pilots(port)
             launch = dict(args=["--autoplay-policy=no-user-gesture-required"])
             try:
                 browser = pw.chromium.launch(**launch)
@@ -247,7 +371,7 @@ def main(argv=None) -> int:
             page.set_content(layout_html(port, os.environ.get("UNSTEP_GATEWAY_TOKEN")))
             failed = None
             try:
-                run_story(page, os.environ.get("UNSTEP_ATC_PASSWORD"))
+                run_story(page, os.environ.get("UNSTEP_ATC_PASSWORD"), pilots)
             except StepFailed as exc:
                 failed = exc
             events = []
@@ -259,6 +383,7 @@ def main(argv=None) -> int:
             video = Path(page.video.path())
             context.close()
             browser.close()
+            pilots.close()
             out = Path(args.out)
             mix(video, audio_plan(events, t0), out, Path(tmp))
             print(f"wrote {out} ({len(events)} audio messages)")
@@ -267,7 +392,8 @@ def main(argv=None) -> int:
                 return 1
         return 0
     finally:
-        server.terminate()
+        if server:
+            server.terminate()
 
 
 if __name__ == "__main__":
