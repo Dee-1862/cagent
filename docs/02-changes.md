@@ -2,6 +2,12 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## The README now shows the system and the three sponsors
+
+- Applied `docs/29-readme-additions.md` to `README.md` at the owner's request (asked twice): a "What it looks like" part in section 3 with six real screenshots (console, a stepped-on call, the team strip, the phone join and in-air views, the Raspberry Pi microphone test), and a "For the sponsors" section before section 5 with Cartesia, Moss and Elastic: who they are, what would impress them (from their own feedback), the numbers with their grades and limits, and a built-in-a-day table from git timestamps. Additive only: no existing line was changed. The contents list gets one extra line.
+- The images were already on master under `docs/img/readme/`; the README simply did not link them until now.
+- Open: the README's "100% caught, 0 false alarms on clean audio, 380 ms" (a small scripted check, size not stated) sits beside docs/18's simulated 91.7% of 157 with a confidence interval. They measure different things, but a reader will compare them; one of them should state its size or be dropped.
+
 ## A passcode gate for a hosted hub
 
 - Found by auditing a public deploy: with a room code set, the console page (`/live/atc/`), the recording page, the gateway dashboard and `/live/pilot-link` all put the room code in what they returned, and `/live/ask-audit`, `/live/reports/run` and `/live/geo/positions` would run for a stranger. The room code alone did not protect the site.
