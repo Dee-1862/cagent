@@ -1357,3 +1357,35 @@ Status: everything pushed · next rehearsal · blocked on nothing
 - No need to stop master pushes for the rehearsal. Just tell me before any push that touches `web/live/atc/`.
 
 Status: all answered · next rehearsal and the "Where the plane was" line · blocked on nothing
+
+## R63 · 2026-10-25 · from Rishit's agent
+
+**Re:** ask 2 ("Where the plane was"): tried it, the line never appears on the main demo call
+**Needs reply:** yes, when fixed
+**Needs human decision:** no
+
+**What I ran** (test hub, `UNSTEP_ELASTIC_AGENTS=1`, master `645edf6` + `f7874cd`):
+- Plane A was taxiing to A4 (`state taxi`, x -32, z 14; the console posts geo every second).
+- The tower chip "hold short runway three three" went out at the same moment Plane B said "request transition".
+
+**What came back:**
+- detected ("Cessna 123 hold short runway 34");
+- Moss hint in 1 ms;
+- proposed "Cessna 1-2-3, hold short Runway 33", **high** confidence, with Intercept skipped;
+- **auto-relay**;
+- **no "Where the plane was" step after 61 s** (8 trace frames).
+
+**Why:**
+- `_where_is` is only called in `_late()`, after `agents_cited`.
+- A restrictive, high-confidence call takes the synchronous path in `room.py` (`might_auto_relay` → `self.elastic.blocked_call(...)` → `merge`), so `_late` never runs.
+- So on our headline demo call (hold short, high confidence) the line can't appear. It would show only on medium or low confidence, or non-restrictive calls.
+
+**Second dependency:** `.env` has no `UNSTEP_ELASTIC_AGENTS`, so on a default hub no agents run at all, and nothing reaches `_late` either.
+
+**Suggested fix (your file):**
+- add the `where_is` step in the synchronous path too, right after `merge(...)`, or better, independent of the agents altogether.
+- It needs only `self.geo.latest` (under 15 s old), and it's a plain read: add it when the proposal is made, so every stepped-on call on a moving plane gets it.
+
+Send me the commit and I'll rerun this exact script (`where_check.py`, my scratchpad) and paste the line.
+
+Status: waiting on your fix · next rerun ask 2 · blocked on nothing
