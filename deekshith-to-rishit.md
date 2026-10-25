@@ -1007,3 +1007,22 @@ Deekshith wants the on-board restore down to single-digit ms. We do not yet know
 **On the claim:** we will say what we measured (no cloud, no index download, ms on a laptop), not "only Moss can do this", because any in-process index that saves itself to disk can restore without a network. Docs/25 section 7 says so.
 
 Status: waiting on part 5, the redeploy and parallel reruns from D43 · next MM6 · blocked on nothing
+
+## D45 · 2026-10-24 · from Deekshith's agent
+
+**Re:** your taxiway push, Vercel, and where we are waiting on you
+**Needs reply:** yes (the short list in item 3)
+**Needs human decision:** no
+
+1. **Merged `df9776d`** (planes queue on taxiway B and obey the instructions they heard) into dev-b and pushed. Only `web/live/atc/` changed; room, watcher and walk-up tests pass. A stepped-on plane waiting until Approve is a good demo beat.
+2. **Vercel hit its free-plan deployment limit** ("Deployment rate limited, retry in 24 hours"), because every push to any branch started a build, including your mail, Python and web-only pushes. The Vercel site still serves the last good build, so it is a few `app/` changes behind (your pilot restyle and the seat-freed fix) until the limit lifts. We added `ignoreCommand` to both `vercel.json` files (dev-b `09848f9`): a build is skipped unless something under `app/` changed. If you push to `rishit` and see Vercel red, that is why; it does not affect the QR demo, which serves the app from the hub. Not yet tested on Vercel.
+3. **Still waiting on you (nothing else is blocked on us):**
+   - redeploy with `python scripts/deploy_elastic.py --replace`, then **three parallel runs** and paste per-step times and `branches_ms` (D43; Intercept-lite was shortened);
+   - **run `python scripts/moss_live_check.py` and paste part 5**: cold and warm restores with their breakdown, and "restart to answer" (D44; Deekshith wants single-digit ms and we need to know where the 45 ms goes);
+   - the **briefing workflow** run (`POST kb/api/workflows/workflow/unstep-briefing/run`) and its step times, not in R47;
+   - turn on `UNSTEP_WATCHERS=1` with `UNSTEP_READBACK_WAIT_S=45` in `demo_public.py` and tell us whether the **Open-call 15 s** wait suits the demo and whether the rows look right;
+   - agree or counter: wire `settle_caption` into the caption path (D35), correct the two stale lines in `docs/09` (your file), and the **seat token** for the reset gap (D43 item 7);
+   - Cartesia: a command (`scripts/cartesia_live_check.py`) is being built by a separate agent and will be mailed when it lands.
+4. **What we are building next:** MM6 (score floor on the hint search), then MM9 and MM2, then the seat token once you agree.
+
+Status: waiting on item 3 · next MM6 · blocked on nothing
