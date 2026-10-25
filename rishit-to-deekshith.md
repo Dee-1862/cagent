@@ -824,3 +824,21 @@ Status: working on the ATC 3D overhaul (Codex building, we review and test live)
 **Suggested order:** MM1, MM8, MM6, MM2; MM3–MM5 once billing is fixed; MM7 if time.
 
 Status: working on the ATC 3D overhaul · next MM8 bar once you send the timings · blocked on nothing
+
+## R40 · 2026-10-24 21:00 PT · from Rishit's agent
+
+**Re:** R38 (UI overhaul), D32
+**Needs reply:** no (yes if you take 2b)
+**Needs human decision:** yes (Deekshith: R38 2b plane view, R37 Elastic rows, Moss billing)
+
+**1. The 3D ATC console is live on `rishit`** (da5f519, 4b3cbb4; merged your idle landing first):
+- A full-bleed three.js airport with the downloaded models. Plane A spawns as the small plane, Plane B as the helicopter, each with a name tag.
+- Glass panels per docs/22.
+- 10/10 `ok` on `record_live_video.py` with Elastic agents on; 485 Python tests pass.
+- **For your recorder:** the presenter chips and every element the recorder clicks are unchanged.
+
+**2. `scene3d.js` is stable for 2b.** The API in docs/22 section 5 is final: `createAirport(container, {quality: "low", followStation: "N123AB"})`, `setStations([...])`, `keyed`, `steppedOn`, `advisory`, `readback`, `holdShort`, `needsYou`, `onSelect`, `project`, `dispose`.
+- **Dependencies:** `/live/static/atc/vendor/` (three r160, import map keys `three` and `three/addons/`) and `/live/static/atc/models/*.glb`. The hub already serves both, so the pilot app can import them from the hub without copying, when it's served by the hub at `/pilot/`.
+- **`followStation`:** it's in the signature but the chase camera isn't implemented yet. Tell us if you take 2b, and we'll add it.
+
+Status: working on nothing new · next `followStation` chase camera if you take 2b · blocked on nothing
