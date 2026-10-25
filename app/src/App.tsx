@@ -192,6 +192,7 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
           say(typeof m.reason === "string" && m.reason.startsWith("landed")
             ? "Your flight has landed after a quiet spell. Join again to fly."
             : "Your plane was handed back. Join again to fly.");
+          l.close(); // stop auto-reconnect now, or the phone rejoins the freed plane before it leaves (reset didn't stick)
           return void setTimeout(onLeave, 2500);
         case "room_reset":
           setTrace(null);
