@@ -367,7 +367,7 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
   const pttState = conn !== "open" ? "off" : onAir ? (others.length ? "clash" : "air") : others.length ? "busy" : "idle";
   const pttText = {
     off: "Reconnecting...",
-    idle: mic.ready || Mic.available() ? "HOLD TO TALK" : "Mic off",
+    idle: mic.ready || Mic.available() ? "Hold to talk" : "Mic off",
     air: "ON AIR",
     busy: `${others.map(nameOf).join(" and ")} talking`,
     clash: "TALKED OVER",
@@ -536,7 +536,7 @@ function SayGuide({ spoken, trace, lines }: { spoken: string; trace: Trace | nul
     <div className={`say-guide ${verdict ? (verdict.ok ? "right" : "wrong") : ""}`}>
       {verdict && <div className="say-verdict">{verdict.ok ? "✓ Read back correctly" : `✗ Wrong readback: ${verdict.why}. Say it again:`}</div>}
       <div className="say-label">{toldWhat ? "Read it back" : "Say this"}</div>
-      <p className="say-line">"{parts.map(([, v]) => v).join(", ")}"</p>
+      <p className="say-line">&ldquo;{parts.map(([, v]) => v).join(", ")}&rdquo;</p>
       <div className="say-parts">{parts.map(([k, v]) => <span key={k}><b>{k}</b>{v}</span>)}</div>
     </div>
   );
