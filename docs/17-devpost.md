@@ -24,6 +24,9 @@ An FAA study (CAMI, DOT/FAA/AM-05/19) found about 1 in 100 transmissions in a bu
 
 ## What it does
 
+Unstep is a team of AI agents that works the radio alongside an air traffic controller. Every plane gets a cockpit agent with its own memory; on the ground, agents check every call against the FAA rules. The controller stops doing the busywork and **supervises the agents**, stepping in only when it matters. Agents repeat, check, notify and look things up; they never grant permission.
+
+- **"Agents at work" feed:** the controller's screen shows what each agent just did (green), anything that needs a decision (amber) and anything wrong (red), with the agent and the technology behind each row.
 - **Detects a stepped-on call** in the cockpit, from what the radio actually delivered.
 - **Recovers the lost instruction** from the controller's own transmission, and from the plane's own memory of recent clearances.
 - **A human decides.** The controller sees a plain-English decision card and approves in one click. Only the controller's own stop/wait words can be re-sent automatically, under visible policy rules, with an off switch.
@@ -49,13 +52,19 @@ The demo: the laptop is the control tower on the projector, and phones are the p
   - speed control (0.85) for corrections;
   - **multilingual output in the same voice.**
 - A TTS → STT evaluation loop over 40 ATC lines. **Live: callsign, action and runway 100%, every wrong readback caught, zero false alarms.**
-- A larger benchmark harness: 200 lines through our VHF radio channel at several noise levels, three voices, a key-terms A/B, stepped-on mixes, and 95% confidence intervals. **[confirm live: numbers come from `scripts/eval_bench.py --live`]**
+- **A 200-line live benchmark** through our simulated VHF radio channel at several noise levels, three voices, with 95% confidence intervals (`scripts/eval_bench.py --live`, Rishit's laptop, 2026-10-24):
+  - clean audio: callsign 100%, runway 100%;
+  - heavy radio noise (radio-5): callsign 94.5%, runway 98.5%;
+  - **Cartesia key terms in noise (radio-10):** callsign 62.5% → 95.5%, runway 81.6% → 98.5%, word error rate 0.191 → 0.009;
+  - stepped-on call detection: 100% caught, 0 false alarms on clean audio, 380 ms;
+  - honest weak spot: in noise, 25% of correct readbacks were flagged as wrong (safe direction: an extra correction), worse than the published HAAWAII lab figure of 11%.
 
 **Moss: the plane's own memory, on board**
 - **One local Moss session per plane:** every clearance it hears is indexed live, with no cloud index.
   - Search over 6 plane sessions measured at 0–1 ms.
   - The garbled fragment the cockpit heard ("Cessna 123, short runway 30") is run as a hybrid search over the plane's own memory, and the result, with its source record and search time, is shown on the console beside the hint. **The newest clearance gives the hint ("hold short Runway 33"); Moss's search is the evidence.**
   - **Safety rule:** a hint only ever says stop or wait, and an older clearance can never come back ahead of a newer one.
+- **Measured live (2026-10-24):** the garbled fragment scores 1.0 against the right clearance and unrelated speech scores 0.0, below our floor; the pilot's "what did the tower tell me in the last minute?" is answered from the plane's memory in under 1 ms.
 - **Moss Inference** translates the private advisory, about 165 ms to first token warm. A translation is used only if every digit survives; otherwise the pilot gets English only.
 
 **Elastic: checks and remembers**
@@ -65,12 +74,14 @@ The demo: the laptop is the control tower on the projector, and phones are the p
   - **Intercept** matches the lost words to the controller's transcript.
   - **Compliance** cites the FAA JO 7110.65 paragraph.
   - **Readback Auditor** explains a mismatch.
-  - Agents never write the instruction; they cite and can only lower confidence. **[confirm live]**
+  - Agents never write the instruction; they cite and can only lower confidence, and a citation is kept only if that paragraph exists in our FAA index.
+- **Measured live (2026-10-24), on our Elastic Cloud project:** 52 FAA JO 7110.65 paragraphs indexed; 4 agents, 7 tools and 2 workflows deployed; on real stepped-on calls the Compliance agent cited **¶3-7-4 "Runway Proximity"** with an exact quote; the percolator matched a readback in 3.0 ms; the ES|QL safety panel answers in 1.1–1.5 s; "ask the audit trail" answered "which aircraft had the most blocked calls?" correctly with the query shown.
+- **Honest limit:** the agents take about 6 s (call end to pilot hearing the fix: 9.2 s with agents on, 2.9 s without). **[confirm live: once the room shows the card at once and adds the citation when it arrives, re-measure and replace this line]**
 
 **Stack**
 - **Hub:** Python 3.12, FastAPI WebSocket hub with role-based routing; Pydantic contracts.
 - **Interfaces:** a React pilot app, and a plain HTML/JS ATC console.
-- **Tests:** about 430 Python tests and 25 pilot-app tests passing (offline, with fakes for the vendor services).
+- **Tests:** about 480 Python tests and 25 pilot-app tests passing (offline, with fakes for the vendor services).
 
 ## Challenges we ran into
 
