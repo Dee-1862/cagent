@@ -2,5 +2,6 @@
   "framework": "vite",
   "installCommand": "npm ci --prefix app",
   "buildCommand": "npm run build --prefix app",
-  "outputDirectory": "app/dist"
+  "outputDirectory": "app/dist",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- \"$(git rev-parse --show-toplevel)/app\""
 }

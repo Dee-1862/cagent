@@ -17,6 +17,11 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## Vercel builds only when `app/` changes
+
+- Vercel's free plan stopped new builds ("Deployment rate limited, retry in 24 hours") after we pushed many commits, each of which built a preview, including mail-only and Python-only ones. `ignoreCommand` in `vercel.json` and `app/vercel.json` now skips a build when the commit changed nothing under `app/` (exit 0 means skip; a missing parent commit makes git fail, which builds as before). The site that is up now is the last successful build; the limit lifts after the 24 hours. Not tested on Vercel from here.
+
 ## Restart to answer, timed
 
 - `moss_live_check.py` part 5 also prints "restart to answer": the time from opening a restarted session to the answer to "what was my last clearance?" (open, restore, seed what is missing, ask).
