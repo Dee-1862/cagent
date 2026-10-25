@@ -373,16 +373,22 @@ class GroundAgents:
         proposal = propose(event, transcript)
         agents = None
         late = False
+        rule = None
         if self.elastic is not None and transcript is not None:
             from unstep.cockpit.phraseology import is_restrictive
-            from unstep.ground.elastic_agents import merge
+            from unstep.ground.elastic_agents import merge, with_closest_rule
+
+            # Hybrid search (+ rerank) of the FAA order: the closest rule in the time of a search, before any
+            # language model. The card shows it as a search result; the Compliance agent can still replace it.
+            rule = await self.elastic.cite(proposal.instruction_text)
+            proposal = with_closest_rule(proposal, rule)
 
             # The agents can veto (Intercept says no match). If the policy might relay this by itself
             # (restrictive and high confidence), the proposal still waits for them, as before. Otherwise
             # a person decides anyway, so the card goes out at once and the citation follows (3a).
             might_auto_relay = is_restrictive(proposal.slots.action) and proposal.confidence == "high"
             if might_auto_relay or self.on_late is None:
-                agents = await self.elastic.blocked_call(event, transcript, proposal)
+                agents = await self.elastic.blocked_call(event, transcript, proposal, rule=rule)
                 proposal = merge(proposal, agents)
             else:
                 late = True
@@ -390,7 +396,7 @@ class GroundAgents:
         await self.send(self._audit(event, transcript, proposal, started, agents,
                                     "Elastic agents pending (late)" if late else None))
         if late:
-            task = asyncio.create_task(self._late(event, transcript, proposal, started))
+            task = asyncio.create_task(self._late(event, transcript, proposal, started, rule))
             self._tasks.add(task)
             task.add_done_callback(self._tasks.discard)
 
@@ -410,12 +416,12 @@ class GroundAgents:
                                    "intercept": agents.intercept, "compliance": agents.compliance,
                                    "citation": proposal.rule_citation} if agents else {})})
 
-    async def _late(self, event, transcript, proposal, started) -> None:
+    async def _late(self, event, transcript, proposal, started, rule=None) -> None:
         """The card is already on screen; add the agents' citation when it arrives. The instruction never changes."""
         from unstep.ground.elastic_agents import late_wait_s, merge
 
         try:
-            agents = await self.elastic.blocked_call(event, transcript, proposal, wait_s=late_wait_s())
+            agents = await self.elastic.blocked_call(event, transcript, proposal, wait_s=late_wait_s(), rule=rule)
             if agents is None:
                 return
             merged = merge(proposal, agents)

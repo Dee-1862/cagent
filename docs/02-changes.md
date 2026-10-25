@@ -8,6 +8,14 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## Search-first citation, a one-agent workflow and a briefing workflow
+
+- Rishit's live timings (R42) show the Elastic workflow takes about 24 s (intercept 12.7 s, compliance 10.0 s, store 0.3 s), with compliance looking capped at 10 s.
+- The hub now runs a hybrid search (keyword plus semantic, fused, then reranked with `.jina-reranker-v3`) of the FAA order before sending the card, and shows the closest paragraph with its score and time, labelled as a search result. `UNSTEP_RERANK_ID`, `UNSTEP_CITE_WAIT_S` (1.5 s).
+- New opt-in workflow `unstep-blocked-call-fast` and tool-less agent `unstep-ground`: one agent call given the paragraph the search found (`UNSTEP_BLOCKED_WORKFLOW`). The default stays the two-agent workflow that has run live.
+- New `unstep-briefing` workflow and `unstep-briefings` index (with a timestamp pipeline). None of the three has run against a live cluster yet.
+
 ## Cartesia findings, and a 429 backoff
 
 - New `docs/24-cartesia-findings.md`: five graded findings (manual STT tail latency and handshakes, ink-2 final-text deltas with no word timestamps, HTTP 429 with several clients, the "niner" dictionary entry, the turns endpoint report). Several turned out to be documented behaviour or our own doing, and the doc says so. Items taken from Cartesia's docs came from search snippets and must be re-read before quoting.

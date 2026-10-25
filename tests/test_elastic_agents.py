@@ -152,6 +152,8 @@ def test_definitions_are_consistent():
     sent = set(json.loads(json.dumps({"event_id": 1, "callsign": 1, "heard_text": 1, "tower_text": 1,
                                       "lost_words": 1, "instruction": 1})))
     assert {i["name"] for i in blocked["triggers"][0]["inputs"]} == sent  # what blocked_call() sends
+    fast = yaml.safe_load((DEFS / "workflows" / "unstep-blocked-call-fast.yaml").read_text())
+    assert {i["name"] for i in fast["triggers"][0]["inputs"]} == sent | {"rule_paragraph", "rule_title", "rule_text"}
 
 
 def test_deploy_dry_run_lists_every_object():

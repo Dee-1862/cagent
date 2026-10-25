@@ -13,7 +13,10 @@ class SlowAgents:
     def __init__(self, delay, result):
         self.delay, self.result, self.waits = delay, result, []
 
-    async def blocked_call(self, event, transcript, proposal, wait_s=None):
+    async def cite(self, query, wait_s=None):
+        return None
+
+    async def blocked_call(self, event, transcript, proposal, wait_s=None, rule=None):
         self.waits.append(wait_s)
         await asyncio.sleep(self.delay)
         return self.result

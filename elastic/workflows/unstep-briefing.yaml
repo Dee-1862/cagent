@@ -1,0 +1,48 @@
+# Shift handoff briefing, built the way Elastic's workshop repo builds its digest: search, then an agent writes it,
+# then the result is saved so apps and people can read it later. Not on the radio path: it can take as long as the
+# agent needs. Run it by hand from Kibana, or add a scheduled trigger once a live run looks right. The agent is told to
+# use only the records it is given, so every line can be traced to an event.
+version: "1"
+name: unstep-briefing
+description: Shift handoff briefing from the last hour of the audit trail
+enabled: true
+triggers:
+  - type: manual
+    inputs:
+      - name: focus
+        type: string
+        required: false
+steps:
+  - name: find_events
+    type: elasticsearch.search
+    with:
+      index: unstep-events
+      size: 40
+      sort: [{"@timestamp": "desc"}]
+      query:
+        range:
+          "@timestamp":
+            gte: now-60m
+      _source: ["@timestamp", "type", "callsign", "event_id", "frequency", "payload"]
+  - name: write_briefing
+    type: ai.agent
+    agent-id: unstep-audit
+    create-conversation: true
+    with:
+      message: |-
+        You are writing a shift handoff briefing for the next controller. Focus: {{ inputs.focus | default: "anything left open" }}.
+        Using ONLY the records below, write:
+        - one sentence on how busy the last hour was
+        - open items: blocked calls with no decision, readbacks that never matched, any aircraft blocked more than once
+        - for every line, the event_id it comes from in brackets
+        If there is nothing open, say so plainly. Never guess.
+        Records:
+        {{ steps.find_events.output.hits.hits | json }}
+  - name: save_briefing
+    type: elasticsearch.index
+    with:
+      index: unstep-briefings
+      document:
+        focus: '{{ inputs.focus | default: "anything left open" }}'
+        briefing: "{{ steps.write_briefing.output.message }}"
+        execution_id: "{{ execution.id }}"

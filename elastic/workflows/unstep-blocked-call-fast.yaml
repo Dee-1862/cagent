@@ -1,0 +1,63 @@
+# The same job as unstep-blocked-call in one agent call. The hub has already found the closest FAA paragraph with
+# hybrid search and a reranker (no model involved) and passes it in, so the agent needs no tool calls and the run is
+# one model round trip instead of two agents with a search each. Live runs of the two-agent version took about 24 s
+# (intercept 12.7 s, compliance 10.0 s). Turn this one on with UNSTEP_BLOCKED_WORKFLOW=unstep-blocked-call-fast
+# after a live run shows it is faster. The hub stores nothing from it that it does not check: the citation is kept
+# only if that paragraph exists in unstep-faa, as before.
+version: "1"
+name: unstep-blocked-call-fast
+description: One agent call for a stepped-on radio call, given the closest FAA paragraph
+enabled: true
+triggers:
+  - type: manual
+    inputs:
+      - name: event_id
+        type: string
+        required: true
+      - name: callsign
+        type: string
+        required: true
+      - name: heard_text
+        type: string
+        required: true
+      - name: tower_text
+        type: string
+        required: true
+      - name: lost_words
+        type: string
+        required: false
+      - name: instruction
+        type: string
+        required: true
+      - name: rule_paragraph
+        type: string
+        required: false
+      - name: rule_title
+        type: string
+        required: false
+      - name: rule_text
+        type: string
+        required: false
+steps:
+  - name: ground
+    type: ai.agent
+    agent-id: unstep-ground
+    create-conversation: true
+    with:
+      message: |-
+        Event {{ inputs.event_id }} for {{ inputs.callsign }}.
+        The cockpit heard: "{{ inputs.heard_text }}"
+        The controller said at the same time: "{{ inputs.tower_text }}"
+        Words lost in the overlap: "{{ inputs.lost_words }}"
+        Proposed instruction: "{{ inputs.instruction }}"
+        Closest FAA paragraph found by search: {{ inputs.rule_paragraph }} {{ inputs.rule_title }}
+        Paragraph text: {{ inputs.rule_text }}
+  - name: store
+    type: elasticsearch.index
+    with:
+      index: unstep-proposals
+      id: "{{ inputs.event_id }}"
+      document:
+        event_id: "{{ inputs.event_id }}"
+        execution_id: "{{ execution.id }}"
+        ground: "{{ steps.ground.output.message }}"
