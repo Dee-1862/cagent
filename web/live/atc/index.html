@@ -49,7 +49,7 @@
         <nav class="side-tabs" aria-label="Console views"><button type="button" data-tab="agents" aria-selected="true">Agents</button><button type="button" data-tab="safety" aria-selected="false">Safety</button><button type="button" data-tab="ask" aria-selected="false">Ask</button></nav>
         <div class="tab-pane" data-pane="agents">
         <div class="section-title"><h2>Agents at work</h2><small><span id="decision-count">0</span> need you</small></div>
-        <div id="inbox"></div>
+        <div id="requests" aria-live="polite"></div><div id="inbox"></div>
         <ol id="feed" class="feed" aria-live="polite"></ol>
         <label class="switch"><input id="autonomy" type="checkbox" disabled><span>Auto-resend the tower’s own stop/wait instructions</span></label>
         </div>

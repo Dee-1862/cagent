@@ -519,11 +519,63 @@ function obeyIfHeard(tx) {
     if (!missed) obey(`tx-${tx.start_ms}`, target.id, text);
   }, 1500);
 }
+// The Clearance agent: a pilot's request ("request taxi", "ready for departure") gets a proposed clearance built
+// from its flight plan (Elastic), its last tower call (its Moss session) and where every plane is. Fixed rules
+// in clearance.js decide; the controller sends it with one tap.
+let Clearance = null;
+import("./clearance.js").then((m) => { Clearance = m; }).catch((error) => console.warn("Clearance agent", error));
+const requests = new Map();  // station -> {stationId, text, plan, last, proposal}
+async function clearanceRequest(stationId, text) {
+  const request = Clearance?.parseRequest(text);
+  if (!request) return;
+  let context = null;
+  try { context = await (await fetch(`/live/clearance-context/${encodeURIComponent(stationId)}`)).json(); }
+  catch (error) { console.warn("Clearance context", error); }
+  const station = state.stations.get(stationId);
+  const plan = context?.flight_plan?.runway ? context.flight_plan : {runway: "33", route: "Bravo", source: "console"};
+  const planes = window.unstepAirport?.inspect?.() || [];
+  const proposal = Clearance.proposeClearance({callsign: station?.spoken || station?.callsign || stationId, request, plan,
+    plane: planes.find((p) => p.id === stationId), others: planes.filter((p) => p.id !== stationId).map((p) => ({...p, name: shortName(p.id)}))});
+  requests.set(stationId, {stationId, text, plan, last: context?.last_tower_call, proposal});
+  const id = `clearance-${stationId}`;
+  state.actions.set(id, {id, ts: now(), agent: "Clearance agent", kind: "rule", status: "needs_you", station: stationId,
+    text: `${shortName(stationId)} asked “${text}”. Proposed: “${proposal.text}”`, sponsor: plan.source === "elastic" ? "Elastic" : null});
+  renderRequests(); renderFeed();
+}
+function sendClearance(stationId) {
+  const r = requests.get(stationId);
+  if (!r || !send({type: "say", text: r.proposal.text})) return;
+  requests.delete(stationId);
+  const id = `clearance-${stationId}`;
+  state.actions.set(id, {id, ts: now(), agent: "Clearance agent", kind: "rule", status: "done", station: stationId,
+    text: `You sent “${r.proposal.text}” to ${shortName(stationId)}`, sponsor: r.plan.source === "elastic" ? "Elastic" : null});
+  renderRequests(); renderFeed();
+}
+function renderRequests() {
+  const box = $("requests");
+  if (!box) return;
+  box.replaceChildren(...[...requests.values()].map((r) => {
+    const card = el("article", undefined, "decision clearance");
+    card.append(el("h3", `${shortName(r.stationId)} asks`), el("p", `“${r.text}”`, "words"));
+    const facts = el("p", undefined, "reason");
+    facts.append(el("small", "What the agent checked"));
+    facts.append(el("span", `Flight plan: ${r.plan.summary || `runway ${r.plan.runway} via ${r.plan.route}`} (${r.plan.source === "elastic" ? `Elastic · ${r.plan.ms} ms` : "console default"})`));
+    if (r.last?.text) facts.append(el("span", ` · Last tower call: “${r.last.text}” (${r.last.backend === "moss" ? "Moss" : "plane memory"} · ${r.last.ms} ms)`));
+    facts.append(el("span", ` · Why: ${r.proposal.reason}`));
+    card.append(facts, el("p", `“${r.proposal.text}”`, "proposal"));
+    const actions = el("div", undefined, "actions");
+    const go = el("button", "Send clearance", "approve"); go.addEventListener("click", () => sendClearance(r.stationId));
+    const no = el("button", "Dismiss", "reject"); no.addEventListener("click", () => { requests.delete(r.stationId); state.actions.delete(`clearance-${r.stationId}`); renderRequests(); renderFeed(); });
+    actions.append(go, no); card.append(actions);
+    return card;
+  }));
+}
 function pilotSpoke(key, stationId, text) {
   // The plane's next call after an instruction is its readback: compare it with what the tower said.
+  // A call that isn't a readback may be a request for the Clearance agent.
   if (!Words || !text || checked.has(key)) return;
   const pending = awaitingReadback.get(stationId);
-  if (!pending || now() - pending.at > READBACK_WINDOW_MS) return;
+  if (!pending || now() - pending.at > READBACK_WINDOW_MS) { checked.add(key); clearanceRequest(stationId, text); return; }
   checked.add(key);
   const who = shortName(stationId), result = Words.checkReadback(pending.instruction, text);
   const id = `readback-${key}`;
