@@ -482,13 +482,15 @@ function addressee(text) {
   const t = normalizeCall(text);
   return visibleAircraft().find((s) => {
     const spoken = normalizeCall(s.spoken || s.callsign || ""), type = spoken.split(" ")[0], digits = spoken.replace(/\D/g, "");
-    return digits && t.includes(digits) && (!type || /\d/.test(type) || t.includes(type));
+    const name = String(s.name || "").toLowerCase();                     // "Plane A" works too
+    return (digits && t.includes(digits) && (!type || /\d/.test(type) || t.includes(type))) || (name && t.includes(name));
   });
 }
 function actionFor(text) {
   const t = normalizeCall(text);
-  if (/cleared (for )?take ?off/.test(t)) return "takeoff";
-  if (/line up and wait/.test(t)) return "line_up";
+  // People say "clear for takeoff", "cleared to take off", "line up"...: match the meaning, not one exact phrase.
+  if (/\bclear(ed)?\b.{0,12}\btake ?off\b|\btake ?off\b.{0,12}\bclear(ed)?\b/.test(t)) return "takeoff";
+  if (/\bline up\b|\blineup\b/.test(t)) return "line_up";
   if (/hold short/.test(t)) return "hold_short";
   if (/hold position|\bstop\b/.test(t)) return "stop";
   if (/\btaxi\b/.test(t)) return "hold_short";

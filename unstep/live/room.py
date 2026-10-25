@@ -1522,7 +1522,13 @@ class LiveRoom:
         towers = [t for t in cluster if self.stations[t.station].kind == "atc"]
         for s in self.stations.values():
             if s.kind == "aircraft" and mx.heard_by(s.id):
-                jobs.append(self._cockpit_hears(s.callsign, mx, towers, heard_live.get(s.callsign)))
+                if mx.overlaps or env("UNSTEP_AUDIO_ONLY_DETECTION") == "1":
+                    jobs.append(self._cockpit_hears(s.callsign, mx, towers, heard_live.get(s.callsign)))
+                else:
+                    # Nobody else keyed: the call came through clean. The live room knows the key timing, so
+                    # the audio-only detector isn't asked (it raised false "blocked" alarms on clean speech);
+                    # the plane just remembers what it heard.
+                    jobs.append(self._cockpit_heard_clean(s.callsign, cluster))
         for t in cluster:
             if self.stations[t.station].kind == "aircraft":
                 jobs.append(self._pilot_spoke(t, clean=not mx.overlaps))
@@ -1653,6 +1659,14 @@ class LiveRoom:
         edge.radio_speakers = [t.station for t in mx.transmissions]  # metadata for its Moss session (P4)
         await edge.run_audio(ArraySource(mx.pcm, t0=mx.t0, squelch=KeyedSquelch(mx.any_keyed)),
                              realtime=self.live and self.realtime_replay)
+
+    async def _cockpit_heard_clean(self, callsign: str, cluster: list[Transmission]) -> None:
+        edge = self.edges.get(callsign)
+        if edge is None:
+            return
+        for t in cluster:
+            if t.station != callsign and t.text:
+                await edge.index_heard(t.text, t.station, t.start_ms, stepped_on=False, kind="heard")
 
     async def _pilot_spoke(self, tx: Transmission, clean: bool) -> None:
         turns = self.turns.get(tx.station)
