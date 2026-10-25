@@ -81,7 +81,7 @@ Live (Rishit, R47): the parallel pair took 12.2 s, and Intercept is now the slow
 
 **Built (dev-b, tested with fakes; the timing effect is a hypothesis until a live run):**
 1. **Ask Intercept only when the local match is not already high confidence** (`UNSTEP_INTERCEPT=auto`, the default; `always` or `never` also work). For a high-confidence call the agent pipeline is then compliance-lite alone, which was 5.7 to 7.1 s live. This is a cascade: the cheap deterministic check decides, and the model is asked only where the check is unsure.
-2. **Reuse the Compliance answer for the same instruction against the same paragraph** (`UNSTEP_COMPLIANCE_CACHE_S`, default 3600, 0 turns it off). A repeat (the demo repeats "hold short runway 33") starts no workflow at all and the branch time is 0. The answer is only reused when the cited paragraph matched the stored rule and was found in `unstep-faa`; the notes say it was reused.
+2. **Reuse the Compliance answer for the same instruction against the same paragraph** (`UNSTEP_COMPLIANCE_CACHE_S`; **off by default since the geography decision, D51**: real questions differ, and a hit skips the agent so it would not credit Elastic; set it above 0 only to replay a scripted demo). A repeat (the demo repeats "hold short runway 33") starts no workflow at all and the branch time is 0. The answer is only reused when the cited paragraph matched the stored rule and was found in `unstep-faa`; the notes say it was reused.
 
 Neither changes what the controller sees first (the card is already there at once); they shorten how long the agents' note takes to arrive and how many model calls we pay for.
 
