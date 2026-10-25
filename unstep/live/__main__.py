@@ -78,6 +78,7 @@ def main() -> None:
         webbrowser.open(url)
     app = create_live_app(live=live, warm_start=True)
     app.state.bind_host = args.host  # the console's "change link" says whether phones can reach this hub
+    app.state.bind_port, app.state.scheme = args.port, scheme
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning", **tls)
 
 

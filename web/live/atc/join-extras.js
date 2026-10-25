@@ -69,7 +69,22 @@ async function changeLink() {
     });
     list.append(row);
   }
-  p.append(el("p", "join-note", "Public links need UNSTEP_PUBLIC_URL (the tunnel script sets it). Phone microphones also need https."));
+  if (!data.has_public) {
+    const cmd = "python scripts/demo_public.py";
+    const row = el("div", "join-copy");
+    row.append(el("code", "join-code", cmd));
+    const copy = el("button", "pill", "Copy");
+    copy.type = "button";
+    copy.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(cmd); copy.textContent = "Copied"; } catch { copy.textContent = "Select and copy"; }
+    });
+    row.append(copy);
+    p.append(el("p", "join-note", "Most reliable: a public https link that works on any network, even phone data. Stop this hub and start it with:"));
+    p.append(row);
+    p.append(el("p", "join-note", "Anyone with that link can open the tower console, so set UNSTEP_ATC_PASSWORD in .env first."));
+  } else {
+    p.append(el("p", "join-note", "The public link works on any network. Anyone who has it can reach the tower console, so keep UNSTEP_ATC_PASSWORD set."));
+  }
 }
 
 async function addPi() {

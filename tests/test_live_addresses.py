@@ -102,3 +102,28 @@ def test_the_default_link_uses_the_wifi_address_when_the_console_is_open_on_loca
     assert client.get("/live/pilot-link", headers=local).json()["url"] == "http://192.168.2.53:80/pilot/"
     other = client.get("/live/pilot-link").json()["url"]  # opened by a name other than localhost: left alone
     assert other.startswith("http://testserver")
+
+
+def test_seen_through_the_public_link_only_the_public_link_is_offered(monkeypatch):
+    monkeypatch.setenv("UNSTEP_PUBLIC_URL", "https://demo.example.org")
+    monkeypatch.setenv("UNSTEP_ALLOWED_HOSTS", "testserver,demo.example.org")
+    monkeypatch.setattr("unstep.live.app.lan_addresses", lambda: ["192.168.2.53"])
+    monkeypatch.setattr("unstep.live.app.own_hostnames", lambda public: {"192.168.2.53", "demo.example.org"})
+    app = create_live_app(live=False, sink=MemorySink())
+    app.state.room.start = AsyncMock()
+    app.state.bind_host, app.state.bind_port, app.state.scheme = "127.0.0.1", 8790, "http"
+    with TestClient(app) as client:
+        outside = client.get("/live/addresses", headers={"host": "demo.example.org"}).json()
+        assert [o["id"] for o in outside["options"]] == ["public"] and outside["has_public"] is True
+        local = client.get("/live/addresses", headers={"host": "localhost"}).json()  # the laptop's own console
+        by_id = {}
+        for o in local["options"]:
+            by_id.setdefault(o["id"], o)
+        assert list(by_id) == ["public", "this", "lan"]
+        assert by_id["this"]["url"] == "http://localhost:8790"  # the real port and scheme, not the tunnel's 443
+        assert by_id["lan"]["url"] == "http://192.168.2.53:8790" and by_id["lan"]["shareable"] is False
+
+
+def test_without_a_public_link_the_console_is_told_so(hub):
+    client, _ = hub
+    assert client.get("/live/addresses").json()["has_public"] is False

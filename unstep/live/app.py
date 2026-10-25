@@ -115,6 +115,11 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
         except ValueError:
             return False
 
+    def is_local_viewer(request: Request) -> bool:
+        """The console is open on this computer (localhost or one of its own addresses), not through a public link."""
+        host = request.url.hostname or ""
+        return host in LOOPBACK_HOSTS or host in set(lan_addresses())
+
     @app.get("/live/qr.svg")
     async def live_qr(request: Request, u: str):
         if not usable_link(u, request):
@@ -133,8 +138,8 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
         if (not base and not env("UNSTEP_PUBLIC_URL") and request.url.hostname in LOOPBACK_HOSTS
                 and reachable_from_lan(getattr(app.state, "bind_host", None)) and lan_addresses()):
             # The console is open on this computer, but a QR for localhost only works here: use the wifi address.
-            port = request.url.port or (443 if request.url.scheme == "https" else 80)
-            hub = f"{request.url.scheme}://{lan_addresses()[0]}:{port}"
+            port = getattr(app.state, "bind_port", None) or request.url.port or (443 if request.url.scheme == "https" else 80)
+            hub = f"{getattr(app.state, 'scheme', None) or request.url.scheme}://{lan_addresses()[0]}:{port}"
         token = gateway_token()
         app_url = env("UNSTEP_PILOT_APP_URL")
         if app_url:
@@ -146,18 +151,22 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
     @app.get("/live/addresses")
     async def live_addresses(request: Request):
         """What people could open instead of `localhost`: this computer only, the same wifi, a public link."""
-        scheme, port = request.url.scheme, request.url.port or (443 if request.url.scheme == "https" else 80)
+        scheme = getattr(app.state, "scheme", None) or request.url.scheme
+        port = getattr(app.state, "bind_port", None) or request.url.port or (443 if scheme == "https" else 80)
         on_lan = reachable_from_lan(getattr(app.state, "bind_host", None))
-        options = [{"id": "this", "label": "This computer only", "url": f"{scheme}://localhost:{port}",
-                    "shareable": False, "note": "Only you can open this."}]
-        for n, ip in enumerate(lan_addresses()):
-            options.append({"id": "lan", "label": "Same wifi" if n == 0 else f"Other network ({ip})",
-                            "url": f"{scheme}://{ip}:{port}", "shareable": on_lan,
-                            "note": None if on_lan else "Start the hub with --host 0.0.0.0 so phones can reach it."})
         public = (env("UNSTEP_PUBLIC_URL") or "").rstrip("/")
+        options = []
+        if not public or is_local_viewer(request):  # seen through the public link, local addresses mean nothing
+            options.append({"id": "this", "label": "This computer only", "url": f"{scheme}://localhost:{port}",
+                            "shareable": False, "note": "Only you can open this."})
+            for n, ip in enumerate(lan_addresses()):
+                options.append({"id": "lan", "label": "Same wifi" if n == 0 else f"Other network ({ip})",
+                                "url": f"{scheme}://{ip}:{port}", "shareable": on_lan,
+                                "note": None if on_lan else "Start the hub with --host 0.0.0.0 so phones can reach it."})
         if public:
-            options.append({"id": "public", "label": "Public link", "url": public, "shareable": True, "note": None})
-        return {"current": f"{scheme}://{request.url.netloc}", "options": options}
+            options.insert(0, {"id": "public", "label": "Public link (works on any network, https)", "url": public,
+                               "shareable": True, "note": None})
+        return {"current": f"{request.url.scheme}://{request.url.netloc}", "options": options, "has_public": bool(public)}
 
     @app.get("/live/pi-join")
     async def pi_join(request: Request):
