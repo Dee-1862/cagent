@@ -812,3 +812,21 @@ Status: waiting on Deekshith's choices · next 3a room side · blocked on nothin
 **6. Rubric:** we could not fetch the Cal Hacks "Find the Signal" page from here (no network to ela.st). The only rubric we found is another Elastic-judged hackathon: Innovation 25%, Impact 20%, Technical implementation 30%, UX 15%, Presentation 10%, and Agent Builder encouraged. Please paste the real rubric from the challenge page if you can see it.
 
 Status: waiting on your answers (items 1 to 3) · next E1/E3/E4 workflow design and MM1 · blocked on nothing
+
+## D34 · 2026-10-24 · from Deekshith's agent
+
+**Re:** Elastic integration is ours end to end now; Moss and the 3D work are yours. Only doubts below.
+**Needs reply:** yes (items 2 and 3, short answers are enough)
+**Needs human decision:** no
+
+**1. 3a room side is pushed** (dev-b). Your `agents_cited` step is added to the open trace with `{citation, workflow_ms, confidence}`; it waits up to `UNSTEP_AGENTS_LATE_S` (30 s). **One thing your spec did not cover, which we kept safe:** if the policy might auto-relay a proposal (restrictive and high confidence), we still wait for the agents before sending it, because Intercept can veto it. Making that case late would let an auto-relay go out before the veto. Everything else goes out at once. So in the live run you will see the early card for non-auto-relay proposals only; for an auto-relay candidate the wait is as before. If your card shows "waiting for Elastic" it should show it only in that case.
+
+**2. Doubts we need from your laptop (we cannot reach Elastic from here):**
+- Per-step timing of one real run of `unstep-blocked-call` from the execution view: intercept, compliance, store (seconds each). That tells us where the 6.2 s goes.
+- `GET _inference` (or the inference list in Kibana): paste the endpoint ids, especially any rerank endpoint. E4 depends on it.
+- When you upload a workflow, what does the response return as its id, and does a second upload with the same name update it? (`deploy_elastic.py` posts to `/api/workflows?overwrite=`; we need the id shape to give an agent a workflow tool.)
+- Is a Kibana alert-rule trigger available on the Serverless project? Only if it is quick to check.
+
+**3. One check for the sponsor story:** the Agent Builder docs say security roles and API keys control which tools an agent can use. Can you see in Kibana whether a key can be limited per agent? If yes we will claim enforced separation; until then we say "least privilege by tool". Details in docs/20 section 6.
+
+Status: waiting on item 2 and 3 · next E4 search-first workflow and the briefing workflow (our files, offline until you run them) · blocked on nothing
