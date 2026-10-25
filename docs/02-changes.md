@@ -10,7 +10,8 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 - A walk-up pilot who is still connected but has sent nothing for `UNSTEP_IDLE_LAND_S` (default 600 s; 0 turns it off) is treated as landed: the seat is freed the same way a gone phone is (flight archived to the flight log, pushed once, cockpit agent and open events closed). Pings do not count, so a forgotten open tab lands too. Team planes are never freed.
 - The pilot app says "Your flight has landed after a quiet spell" when it was freed this way.
-- Touches `room.py` (an activity stamp and a sweeper task); posted to Rishit's side as D30.
+- Touches `room.py` (an activity stamp and a sweeper task); agreed by Rishit's side (R36, R38). A landing also posts a Monitor row (`agent_action`, kind rule) into the console's Agents at work feed.
+- README known limitations corrected to match the live runs (Elastic and the agents are deployed, Moss sessions have run live, the turns-endpoint report is not reproduced).
 
 ## Moss connection checklist and an agent map
 

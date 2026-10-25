@@ -105,7 +105,8 @@ def test_an_idle_pilot_who_is_still_connected_has_landed_and_the_seat_is_freed(m
         seats = [await r.claim_aircraft() for _ in range(4)]
         walk_ups = [s for s in seats if s.id not in room_mod.TEAM_STATIONS]
         idle, busy = walk_ups[0], walk_ups[1]
-        idle_phone, busy_phone, team_phone = FakeBrowser(), FakeBrowser(), FakeBrowser()
+        idle_phone, busy_phone, team_phone, atc_phone = FakeBrowser(), FakeBrowser(), FakeBrowser(), FakeBrowser()
+        await r.join("atc", atc_phone)
         await r.join(idle.id, idle_phone)
         await r.join(busy.id, busy_phone)
         await r.join("N123AB", team_phone)
@@ -117,6 +118,8 @@ def test_an_idle_pilot_who_is_still_connected_has_landed_and_the_seat_is_freed(m
         assert busy.id in r.stations and "N123AB" in r.stations  # active and team planes stay
         freed = [m for m in idle_phone.messages if m["type"] == "seat_freed"]
         assert freed and freed[0]["reason"].startswith("landed")
+        feed = [m for m in atc_phone.messages if m["type"] == "agent_action"]
+        assert feed and feed[0]["kind"] == "rule" and feed[0]["agent"] == "Monitor" and "landed" in feed[0]["text"]
         await r.stop()
 
     asyncio.run(go())

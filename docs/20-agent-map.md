@@ -79,7 +79,7 @@ These came up and are recorded so they are not lost. None is built or scheduled.
 | --- | --- |
 | "A spoken sentence is checked by fixed code first; only the agents that event needs are called, and a person decides." | BUILT |
 | "Each agent can only call its own fixed queries." | BUILT |
-| "The compliance agent cites the FAA paragraph for the instruction." | MEASURED LIVE (once, R31) |
+| "The compliance agent cites the FAA paragraph for the instruction." | MEASURED LIVE (three real stepped-on calls, R31 to R35) |
 | "The agents also watch for a missing readback, a stuck mic and conflicting clearances." | PROPOSED, not built. Do not say it yet |
 | "Agents are isolated by permission." | Not checked. Do not say it |
 | "This reduces staffing, workload or incidents." | Not measured. Do not say it |

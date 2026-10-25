@@ -936,6 +936,12 @@ class LiveRoom:
         self.stations.pop(station, None)
         self.graph = [n for n in self.graph if n["id"] != f"cockpit:{s.callsign}"]
         log.info("freed seat %s (%s)", station, reason)
+        if reason.startswith("landed"):  # the console's "Agents at work" feed shows what the monitor did
+            self.send_to({"atc", "observer"}, {
+                "type": "agent_action", "id": f"landed-{s.callsign}-{now_ms()}", "ts": now_ms(), "agent": "Monitor",
+                "kind": "rule", "station": s.callsign, "event_id": None, "status": "done",
+                "text": f"{s.name or s.callsign} landed after {reason.removeprefix('landed: no activity for ')} with no "
+                        "activity; seat freed", "detail": "Flight archived to the flight log", "sponsor": None})
         self.send_to(None, {"type": "stations", "stations": self.stations_info(), "graph": self.graph})
         self.presence()
         return True
