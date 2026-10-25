@@ -2,6 +2,12 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## Agent Builder cost per call measured; scheduled runs checked
+
+- `converse` reports `model_usage`: Compliance used 3 model calls and about 47,000 input tokens; the tool-less lite agent still used 3 calls and about 28,000 tokens. A copy with `enable_elastic_capabilities: false` was no faster (temporary agent deleted). Agents are configured, not trained (docs/25 section 12).
+- Scheduled workflows: the briefing and review each have one document from the deploy minute and one from our manual run; the scheduled clock has not yet been seen to fire.
+
+
 ## Elastic deploy confirmed live; map deploy fixed for serverless Kibana (R57)
 
 - Rishit ran `--replace` live: 8 agents and 7 workflows deployed, scheduled triggers on. `scripts/mcp_demo.py` works live and `unstep_trend_decisions` returned real rows.

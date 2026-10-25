@@ -157,3 +157,14 @@ Idea (Deekshith): have the agent answer with one word from a closed list (a verd
 The time clusters at about 5 s and about 10 s whatever the answer length or the model, so the floor is not the model's output. It looks like the Agent Builder call itself (a fixed wait or poll), which also fits the tool-using Compliance agent stopping at exactly 10.02 to 10.03 s. This is 13 calls from one machine, so it is a strong hint, not a proven cause. The direct inference endpoints answered 403 for this key, so a call without Agent Builder could not be tested.
 
 What follows: shrinking the agent's output or switching its model will not get an agent call to milliseconds. Keep agents off the path the pilot waits on (rules, the in-memory stored rules and the cache decide; the agent explains afterwards). A one-word verdict is still worth having for a different reason: a closed list makes the decision deterministic, cacheable and easy to test, and the explanation text can be filled in from a template. That is the rule catalog (`rules.json`) applied to the verdict.
+
+
+## 12. What an Agent Builder call actually costs (MEASURED LIVE here, 2026-10-25)
+
+`POST /api/agent_builder/converse` returns `model_usage`. For `unstep-compliance` (one tool, an FAA search): **3 model calls and about 47,000 input tokens** for one question, of which about 36,000 sat in the last call, because the `unstep_faa_search` tool returns whole paragraphs. The model is `anthropic-claude-5-sonnet` through Elastic's own connector (`.anthropic-claude-5-sonnet-chat_completion`): our agents are **configured, not trained**. Each one is an instruction, a tool list and Elastic's hosted model; nothing was fine-tuned and no data is learned from.
+
+Even `unstep-compliance-lite`, which has no tools, used **3 model calls and about 28,000 input tokens** for a one-line question. The cluster is serverless Kibana (reports 9.6.0). Custom agents carry a flag `enable_elastic_capabilities` (default on for the built-in agent) and there are 16 built-in skills (dashboards, workflow authoring and so on). We tried a temporary copy with `enable_elastic_capabilities: false` and no skills: **no improvement** (2 and 4 calls, 18,700 and 38,000 input tokens, 12 to 20 s). Server time (`time_to_last_token`) was 4 to 6 s on quiet runs and wall time 10 to 13 s; under load both rose to 12 to 25 s. The temporary agent was deleted.
+
+So: the agent call time is the model working through the platform's loop, not our prompt length, which matches the 5 s and 10 s buckets in section 11. What we can honestly say is that Elastic reports tokens and calls per run, so cost and latency can be audited. We cannot say agents are fast; they stay off the critical path.
+
+Elastic's 9.4 notes claim dynamic skill loading cuts input tokens by 21 to 39% in their internal tests. We did not reproduce a saving on our agents.
