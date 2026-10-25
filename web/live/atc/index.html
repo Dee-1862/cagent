@@ -47,8 +47,9 @@
         <div class="legend"><span>○ Listening</span><span class="bad">◉ Missed a call</span><span class="amber">● Instruction delivered</span><span class="good">✓ Read back correctly</span></div>
       </section>
       <section class="decisions panel">
-        <div class="section-title"><h2>Needs your decision <span id="decision-count">0</span></h2><small>You have the final say</small></div>
+        <div class="section-title"><h2>Agents at work</h2><small><span id="decision-count">0</span> need you</small></div>
         <div id="inbox"></div>
+        <ol id="feed" class="feed" aria-live="polite"></ol>
         <label class="switch"><input id="autonomy" type="checkbox" disabled><span>Auto-resend the tower’s own stop/wait instructions</span></label>
       </section>
     </div>

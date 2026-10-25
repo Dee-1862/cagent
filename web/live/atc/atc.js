@@ -3,7 +3,7 @@ const $ = (id) => document.getElementById(id);
 const names = {atc: "Tower"};
 const shortName = (id) => state.stations.get(id)?.name || (id === "atc" ? "Tower" : id || "A plane");
 const state = {ws: null, ready: false, offset: 0, live: false, autonomy: false,
-  stations: new Map(), connected: {}, keyed: {}, liveOverlap: new Map(), reports: new Map(), captions: new Map(), recoveries: new Map(), traces: new Map(), lanes: new Map(), pending: new Set(), audio: null, password: null, reasons: {}};
+  stations: new Map(), connected: {}, keyed: {}, liveOverlap: new Map(), reports: new Map(), captions: new Map(), recoveries: new Map(), actions: new Map(), traces: new Map(), lanes: new Map(), pending: new Set(), audio: null, password: null, reasons: {}};
 const now = () => Date.now() + state.offset;
 function el(tag, text, className) {
   const node = document.createElement(tag);
@@ -131,7 +131,7 @@ function receive(message) {
     case "recovery":
       // C1: the controller hears who was blocked, in Unstep's voice; text stays if audio is missing.
       $("happened").textContent = message.text;
-      state.recoveries.set(message.from_station, message); renderRadio();
+      state.recoveries.set(message.from_station, message); renderRadio(); renderFeed();
       notice(message.text); play(message.audio); break;
     case "caption": {
       // Live words from Cartesia while someone talks; a newer caption of the same transmission replaces the older.
@@ -148,6 +148,7 @@ function receive(message) {
       if (bar) bar.style.width = `${Math.min(100, Math.round(peak * 400))}%`;
       break;
     }
+    case "agent_action": state.actions.set(message.id, message); renderFeed(); break;
     case "advisory_report": state.reports.set(message.station, message); renderRadio(); break;
     case "insight": notice(message.insight.text); break;
     case "flow":
@@ -156,7 +157,7 @@ function receive(message) {
       break;
     case "room_reset":
       // Presenter reset: walk-up planes are gone; the board starts clean for the next group.
-      state.traces.clear(); state.lanes.clear(); state.reports.clear(); state.captions.clear(); state.recoveries.clear(); state.pending.clear();
+      state.traces.clear(); state.lanes.clear(); state.reports.clear(); state.captions.clear(); state.recoveries.clear(); state.actions.clear(); state.pending.clear();
       state.liveOverlap.clear(); state.keyed = {};
       setStations(message.stations);
       renderMap(); renderTraces(); renderRadio(); renderInbox();
@@ -248,6 +249,7 @@ function renderTraces() {
   if (traces.length) $("happened").textContent = presentation(traces[0]).sentence;
   renderMap();
   renderInbox();
+  renderFeed();
   const expanded = new Set([...$("history").querySelectorAll("details[open]")].map((d) => d.dataset.event));
   $("steps").replaceChildren(...(traces.length ? [steps(traces[0]), waterfall(traces[0])] : [el("p", "No blocked calls yet. The evidence chain will appear here.", "empty")]));
   $("history").replaceChildren(...traces.slice(1).map((trace) => {
@@ -256,6 +258,49 @@ function renderTraces() {
     detail.append(el("summary", `${shortName(trace.callsign)} · ${presentation(trace).label} · ${new Date(trace.created_ms).toLocaleTimeString()}`), steps(trace));
     return detail;
   }));
+}
+
+// "Agents at work": what each agent did, newest first. Green is finished work, amber needs
+// the controller, red is a flag. Built from the room's existing messages plus agent_action.
+function feedRows() {
+  const rows = [];
+  const add = (ts, agent, text, status, sponsor) => { if (ts) rows.push({ts, agent, text, status, sponsor}); };
+  for (const t of state.traces.values()) {
+    const who = shortName(t.callsign);
+    const instruction = t.decision?.instruction_text || t.proposal?.instruction_text || "the instruction";
+    let readbackIndex = 0;
+    for (const s of t.steps || []) {
+      switch (s.kind) {
+        case "detected": add(s.ts, "Cockpit agent", `Noticed ${who} missed part of a call`, "done", "Cartesia"); break;
+        case "moss_search": if (s.data?.top_hit_text) add(s.ts, "Cockpit agent", `Found “${s.data.top_hit_text}” in ${who}’s memory`, "done", s.data?.backend === "moss" ? "Moss" : null); break;
+        case "proposed": add(s.ts, "Ground agents", `Drafted the fix “${instruction}”${s.data?.citation ? ` · ${s.data.citation}` : ""}`, "done", s.data?.citation ? "Elastic" : null); break;
+        case "auto_relay": add(s.ts, "Policy agent", `Re-sent the tower’s own words to ${who} automatically`, "done", null); break;
+        case "escalate": add(s.ts, "Policy agent", `Asked you to decide for ${who}`, t.status === "needs_you" ? "needs_you" : "done", null); break;
+        case "approved": if (s.actor !== "policy") add(s.ts, "You", `Approved the fix for ${who}`, "done", null); break;
+        case "rejected": add(s.ts, "You", `Rejected the fix for ${who}`, "done", null); break;
+        case "delivered": add(s.ts, "Cockpit agent", `Told ${who} privately: “${instruction}”`, "done", "Cartesia"); break;
+        case "readback": {
+          const r = t.readbacks?.[readbackIndex++];
+          if (r) add(s.ts, "Readback agent", r.match ? `${who} read it back correctly` : `Caught a wrong readback from ${who}: “${r.readback_text}”`, r.match ? "done" : "flag", "Cartesia");
+          break;
+        }
+        case "expired": add(s.ts, "Gateway", `No decision for ${who} in time, so nothing was sent`, "flag", null); break;
+      }
+    }
+  }
+  for (const r of state.recoveries.values()) add(r.ts, "Recovery agent", `Told ${shortName(r.from_station)} its call was blocked, and told you`, "done", "Cartesia");
+  for (const a of state.actions.values()) add(a.ts, a.agent, a.detail ? `${a.text} · ${a.detail}` : a.text, a.status, a.sponsor);
+  return rows.sort((a, b) => b.ts - a.ts).slice(0, 14);
+}
+function renderFeed() {
+  const rows = feedRows();
+  const mark = {done: "✓", needs_you: "⚠", flag: "!"};
+  $("feed").replaceChildren(...(rows.length ? rows.map((r) => {
+    const item = el("li", undefined, `feed-row ${r.status}`);
+    item.append(el("span", mark[r.status] || "·", "mark"), el("b", r.agent, "who"), el("span", r.text));
+    if (r.sponsor) item.append(el("small", r.sponsor, "chip"));
+    return item;
+  }) : [el("li", "Agents are listening. Their work appears here as it happens.", "feed-empty")]));
 }
 
 // Policy reasons come from one static mapping, also covered by Python tests.
@@ -293,7 +338,7 @@ function renderInbox() {
   $("decision-count").textContent = waiting.length;
   if (!waiting.length) {
     const empty = el("div", undefined, "empty");
-    empty.append(el("strong", "Nothing needs you."), el("p", state.autonomy ? "Routine stop-type calls are re-sent automatically, and you see each one below." : "Auto-resend is off. New proposals will wait for your decision."));
+    empty.append(el("strong", "Nothing needs you right now."), el("p", state.autonomy ? "Routine stop-type calls are re-sent automatically, and you see each one below." : "Auto-resend is off. New proposals will wait for your decision."));
     $("inbox").replaceChildren(empty); return;
   }
   $("inbox").replaceChildren(...waiting.map((trace) => {
