@@ -23,6 +23,12 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## Moss billing cause found, and a one-word agent test
+
+- The Moss "usage limit" is the Developer plan's **Indexes per Project: 3** (Deekshith's billing screenshot: $13.37 of $105 credit used, so credit is not the problem). The project already holds exactly three indexes (airport-KUNS, flight-N123AB, freq-118.300), so any new cloud index is refused. The earlier note that it was "not our index count" was wrong. Freeing a slot (the two old test indexes) or upgrading fixes it; not yet done.
+- Tested live whether a one-word agent answer is faster: no. Agent calls took about 5 s or about 10 s whatever the output length or connector (docs/25 section 11). Agents stay off the path the pilot waits on.
+
 ## A one-line record of each flight in Elastic when it ends (R49)
 
 - When a flight is archived (a pilot lands, a seat is freed, the hub stops), a summary with counts only is written to a new `unstep-flights` index: callsign, frequency, why it ended, how many calls it heard, how many were stepped on, readbacks, clearances, advisories. Best effort and off the landing path: a slow or failing Elastic never holds a seat. The words stay in the plane's own flight log. `UNSTEP_FLIGHT_SUMMARIES=0` turns it off.

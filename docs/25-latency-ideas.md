@@ -142,3 +142,18 @@ What the search suggested (reranker scores rank candidates, they do not prove a 
 The agents' part in this picture: they are the compilers' assistants and the second opinion, not the runtime. They can be asked, offline, to explain or challenge a candidate; the runtime lookup is deterministic and the same input gives the same rule.
 
 MEASURED LIVE (this sandbox, against the real index): the hub's copy answered in 0.08 to 0.10 ms, and after one refresh it held all 7 stored rules from Elastic. It showed hold-short as 3-7-4 (candidate), because that is what the deployed index still says; the file now says 3-7-2. That difference is the point of rules as data: the hub follows the index, so the next `deploy_elastic.py` (or an edit in Elastic) changes what the card cites. Someone must decide between 3-7-2 and 3-7-4.
+
+## 11. Does a one-word answer make the agent faster? Measured: no
+
+Idea (Deekshith): have the agent answer with one word from a closed list (a verdict) and let a later step build the prose on it, so the model does less. Test (this sandbox, 2026-10-25, real Elastic project, `POST /api/agent_builder/converse`, a temporary tool-less agent that answers only MATCH, NOMATCH or UNSURE, deleted afterwards):
+
+| Agent | Answer | Wall time per call |
+| --- | --- | --- |
+| `unstep-intercept-lite` (as deployed, JSON with a sentence) | about 40 tokens | 10.7, 10.1, 9.8 and 5.2 s |
+| one-word agent, default connector | `MATCH` | 5.2, 9.9, 9.9 s, and 9.8, 10.1, 10.1, 9.9 s in the first run |
+| one-word agent, Claude Sonnet 3.7 connector | `MATCH` | 10.1, 10.1, 4.8 s |
+| one-word agent, Claude Sonnet 4.5 connector | `MATCH` | 10.1, 4.9, 10.1 s |
+
+The time clusters at about 5 s and about 10 s whatever the answer length or the model, so the floor is not the model's output. It looks like the Agent Builder call itself (a fixed wait or poll), which also fits the tool-using Compliance agent stopping at exactly 10.02 to 10.03 s. This is 13 calls from one machine, so it is a strong hint, not a proven cause. The direct inference endpoints answered 403 for this key, so a call without Agent Builder could not be tested.
+
+What follows: shrinking the agent's output or switching its model will not get an agent call to milliseconds. Keep agents off the path the pilot waits on (rules, the in-memory stored rules and the cache decide; the agent explains afterwards). A one-word verdict is still worth having for a different reason: a closed list makes the decision deterministic, cacheable and easy to test, and the explanation text can be filled in from a template. That is the rule catalog (`rules.json`) applied to the verdict.
