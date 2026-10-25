@@ -2,6 +2,13 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## Console on Vercel, compute on Render
+
+- `deploy/console/`: a Vercel project with no code, only rewrites of `/` and `/live/*` to the Render hub, and its README. The console's WebSocket opens straight to the hub: `atc_page` fills `window.UNSTEP_HUB_HOST` from `UNSTEP_PUBLIC_URL`, and `atc.js` (Rishit's file, one line, told in D59) uses it on `*.vercel.app` pages.
+- Render also serves the pilot app at `/pilot/` (the Docker image builds `app/`), so the QR code works from Render alone; set `UNSTEP_PILOT_APP_URL` to point it at the Vercel pilot app instead.
+- Still true: Render and Vercel deploy `master`, which has none of this until PR #5 merges.
+
+
 ## Trend tool uses ES|QL INLINESTATS (R59 go-ahead)
 
 - `unstep_trend_decisions` now adds `days`, `total` and `overall_share` to every row with `INLINESTATS`, so the coach reads the "under 5 days or 20 decisions" rule from the data instead of counting rows. Updated live (tool and coach agent only, two PUTs): the coach answered "2 days, 78 decisions, overall rejected share 2.6%, not enough data". A `FROM (subquery)` also ran live; not used.

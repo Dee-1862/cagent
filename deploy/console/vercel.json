@@ -1,0 +1,10 @@
+{
+  "buildCommand": null,
+  "installCommand": null,
+  "framework": null,
+  "outputDirectory": "public",
+  "rewrites": [
+    { "source": "/", "destination": "https://unstep.onrender.com/live/atc/" },
+    { "source": "/live/:path*", "destination": "https://unstep.onrender.com/live/:path*" }
+  ]
+}

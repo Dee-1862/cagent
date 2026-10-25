@@ -30,10 +30,14 @@ python -m unstep.live --offline            # or: python scripts/run_demo.py for 
 | Kibana map of airport and planes | Elastic | `python scripts/deploy_elastic.py --only maps`, then Maps in Kibana (uses the saved-objects import API, which works on serverless Kibana; the base map tiles are not available there) |
 | Scheduled coach review, 8-hour briefing | Elastic | Only after `--replace`, which needs Rishit's OK; they spend model calls on their own |
 
-## 3. What is deployed
+## 3. Console on Vercel, compute on Render
+
+`deploy/console/` is a second Vercel project that forwards the console page and everything under `/live/` to the Render hub; the WebSocket goes straight to Render (a Vercel rewrite cannot carry one). Steps are in `deploy/console/README.md` (Root Directory `deploy/console`, project name `cagent-console`). Not yet deployed or tried on Vercel: the pieces are tested here (the hub fills in its own address, 7 tests), the Vercel side is not.
+
+## 4. What is deployed
 
 Nothing from `dev-b` or `rishit` is on Render or Vercel until PR #5 is merged into `master` (it is 106 commits ahead). The sandbox cannot reach the live hosts to check.
 
-## 4. Tests
+## 5. Tests
 
 `python -m pytest -q` (Python) and `cd app && npx vitest run` (pilot app, includes the sleeping-phone reconnect).

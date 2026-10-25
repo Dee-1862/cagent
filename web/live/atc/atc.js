@@ -122,7 +122,9 @@ $("auth-form").addEventListener("submit", (event) => {
 function connect() {
   state.ready = false;
   controls();
-  const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/live/ws/atc${window.UNSTEP_TOKEN_QUERY || ""}`);
+  // On Vercel the page is a proxy of the hub's and a proxy cannot carry a WebSocket: connect straight to the hub.
+  const hubHost = location.hostname.endsWith(".vercel.app") && window.UNSTEP_HUB_HOST && !window.UNSTEP_HUB_HOST.startsWith("__") ? window.UNSTEP_HUB_HOST : location.host;
+  const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${hubHost}/live/ws/atc${window.UNSTEP_TOKEN_QUERY || ""}`);
   state.ws = ws;
   ws.onmessage = ({data}) => receive(JSON.parse(data));
   ws.onclose = (event) => {

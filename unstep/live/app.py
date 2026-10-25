@@ -92,7 +92,10 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
         token = gateway_token()
         query = f"?token={quote(token, safe='')}" if token else ""
         html = (WEB / "atc" / "index.html").read_text(encoding="utf-8")
-        return HTMLResponse(html.replace("__UNSTEP_TOKEN_QUERY__", query))
+        # When the console page is served through Vercel (a proxy that cannot carry WebSockets), the page opens its
+        # socket straight to this hub: UNSTEP_PUBLIC_URL's host, filled in here.
+        hub_host = urlsplit(env("UNSTEP_PUBLIC_URL") or "").netloc
+        return HTMLResponse(html.replace("__UNSTEP_TOKEN_QUERY__", query).replace("__UNSTEP_HUB_HOST__", hub_host))
 
     origins = allowed_origins()
     if origins:  # the hosted pilot app reads /live/stations and calls /live/join cross-origin

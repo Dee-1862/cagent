@@ -46,3 +46,15 @@ def test_the_room_words_where_a_plane_is_only_from_a_fresh_position(monkeypatch)
     assert r._where_is({"callsign": s.callsign}, {}) is None  # stale: say nothing
     r.geo = None
     assert r._where_is({"callsign": s.callsign}, {}) is None
+
+
+def test_console_page_tells_the_page_which_hub_to_open_its_socket_to(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from tests.test_live_join import room as make_room
+    from unstep.live.app import create_live_app
+
+    monkeypatch.setenv("UNSTEP_PUBLIC_URL", "https://unstep.onrender.com")
+    with TestClient(create_live_app(live=False, room=make_room(monkeypatch))) as client:
+        html = client.get("/live/atc/").text
+    assert 'window.UNSTEP_HUB_HOST = "unstep.onrender.com"' in html and "__UNSTEP" not in html
