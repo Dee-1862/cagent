@@ -1,0 +1,22 @@
+{
+  "_note": "Human air traffic control timings used in docs/26 and scripts/task_latency_report.py. kind SOURCED = a published figure; MODELLED = our own arithmetic from stated assumptions; NOT_MEASURED = no figure found, so no comparison is made. Nothing here is a measurement of Unstep's users.",
+  "items": [
+    {"id": "pilot_readback_latency", "task": "Pilot starts the readback after the instruction ends", "seconds": 0.6,
+     "kind": "SOURCED", "source": "NASA NTRS 20220007116, Lutz et al. 2022: average pilot readback latency about 0.6 s on recorded controller-pilot voice exchanges",
+     "note": "Pilot side, not the controller's"},
+    {"id": "blocked_call_detection", "task": "Notice that a call was stepped on", "seconds": null, "kind": "NOT_MEASURED",
+     "source": "FAA CAMI DOT/FAA/AM-05/19 (2005): blocked calls in 1.16 percent of sampled transmissions at the five busiest US TRACONs and no alerting system for stepped-on or clipped transmissions; NTSB hearing 2025 (AIN): tower operations manager asked whether a controller can tell, said \"There's nothing.\"",
+     "note": "Noticed through consequences, not automatically; no study measures how long that takes"},
+    {"id": "say_again_cycle", "task": "Recover a lost instruction by saying again", "seconds": 5.85, "kind": "MODELLED",
+     "source": "docs/18-benchmark.md: pilot reaction 1.5 s (assumption), the request to say again and the full retransmission at 250 ms per word (assumption), plus 300 ms gaps; median over 157 simulated stepped-on calls",
+     "note": "Only if someone noticed the garble"},
+    {"id": "spoken_clearance", "task": "Speak a clearance on the radio", "seconds_per_word": 0.25, "kind": "MODELLED",
+     "source": "docs/18-benchmark.md assumption of 250 ms per word; the airtime of a spoken instruction is the same for a person and for synthetic speech",
+     "note": "Parity expected: speaking takes as long as the words take to say"},
+    {"id": "rule_lookup", "task": "Find the FAA paragraph that governs an instruction", "seconds": null, "kind": "NOT_MEASURED",
+     "source": "no figure found", "note": "Controllers work from memory and training; there is nothing to compare against"},
+    {"id": "hearback_catch", "task": "Controller catches a wrong readback", "seconds": null, "kind": "NOT_MEASURED",
+     "source": "EUROCONTROL and FAA material: readback and hearback errors are the most common communication problem and hearback often misses them; no timing found",
+     "note": "A rate problem, not a speed problem"}
+  ]
+}

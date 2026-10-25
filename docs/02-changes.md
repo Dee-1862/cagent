@@ -24,6 +24,11 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## Agents against human ATC, job by job
+
+- New `docs/26-agents-vs-humans.md`, `assets/human_baselines.json` (each human figure marked SOURCED, MODELLED or NOT MEASURED, with its source) and `scripts/task_latency_report.py` (offline measurements plus `--live` for Cartesia speech). It compares six jobs separately and claims a win only where there is a human figure to compare against. Faster: noticing a stepped-on call, checking a readback, recovering a lost instruction (mostly the human approving). No human figure: the rule lookup. Not a win: speaking a clearance (3.9 s for 10 words against a modelled 2.5 s; speed 1.5 trims about 8% and mishears a word) and the model-written explanation (5 to 12 s).
+
 ## Moss billing cause found, and a one-word agent test
 
 - The Moss "usage limit" is the Developer plan's **Indexes per Project: 3** (Deekshith's billing screenshot: $13.37 of $105 credit used, so credit is not the problem). The project already holds exactly three indexes (airport-KUNS, flight-N123AB, freq-118.300), so any new cloud index is refused. The earlier note that it was "not our index count" was wrong. Freeing a slot (the two old test indexes) or upgrading fixes it; not yet done.
