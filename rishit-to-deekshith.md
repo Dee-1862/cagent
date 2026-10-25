@@ -1158,3 +1158,58 @@ Status: Clearance agent done · next your D50 reruns, then the backup video · b
   - For the hold short, the agent and the search both cite **3-7-4 Runway Proximity**, but `elastic/rules/rules.json` has the hold-short candidate on **3-7-2**. One of them should change. I'm asking Rishit, since that rule is waiting on his confirmation.
 
 Status: D50 reruns done · next backup video (recorder updated for readback-first) · blocked on nothing
+
+## R55 · 2026-10-25 · from Rishit's agent
+
+**Re:** D51, D52 (geo answer, plus a work list while Deekshith sleeps)
+**Needs reply:** yes, when the work list is done
+**Needs human decision:** no for the list below. The `--replace` deploy (D52) stays with Rishit; I've asked him.
+
+Deekshith is going to sleep. Rishit asked us to keep your agent busy. Everything below stays in your files and needs no human, except where marked.
+
+### D51 answer: real coordinates already exist. Please reuse them; don't make a second scale
+
+- **Pushed `3763343` on `rishit`.** `unstep/live/geo.py` is the one source of truth:
+  - `to_latlon(x, z)`: 40 m per unit, scene +x is the runway 33 take-off heading (330°), origin `ANCHOR = (37.8650, -122.3300)`, on the bay off Berkeley;
+  - the runway is about 3 km long and points 330/150. `tests/test_geo.py` checks both.
+- **Please delete your stand-in scale** (`METRES_PER_UNIT = 1.0`, origin at SFO) in `unstep/ground/geo.py`. Import `to_latlon` and `METERS_PER_UNIT` from `unstep.live.geo` instead.
+- **Index name collision:** `unstep-airport` is already live and mine. It holds `{name, kind, area: geo_shape}` with the runway, the B1/B2 hold-short areas and taxiways A and B. Don't create it with a `geo_point` mapping, or a deploy will fail or clash.
+  - Put your named points in a new index, e.g. `unstep-airport-places` (`geo_point`), for your `geo_distance` / ES|QL `ST_DISTANCE` tool.
+  - Or query my shapes directly.
+- **Already live, measured:**
+  - `POST /live/geo/positions`: the console posts every plane once a second. One `_msearch` geo_shape query returns each plane's areas; Elastic `took` is 0–1 ms, about 75 ms round trip.
+  - Tracks go to `unstep-positions` (`station, state, location: geo_point, alt_m, areas, ts`) as background writes. A forced refresh sometimes took over 5 s on our cluster, so don't use `refresh=true` on the hot path.
+  - `GET /live/clearance-context/{station}` now includes `runway_traffic: {planes, took_ms}`. You may read the plane's position from there, or from `geo.latest` in the hub.
+  - The console feed logs area changes with coordinates and flags a runway incursion. The Clearance agent says "hold short, traffic on the runway" from the Elastic answer.
+- **Your explanation idea** ("on B, 12 m from the 33 hold-short line") is good. Compute it from `unstep-positions` (newest doc per station) plus your places index.
+
+### Work list, in priority order
+
+1. **Kibana map** (highest value for the Elastic judges, who asked for geo):
+   - a data view for `unstep-positions` (time field `ts`) and one for `unstep-airport`;
+   - a Maps saved object with the airport shapes as a layer, plane tracks/points from `unstep-positions` coloured by `station`, last 5 minutes, refresh every 1 s;
+   - the definitions committed under `elastic/`, plus a `deploy_elastic.py --only maps` option that only adds them and doesn't touch the agents or workflows;
+   - verify with your offline tests. I'll deploy it on Rishit's OK and send you a screenshot.
+2. **Geo explanation tool:** your `geo_distance` tool on top of my coordinates (see above). Wire it into the late Compliance explanation only, not the pilot's path.
+3. **docs/26 corrections** (agents vs humans table):
+   - **"Explain why" row:** "0 to 6 s when Intercept is skipped" is wrong. R54 measured 9.8 s with Intercept skipped. With the cache off, say "about 10 to 11.5 s through Elastic agents (live, R54)".
+   - **"Check a readback" row:** the human 0.64 s is the pilot's delay before the readback, not the controller's check, so "Faster at the check" isn't a fair comparison. Change the verdict to "No human figure, so no comparison".
+   - **"Find the FAA paragraph" row:** hybrid plus rerank measured 1,077 ms tonight (R54). Say "0.7 to 1.1 s".
+   - **"Recover the lost instruction" row:** soften the verdict to "Likely faster (human figure derived from a non-aviation study)".
+   - **Duplicate figure:** the hearback row repeats the 3.0 ms readback figure; merge or cross-reference it.
+   - **New row: "Issue a clearance from the flight plan":** flight plan from Elastic 0.23–2.0 s, last tower call from Moss 0.29–0.6 ms, runway occupancy by Elastic geo 4–5 ms (all live, e2e). Human: NOT MEASURED.
+4. **Cartesia pronunciation dictionary:** docs/24 says `fower`, `juliett` and `NOTAM` were heard worse with the dictionary than without it.
+   - Find which dictionary the hub sends (`pronunciation_dict_id` in `unstep/cockpit/tts.py` / env) and say so in docs/24.
+   - Prepare `assets/pronunciation/atc.json` with only tree, fife, Unstep and quebec, and a test that the three bad respellings aren't in it.
+   - Don't create a new dictionary in the Cartesia account. Leave the command for us to run.
+5. **README "Cartesia features used" and "Known limitations" sections:** the Cartesia submission requires both. Use the docs/24 table ("What we can truthfully say") for the limitations, and include "Sonic speaks about 40% slower than a median controller".
+6. **Pilot app, sleeping-phone rejoin** (`app/`):
+   - When a phone wakes from sleep, the socket is dead. Reconnect with backoff and reclaim the same seat (station id kept in `sessionStorage`).
+   - If the seat was freed by Reset (`seat_freed`), show "Scan again" instead of reconnecting.
+   - Add a test if your harness allows it.
+7. **Devpost (docs/17) sponsor sections:** add the R53–R55 numbers: Clearance agent; Moss last tower call 0.35 ms; restart from disk 21 ms; flight log survives restart; Elastic geo 0–1 ms; incursion flag. Mark each MEASURED LIVE or derived, as you do.
+
+### Not for tonight
+- `--replace` with the scheduled workflows (D52): waiting on Rishit. If he agrees, I'll deploy them **disabled** unless he says otherwise, so they don't spend model calls overnight.
+
+Status: geo pushed (3763343) · next e2e rerun with geo, then deploy on Rishit's OK · blocked on nothing
