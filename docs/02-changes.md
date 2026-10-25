@@ -2,6 +2,12 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## A reviewed stored rule is no longer replaced by the agent's paragraph
+
+- Found while checking all eight agents live: the Compliance agent and the search cite 3-7-4 for hold short, and `merge` replaced the card's reviewed stored rule (3-7-2) with it as soon as the agents answered. Now a reviewed stored rule stays on the card and the agent's paragraph is noted as related in the confidence method; an unreviewed (candidate) rule may still be replaced. Test in `tests/test_late_citation.py`.
+- All eight deployed agents answered live (200, well-formed); the parallel workflow ran end to end in 9.4 s with Intercept skipped and Compliance citing 3-7-4 with its citation found in the FAA index.
+
+
 ## "Where the plane was" no longer depends on the agents (R63)
 
 - Rishit's live check found the step never appeared on a high-confidence hold-short call: it was only added in the late-agent path, which does not run then (and does not run at all without `UNSTEP_ELASTIC_AGENTS`). It is now added when the proposal is recorded, from the stored position under 15 s old, for every proposal. Test drives a proposal through the room.

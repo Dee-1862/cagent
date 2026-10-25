@@ -112,3 +112,13 @@ def test_the_room_adds_the_late_citation_to_the_open_trace_without_changing_the_
         await r.stop()
 
     asyncio.run(go())
+
+
+def test_a_reviewed_stored_rule_stays_on_the_card_when_the_agent_cites_another_paragraph():
+    base = scenario.proposed_directive().model_copy(update={
+        "rule_citation": "FAA JO 7110.65, paragraph 3-7-2 (Taxi), matched in 0.05 ms by a stored rule"})
+    merged = ea.merge(base, result("3-7-4"))
+    assert "paragraph 3-7-2" in merged.rule_citation and "3-7-4" not in merged.rule_citation
+    assert "also cited 3-7-4, kept as related" in merged.confidence_method
+    candidate = base.model_copy(update={"rule_citation": "Candidate rule, not yet reviewed: FAA JO 7110.65, paragraph 3-7-2, matched in 0.05 ms by a stored rule"})
+    assert "3-7-4" in ea.merge(candidate, result("3-7-4")).rule_citation  # an unreviewed rule may be replaced
