@@ -11,6 +11,12 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## Four watchers side by side (module only)
+
+- New `unstep/monitor/`: a Readback watcher, Runway watcher, Tracking watcher and Flow watcher, each with its own queue, timers and notices, posting `agent_action` rows in the agreed format. Fixed rules, microsecond answers, thresholds are our own early warnings. One failing watcher does not stop the others. `open_items()` feeds the shift briefing.
+- Not yet connected to the live room: that needs three small additions to `room.py` (posted to Rishit's side first).
+
 ## Parallel agents: Intercept and Compliance as two workflows started together
 
 - New `unstep-blocked-intercept` and `unstep-blocked-compliance` workflows with tool-less agents `unstep-intercept-lite` and `unstep-compliance-lite`. With `UNSTEP_BLOCKED_WORKFLOW=parallel` the hub starts both at once and waits for the slower one; each writes its own document so neither overwrites the other, and one missing half does not lose the other. Each branch's time goes into the audit record. Default stays the two-agent workflow that has run live; none of the new pieces has run live.

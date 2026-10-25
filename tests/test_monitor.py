@@ -1,156 +1,137 @@
-"""Frequency Monitor (task A5): insight rules, dedupe, freq index ownership,
-transcript matching, and gateway routing (insights reach the dashboard, never the cockpit).
-"""
+"""The watchers: fixed rules over the radio events, each with its own notices, run side by side."""
 
 import asyncio
-import json
-
-import pytest
-from fastapi.testclient import TestClient
 
 from unstep import scenario
-from unstep.cockpit.memory import Doc, LocalMemory
-from unstep.cockpit.monitor import WRITER, FrequencyMonitor, freq_index
-from unstep.contracts import Insight, ReadbackResult, TowerTranscript, unwrap, wrap
-from unstep.gateway.server import ROUTES, create_app
-from unstep.gateway.sink import MemorySink
+from unstep.contracts import ApprovedDirective, ReadbackResult, Slots
+from unstep.monitor import Team, default_team
+from unstep.monitor.watchers import FlowWatcher, ReadbackWatcher, RunwayWatcher, TrackingWatcher, Watcher
 
-T0 = scenario.T0
-MIN = 60_000
-FREQ = scenario.FREQUENCY
+T0 = 1_000_000
 
 
-def run(coro):
-    return asyncio.run(coro)
+def approved(event_id="evt-1", callsign="N123AB", action="hold short", runway="33", at=T0):
+    return ApprovedDirective(event_id=event_id, instruction_text=f"{callsign}, {action} runway {runway}",
+                             slots=Slots(callsign=callsign, action=action, runway=runway), approved_by="atc",
+                             approved_via="click", approved_at=at)
 
 
-def event(eid, t, callsign="N123AB", frequency=FREQ):
-    return scenario.anomaly_event(event_id=eid, t0=t).model_copy(
-        update={"callsign": callsign, "frequency": frequency})
+def blocked(callsign="N123AB", n=1):
+    return scenario.anomaly_event(event_id=f"evt-b{n}").model_copy(update={"callsign": callsign})
 
 
-def readback(eid, match=False):
-    return ReadbackResult(event_id=eid, readback_text="hold short 33", match=match)
+def test_a_missing_readback_is_flagged_once_and_a_good_one_clears_it():
+    w = ReadbackWatcher()
+    assert w.on_message(approved(), T0) == []
+    assert w.tick(T0 + 10_000) == []
+    flag = w.tick(T0 + 21_000)
+    assert len(flag) == 1 and flag[0]["status"] == "flag" and "has not read back" in flag[0]["text"]
+    assert flag[0]["kind"] == "rule" and flag[0]["agent"] == "Readback watcher"
+    assert w.tick(T0 + 40_000) == []  # not flagged twice
+    done = w.on_message(ReadbackResult(event_id="evt-1", readback_text="hold short 33", match=True), T0 + 41_000)
+    assert done[0]["status"] == "done" and done[0]["id"] == flag[0]["id"]  # the same row resolves
+    assert w.open_items() == []
 
 
-@pytest.fixture
-def mon():
-    return FrequencyMonitor(LocalMemory())
+def test_a_wrong_readback_is_flagged_with_what_was_said():
+    w = ReadbackWatcher()
+    w.on_message(approved(), T0)
+    out = w.on_message(ReadbackResult(event_id="evt-1", readback_text="cleared to cross", match=False, attempt=2), T0 + 5000)
+    assert out[0]["status"] == "flag" and "attempt 2" in out[0]["text"] and "cleared to cross" in out[0]["detail"]
 
 
-def test_repeated_blocked_calls(mon):
-    assert mon.on_anomaly(event("e1", T0)) == []
-    out = mon.on_anomaly(event("e2", T0 + 4 * MIN))
-    assert [i.kind for i in out] == ["repeated_blocked_calls"]
-    assert out[0].text == "N123AB has had 2 blocked calls in 5 minutes."
-    assert out[0].callsign == "N123AB" and out[0].frequency == FREQ
-    assert out[0].ts == T0 + 4 * MIN + 40  # message clock, not wall clock
+def test_two_aircraft_cleared_into_one_runway_is_a_flag_only():
+    w = RunwayWatcher()
+    assert w.on_message(approved("e1", "N123AB", "cleared to land", "33"), T0) == []
+    out = w.on_message(approved("e2", "H456", "cleared for takeoff", "33", T0 + 20_000), T0 + 20_000)
+    assert out[0]["status"] == "flag" and "N123AB" in out[0]["text"] and "H456" in out[0]["text"]
+    assert "Flag only" in out[0]["detail"]
+    assert w.on_message(approved("e3", "H456", "cleared for takeoff", "28", T0), T0 + 21_000) == []  # other runway
+    assert w.on_message(approved("e4", "N999", "hold short", "33"), T0 + 22_000) == []  # restrictive: not a clearance in
 
 
-def test_blocked_calls_outside_window_do_not_count(mon):
-    mon.on_anomaly(event("e1", T0))
-    assert mon.on_anomaly(event("e2", T0 + 6 * MIN)) == []
+def test_a_runway_clearance_stops_counting_after_it_expires_and_the_same_aircraft_is_not_a_conflict():
+    w = RunwayWatcher()
+    w.on_message(approved("e1", "N123AB", "cleared to land", "33"), T0)
+    assert w.on_message(approved("e2", "N123AB", "cleared to land", "33"), T0 + 1000) == []
+    assert w.on_message(approved("e3", "H456", "cleared to land", "33"), T0 + 200_000) == []  # long after
 
 
-def test_duplicate_event_counted_once(mon):
-    mon.on_anomaly(event("e1", T0))
-    assert mon.on_anomaly(event("e1", T0)) == []
+def test_a_stuck_key_is_flagged_and_clears_on_release():
+    w = TrackingWatcher()
+    w.on_note("key", {"station": "N123AB", "down": True}, T0)
+    assert w.tick(T0 + 5000) == []
+    flag = w.tick(T0 + 16_000)
+    assert flag[0]["status"] == "flag" and "held the key" in flag[0]["text"]
+    assert w.tick(T0 + 30_000) == []
+    assert w.open_items()
+    done = w.on_note("key", {"station": "N123AB", "down": False}, T0 + 31_000)
+    assert done[0]["status"] == "done" and done[0]["id"] == flag[0]["id"] and w.open_items() == []
 
 
-def test_dedupe_within_window_then_fires_again(mon):
-    mon.on_anomaly(event("e1", T0))
-    assert len(mon.on_anomaly(event("e2", T0 + MIN))) == 1
-    kinds = [i.kind for i in mon.on_anomaly(event("e3", T0 + 2 * MIN))]
-    assert "repeated_blocked_calls" not in kinds  # same key, inside 5 min (congestion may fire)
-    later = mon.on_anomaly(event("e4", T0 + 7 * MIN))  # e3 + e4 in window, last fire > 5 min ago
-    assert "repeated_blocked_calls" in [i.kind for i in later]
+def test_the_same_aircraft_stepped_on_again_is_noticed():
+    w = TrackingWatcher()
+    assert w.on_message(blocked("N123AB", 1), T0) == []
+    out = w.on_message(blocked("N123AB", 2), T0 + 60_000)
+    assert out[0]["status"] == "flag" and "2 times" in out[0]["text"]
+    assert w.on_message(blocked("H456", 3), T0 + 61_000) == []
 
 
-def test_frequency_congestion(mon):
-    assert mon.on_anomaly(event("a", T0, callsign="N1")) == []
-    assert mon.on_anomaly(event("b", T0 + MIN, callsign="N2")) == []
-    out = mon.on_anomaly(event("c", T0 + 2 * MIN, callsign="N3"))
-    assert [i.kind for i in out] == ["frequency_congestion"]
-    assert out[0].callsign is None and "3 blocked calls" in out[0].text
-    assert mon.on_anomaly(event("d", T0 + 3 * MIN, callsign="N4")) == []  # deduped
-    # Other frequencies are independent.
-    assert mon.on_anomaly(event("x", T0, callsign="N9", frequency="121.900")) == []
+def test_a_busy_frequency_is_flagged_and_clears():
+    w = FlowWatcher()
+    assert w.on_message(blocked("A", 1), T0) == [] and w.on_message(blocked("B", 2), T0 + 1000) == []
+    flag = w.on_message(blocked("C", 3), T0 + 2000)
+    assert flag[0]["status"] == "flag" and "busy" in flag[0]["text"]
+    assert w.on_message(blocked("D", 4), T0 + 3000) == []  # still busy: no repeat
+    done = w.tick(T0 + 120_000)
+    assert done[0]["status"] == "done" and done[0]["id"] == flag[0]["id"]
 
 
-def test_readback_errors_rising(mon):
-    mon.on_anomaly(event("e1", T0, callsign="N1"))
-    mon.on_anomaly(event("e2", T0 + 6 * MIN, callsign="N2"))
-    assert mon.on_readback(readback("e1", match=True), T0 + MIN) == []
-    assert mon.on_readback(readback("e1"), T0 + MIN) == []
-    out = mon.on_readback(readback("e2"), T0 + 9 * MIN)
-    assert [i.kind for i in out] == ["readback_errors_rising"]
-    assert out[0].frequency == FREQ and out[0].callsign == "N2"
-    assert mon.on_readback(readback("e2"), T0 + 10 * MIN) == []  # deduped
+def test_rows_use_the_agreed_feed_format():
+    row = ReadbackWatcher().on_message(approved(), T0) or ReadbackWatcher()
+    w = ReadbackWatcher()
+    w.on_message(approved(), T0)
+    row = w.tick(T0 + 25_000)[0]
+    assert set(row) == {"type", "id", "ts", "agent", "kind", "station", "event_id", "status", "text", "detail", "sponsor"}
+    assert row["type"] == "agent_action" and row["kind"] == "rule" and row["status"] in ("done", "needs_you", "flag")
 
 
-def test_readback_errors_window_and_unknown_event(mon):
-    mon.on_anomaly(event("e1", T0))
-    mon.on_readback(readback("e1"), T0)
-    assert mon.on_readback(readback("e1"), T0 + 11 * MIN) == []  # first error aged out
-    assert mon.on_readback(readback("nope"), T0) == []  # no frequency to attribute it to
+class Boom(Watcher):
+    name = "Boom"
+
+    def on_message(self, msg, now):
+        raise RuntimeError("bad watcher")
 
 
-def test_transcript_written_to_freq_index_by_owner_only(mon):
-    run(mon.on_transcript(scenario.tower_transcript()))
-    mem = mon.memory
-    doc = mem.indexes[freq_index(FREQ)]["tx-0001"]
-    assert doc.text == "Cessna 1-2-3, hold short Runway 33"
-    assert doc.metadata == {"frequency": FREQ, "ts": T0, "callsign": "N123AB"}
-    assert mem.owners[freq_index(FREQ)] == WRITER
-    with pytest.raises(PermissionError):
-        run(mem.add_docs(freq_index(FREQ), [Doc(id="x", text="forged")], writer="cockpit"))
-    with pytest.raises(PermissionError):
-        mem.register_index(freq_index(FREQ), "cockpit")
+def test_the_watchers_run_side_by_side_and_one_failing_does_not_stop_the_others():
+    rows = []
+
+    async def go():
+        clock = {"now": T0}
+
+        async def emit(row):
+            rows.append(row)
+
+        team = Team([Boom(), ReadbackWatcher(), RunwayWatcher(), TrackingWatcher(), FlowWatcher()], emit,
+                    lambda: clock["now"], tick_s=0.02)
+        team.start()
+        team.feed(approved("e1", "N123AB", "cleared to land", "33", T0))
+        team.feed(approved("e2", "H456", "cleared for takeoff", "33", T0 + 1000))
+        team.note("key", station="N123AB", down=True)
+        await asyncio.sleep(0.1)
+        clock["now"] = T0 + 30_000
+        await asyncio.sleep(0.1)
+        items = team.open_items()
+        await team.stop()
+        return team, items
+
+    team, items = asyncio.run(go())
+    agents = {r["agent"] for r in rows}
+    assert {"Runway watcher", "Readback watcher", "Tracking watcher"} <= agents  # three kinds of notice, side by side
+    assert team.errors["Boom"] >= 1 and "Boom" not in agents
+    assert items
 
 
-def test_match_transcript(mon):
-    run(mon.on_transcript(scenario.tower_transcript()))
-    other = TowerTranscript(transcript_id="tx-0002", frequency=FREQ, callsign="N456CD",
-                            ptt_start=T0 + 500, ptt_end=T0 + 2000, text="Cessna 4-5-6, hold short Runway 33")
-    old = TowerTranscript(transcript_id="tx-0000", frequency=FREQ, callsign="N123AB",
-                          ptt_start=T0 - 10 * MIN, ptt_end=T0 - 10 * MIN + 2000,
-                          text="Cessna 1-2-3, taxi to Runway 33 via Bravo")
-    run(mon.on_transcript(other))
-    run(mon.on_transcript(old))
-
-    ev = scenario.anomaly_event()
-    m = run(mon.match_transcript("N123AB", ev.squelch_open, text=ev.heard_text))
-    assert m.doc is not None and m.doc.id == "tx-0001"
-    assert m.moss_ms >= 0 and m.backend == "local"
-
-    # Out of the time window, or a callsign never heard: no match.
-    assert run(mon.match_transcript("N123AB", T0 + 30 * MIN, text=ev.heard_text)).doc is None
-    assert run(mon.match_transcript("N999ZZ", T0, text=ev.heard_text)).doc is None
-
-
-def test_insights_route_to_dashboard_only():
-    assert ROUTES["Insight"] == {"dashboard"}
-
-
-def test_gateway_monitor_insight_reaches_dashboard_not_cockpit():
-    client = TestClient(create_app(MemorySink()))
-    mon = FrequencyMonitor(LocalMemory())
-    with client.websocket_connect("/ws/cockpit") as cockpit, \
-         client.websocket_connect("/ws/monitor") as monitor, \
-         client.websocket_connect("/ws/dashboard") as dashboard:
-        insights = []
-        for i, t in enumerate((T0, T0 + MIN)):
-            cockpit.send_text(wrap(event(f"g{i}", t)))
-            env, msg = unwrap(monitor.receive_text())
-            insights += run(mon.handle(msg, env.ts))
-            unwrap(dashboard.receive_text())  # the AnomalyEvent
-        assert len(insights) == 1
-        monitor.send_text(wrap(insights[0]))
-
-        got = unwrap(dashboard.receive_text())[1]
-        assert isinstance(got, Insight) and got.kind == "repeated_blocked_calls"
-        assert got.text == "N123AB has had 2 blocked calls in 5 minutes."
-
-        # Probe: the next thing the cockpit sees is its own error, not the insight.
-        cockpit.send_text(json.dumps({"type": "Nope", "data": {}}))
-        assert json.loads(cockpit.receive_text())["type"] == "Error"
+def test_the_default_team_has_the_four_watchers():
+    team = default_team(lambda row: None, lambda: T0)
+    assert [w.name for w in team.watchers] == ["Readback watcher", "Runway watcher", "Tracking watcher", "Flow watcher"]

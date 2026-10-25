@@ -129,3 +129,18 @@ What the hub does about it now (BUILT, NEEDS LIVE RUN):
 Still unproven and not claimed: that the one-agent version is faster, that search latency is low enough to stay on the path, and that the closest paragraph is usually the governing one.
 
 **Parallel mode (BUILT, NEEDS A LIVE RUN).** `UNSTEP_BLOCKED_WORKFLOW=parallel` splits the two-agent workflow by topic into `unstep-blocked-intercept` (is this the controller's call, what was lost) and `unstep-blocked-compliance` (does the paragraph the hub already found govern the instruction). The hub starts both at the same moment and waits for the slower one, so the wait is the maximum of the two, not the sum. Each uses a tool-less "lite" agent that makes one model call from the data it is given, and writes its answer to its own document (`<event>:intercept`, `<event>:compliance`) so neither overwrites the other. If only one answers, its half is still used, and an Intercept "no match" still lowers confidence. Each branch's own time is recorded (`branches_ms` in the audit record). From the 24 s sum (12.7 s plus 10.0 s plus 0.3 s) the best case is the slower single call; that number is a hypothesis until measured. The next levers are a faster model for the lite agents (Agent Builder's model selection; not checked) and shorter outputs (already capped in their instructions).
+
+## 8. A team of four watchers, side by side (BUILT as a module, NOT yet connected to the live room)
+
+Separate from the per-call parallelism in section 7, there is parallelism across jobs. Four watchers each own one part of the tower's work and run at the same time over the same radio events (`unstep/monitor/`). Each keeps its own timers, has its own queue and task, and posts rows to the console feed in the agreed `agent_action` format. One failing does not stop the others (tested).
+
+| Watcher | Watches | Flags |
+| --- | --- | --- |
+| Readback watcher | Every approved clearance and its readback | No readback after 20 s; a readback that does not match (and clears when it does) |
+| Runway watcher | Landing, takeoff and line-up clearances | Two aircraft cleared into one runway while the first is still open (90 s). Flag only, it never proposes an order |
+| Tracking watcher | Keys and stepped-on calls per aircraft | A key held over 15 s; the same aircraft stepped on twice in 5 min |
+| Flow watcher | The frequency as a whole | Three stepped-on calls in 60 s (busy), and clears when quiet |
+
+They are fixed rules, not language models: they answer in microseconds, same input same output, and the thresholds are our own early warnings, not FAA procedures. An Elastic agent can be asked to explain a row afterwards, off this path. `team.open_items()` lists what is still waiting, which is what the shift handoff briefing needs.
+
+Not done: connecting the team to the live room (three small additions to `room.py`: feed every gateway message from `_observe`, note key down and up, send rows to the console), the console drawing (Rishit's side), and a live run. The landing of an idle pilot already posts its own Monitor row.
