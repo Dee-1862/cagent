@@ -177,3 +177,10 @@ footer{display:block;left:18px;right:auto;bottom:3px;max-width:80%;text-align:le
 .report-view{margin-top:8px;display:grid;gap:6px;max-height:240px;overflow:auto;font-size:14px}.report-view:empty{display:none}
 .report-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.report-head small{color:var(--muted);flex:1}.report-head button{min-height:30px;padding:4px 10px}
 .report-text{white-space:pre-wrap;margin:0}
+/* Agent cards, Apple-style: borderless rounded surfaces, no amber outline or left bar; a small amber dot marks
+   "needs you" instead. Placed last so it wins over the earlier rules. */
+.decision,#requests .clearance{border:0;border-radius:16px;background:rgba(255,255,255,.07);box-shadow:none}
+.decision h3::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--amber);margin-right:8px;vertical-align:2px}
+.decision .reason{color:rgba(235,235,245,.72)}
+.decision .actions .reject{border:0;background:rgba(255,255,255,.1);color:var(--text)}
+.decision .actions .approve,.decision .actions button:not(.reject){border:0}
