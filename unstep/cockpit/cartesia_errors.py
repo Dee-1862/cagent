@@ -36,6 +36,6 @@ async def connect_with_backoff(open_socket, attempts: int = 3, base_delay_s: flo
             if attempt == attempts:
                 raise CartesiaRateLimited(
                     "Cartesia answered HTTP 429 to the WebSocket handshake; close idle sockets "
-                    "or lower concurrency (see docs/23-cartesia-findings.md)") from exc
+                    "or lower concurrency (see docs/24-cartesia-findings.md)") from exc
             log.warning("Cartesia 429 on handshake (attempt %d); backing off", attempt)
             await asyncio.sleep(base_delay_s * 2 ** (attempt - 1))

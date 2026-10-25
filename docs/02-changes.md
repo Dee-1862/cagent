@@ -7,6 +7,13 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## Cartesia findings, and a 429 backoff
+
+- New `docs/24-cartesia-findings.md`: five graded findings (manual STT tail latency and handshakes, ink-2 final-text deltas with no word timestamps, HTTP 429 with several clients, the "niner" dictionary entry, the turns endpoint report). Several turned out to be documented behaviour or our own doing, and the doc says so. Items taken from Cartesia's docs came from search snippets and must be re-read before quoting.
+- A Cartesia HTTP 429 on the WebSocket handshake is retried with backoff (TTS and STT) and then raised as `CartesiaRateLimited`; a TTS error event with status 429 raises the same class.
+- `settle_caption` in `stt.py` holds back a possibly split last word until the utterance is final. Not wired into the room yet (shared file).
+
 ## The Elastic agents' citation no longer blocks the card (3a)
 
 - The stepped-on call's proposal card goes out at once from the local check; the Elastic agents' FAA citation is added to the open card when the workflow answers (up to 30 s, `UNSTEP_AGENTS_LATE_S`). The instruction never changes; confidence can only go lower; the trace gets an `agents_cited` step.
