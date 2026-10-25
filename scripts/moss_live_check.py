@@ -131,6 +131,7 @@ async def disk_checks(make_memory, report) -> int:
         failures = 0 if first.saves else 1
         del first  # the "kill"
         second = make_memory(folder)  # a restart: a new session object, restored from disk
+        restart_started = time.perf_counter()
         await second.open(flight)
         count = await second.load_snapshot(flight)
         if count is None:
@@ -139,10 +140,25 @@ async def disk_checks(make_memory, report) -> int:
         await seed(second, CALLSIGN, t0=T0, skip_existing=True)
         ids = [d.id for d in (await second.fetch(flight)).docs]
         q = await answer_query(second, flight, CALLSIGN, "What was my last clearance?")
+        restart_to_answer = round((time.perf_counter() - restart_started) * 1000, 1)
         report(f"   after a restart from disk: {count} docs loaded in {second.last_load_ms} ms, "
                f"{len(ids)} after seeding (duplicates: {len(ids) - len(set(ids))})")
         report(f"   what was my last clearance? -> {q.answer[:140]}")
+        report(f"   restart to answer: {restart_to_answer} ms (open the session, restore, seed what is missing, ask)")
         failures += (len(ids) != len(set(ids))) + ("hold short runway 33" not in q.answer.lower())
+        # Where does the restore time go, and is the first one slower (model start-up)? Restore twice more into
+        # fresh session objects of the same client: the cold and the warm numbers are different claims.
+        runs = [(count, second.last_load_ms, dict(second.load_breakdown))]
+        for _ in range(2):
+            second.drop(flight, keep_snapshot=True)
+            started = time.perf_counter()
+            n = await second.load_snapshot(flight)
+            runs.append((n, round((time.perf_counter() - started) * 1000, 1), dict(second.load_breakdown)))
+        for i, (n, ms, parts) in enumerate(runs, 1):
+            report(f"   restore {i}{' (cold)' if i == 1 else ''}: {n} docs in {ms} ms  {parts}")
+        warm = sorted(ms for _, ms, _ in runs[1:])
+        report(f"   cold {runs[0][1]} ms, warm {warm[0]} to {warm[-1]} ms. "
+               "load_from_disk is the Moss SDK's own time; open_ms is a session the plane already holds.")
         return failures
 
 

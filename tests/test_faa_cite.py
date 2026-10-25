@@ -101,8 +101,12 @@ def test_the_one_agent_workflow_gets_the_paragraph_and_its_answer_is_split_back_
     assert result.citation_checked is True
 
 
-def test_an_unknown_workflow_name_falls_back_to_the_one_that_has_run_live(monkeypatch):
+def test_the_default_is_the_parallel_pair_and_an_unknown_name_falls_back_to_it(monkeypatch):
+    monkeypatch.delenv("UNSTEP_BLOCKED_WORKFLOW", raising=False)
+    assert ea.blocked_call_workflow() == "parallel"
     monkeypatch.setenv("UNSTEP_BLOCKED_WORKFLOW", "something-else")
+    assert ea.blocked_call_workflow() == "parallel"
+    monkeypatch.setenv("UNSTEP_BLOCKED_WORKFLOW", "unstep-blocked-call")
     assert ea.blocked_call_workflow() == "unstep-blocked-call"
 
 

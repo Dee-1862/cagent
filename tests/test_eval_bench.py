@@ -63,6 +63,40 @@ def test_fake_run_has_every_section_with_intervals():
     assert "rows" not in s
 
 
+def test_bench_records_each_429_with_body_and_sockets(monkeypatch):
+    """A 429 is retried, and the run keeps its status, body and open socket count (plan limit or our leak)."""
+    import unstep.cockpit.cartesia_errors as ce
+
+    class Limited(Exception):
+        response = types.SimpleNamespace(status_code=429, body=b'{"error_code": "concurrency_limited"}')
+
+    class Flaky(bench.FakeSpeech):
+        failed = False
+
+        async def say(self, text, role):
+            if not Flaky.failed:
+                Flaky.failed = True
+                raise Limited("HTTP 429")
+            return await super().say(text, role)
+
+    async def no_wait(_s):
+        return None
+
+    monkeypatch.setattr(bench.asyncio, "sleep", no_wait)
+    ce.RATE_LIMIT_EVENTS.clear()
+    result = asyncio.run(bench.run_bench(Flaky(), 4, ["clean"], stepped=1, seed=3, ab=False))
+    assert len(result["rate_limits"]) == 1
+    seen = result["rate_limits"][0]
+    assert seen["status"] == 429 and "concurrency_limited" in seen["body"] and seen["attempt"] == 1
+    assert seen["concurrency"] == 2 and seen["open_sockets"] == 0
+    assert ce.RATE_LIMIT_EVENTS and "concurrency_limited" in ce.RATE_LIMIT_EVENTS[-1]["body"]
+
+
+def test_bench_without_429_reports_none():
+    result = asyncio.run(bench.run_bench(bench.FakeSpeech(), 3, ["clean"], stepped=1, seed=3, ab=False))
+    assert result["rate_limits"] == []
+
+
 def test_store_skips_fake_runs_and_posts_live_summaries(monkeypatch):
     seen = []
 

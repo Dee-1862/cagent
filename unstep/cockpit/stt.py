@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Callable, Iterable, Optional
 from urllib.parse import quote, urlencode
 
-from unstep.cockpit.cartesia_errors import connect_with_backoff
+from unstep.cockpit.cartesia_errors import connect_with_backoff, rate_limited_from_event, socket_closed, socket_opened
 from unstep.contracts import Word
 
 log = logging.getLogger("unstep.stt")
@@ -154,6 +154,7 @@ class CartesiaManualSTT:
         import websockets
 
         self._ws = await _connect(self.url, self.api_key)
+        socket_opened("stt")
         if self.on_text is not None:
             self._flushed = asyncio.get_running_loop().create_future()
             self._reader = asyncio.create_task(self._read_stream())
@@ -185,6 +186,8 @@ class CartesiaManualSTT:
         elif kind in ("flush_done", "done"):
             return True
         elif kind == "error":
+            if msg.get("status_code") == 429:
+                raise rate_limited_from_event(msg, "stt")  # logs status, body and open sockets
             raise RuntimeError(f"Cartesia STT error: {msg.get('title')}: {msg.get('message')}")
         return False
 
@@ -201,7 +204,10 @@ class CartesiaManualSTT:
             try:
                 await self._ws.send("close")
             finally:
-                await self._ws.close()
+                try:
+                    await self._ws.close()
+                finally:
+                    socket_closed("stt")
 
     async def send_audio(self, pcm: bytes) -> None:
         await self._ws.send(pcm)
@@ -239,6 +245,7 @@ class CartesiaTurnSTT:
         import websockets
 
         self._ws = await _connect(self.url, self.api_key)
+        socket_opened("stt")
         return self
 
     async def __aexit__(self, *exc):
@@ -246,7 +253,10 @@ class CartesiaTurnSTT:
             try:
                 await self._ws.send(json.dumps({"type": "close"}))
             finally:
-                await self._ws.close()
+                try:
+                    await self._ws.close()
+                finally:
+                    socket_closed("stt")
 
     async def send_audio(self, pcm: bytes) -> None:
         await self._ws.send(pcm)

@@ -47,6 +47,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from eval_unstep import RUNWAYS, build_items  # noqa: E402
 from unstep import scenario  # noqa: E402
 from unstep.cockpit.audio import SAMPLE_RATE  # noqa: E402
+from unstep.cockpit.cartesia_errors import (CartesiaRateLimited, is_rate_limited, log_rate_limited,  # noqa: E402
+                                            open_socket_count, redact)
 from unstep.cockpit.phraseology import callsign_digits, parse_instruction  # noqa: E402
 from unstep.cockpit.readback import check_readback  # noqa: E402
 from unstep.contracts import Slots  # noqa: E402
@@ -169,11 +171,29 @@ def first_active_ms(pcm: np.ndarray, t0: int) -> int | None:
 
 # ------------------------------------------------------------ the run
 
+def record_rate_limit(exc: BaseException, attempt: int, concurrency: int) -> dict:
+    """One 429 in the bench: status, response body (truncated, no keys, no headers) and how many sockets
+    this process held, next to the bench's own concurrency. Few open sockets at a 429 points at the plan's
+    limit; a count that keeps growing points at a leak. Already-logged errors are not logged twice."""
+    if isinstance(exc, CartesiaRateLimited):
+        detail = {"status": exc.status, "body": exc.body, "open_sockets": exc.open_sockets,
+                  "open_now": open_socket_count()}
+    elif is_rate_limited(exc):
+        detail = log_rate_limited(exc, "eval_bench") | {"open_now": open_socket_count()}
+    else:  # a "429" in the message of some other error: keep its text, redacted
+        detail = {"status": 429, "body": redact(str(exc))[:500], "open_sockets": open_socket_count(),
+                  "open_now": open_socket_count()}
+    return {"attempt": attempt + 1, "concurrency": concurrency, **{k: detail.get(k) for k in
+            ("status", "body", "open_sockets", "open_now")}}
+
+
 async def run_bench(speech, n: int, conditions: list[str], stepped: int, seed: int, ab: bool,
                     concurrency: int = 2) -> dict:
     items = build_items(n, seed)
     sem = asyncio.Semaphore(concurrency)
     rng = random.Random(seed)
+
+    rate_limits: list[dict] = []  # every 429 we saw: status, body, sockets open then (settles plan limit vs leak)
 
     async def limited(make):
         """`make()` builds the call; a 429, timeout or dropped connection is retried with backoff, not fatal."""
@@ -182,7 +202,10 @@ async def run_bench(speech, n: int, conditions: list[str], stepped: int, seed: i
                 try:
                     return await make()
                 except Exception as exc:
-                    transient = "429" in str(exc) or isinstance(exc, (TimeoutError, OSError))
+                    limited_429 = is_rate_limited(exc) or "429" in str(exc)
+                    if limited_429:
+                        rate_limits.append(record_rate_limit(exc, attempt, concurrency))
+                    transient = limited_429 or isinstance(exc, (TimeoutError, OSError))
                     if not transient or attempt == 5:
                         raise
             await asyncio.sleep(2 ** attempt)
@@ -205,7 +228,8 @@ async def run_bench(speech, n: int, conditions: list[str], stepped: int, seed: i
                     "callsign": it.spoken_callsign, "action": it.action, "runway": it.runway}
         return await asyncio.gather(*(one(k) for k in range(len(items))))
 
-    result: dict = {"mode": speech.mode, "n": len(items), "seed": seed, "conditions": {}, "rows": {}}
+    result: dict = {"mode": speech.mode, "n": len(items), "seed": seed, "conditions": {}, "rows": {},
+                    "rate_limits": rate_limits}
     for cond in conditions:
         rows = await hear_all(cond)
         result["conditions"][cond] = score_lines(rows)
@@ -336,6 +360,11 @@ def print_table(s: dict) -> None:
         d = s["detection_audio_only"]
         print(f"audio-only overlap detector: recall {fmt(d['recall_iou_0_5'])}, false alarms on clean "
               f"{fmt(d['false_alarms_on_clean'])}, latency p50/p95 {d['latency_ms']['p50']}/{d['latency_ms']['p95']} ms")
+    if s.get("rate_limits"):
+        print(f"HTTP 429 seen {len(s['rate_limits'])} time(s) (retried with backoff); first: "
+              f"{json.dumps(s['rate_limits'][0])}")
+    elif s.get("mode") == "live":
+        print("HTTP 429: none")
     if "atco2" in s:
         a = s["atco2"]
         print(f"ATCO2 n={a['n']}: WER {fmt(a['wer'])}, callsign {fmt(a['callsign'])}, runway {fmt(a['runway'])}")

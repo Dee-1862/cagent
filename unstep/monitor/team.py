@@ -7,7 +7,9 @@ import asyncio
 import logging
 from typing import Awaitable, Callable
 
-from unstep.monitor.watchers import FlowWatcher, ReadbackWatcher, RunwayWatcher, TrackingWatcher, Watcher
+from unstep.config import env
+from unstep.monitor.watchers import (READBACK_WAIT_S, FrequencyWatcher, OpenCallWatcher, ReadbackWatcher,
+                                     RunwayWatcher, Watcher)
 
 log = logging.getLogger("unstep.monitor")
 
@@ -73,5 +75,15 @@ class Team:
         self._tasks = []
 
 
+def readback_wait_s() -> float:
+    """How long a clearance may wait for its readback before the Readback watcher flags it
+    (UNSTEP_READBACK_WAIT_S, default 20). A demo with slow pilots can raise it."""
+    try:
+        return max(1.0, float(env("UNSTEP_READBACK_WAIT_S", default=str(READBACK_WAIT_S))))
+    except ValueError:
+        return READBACK_WAIT_S
+
+
 def default_team(emit, clock) -> Team:
-    return Team([ReadbackWatcher(), RunwayWatcher(), TrackingWatcher(), FlowWatcher()], emit, clock)
+    return Team([ReadbackWatcher(wait_ms=int(readback_wait_s() * 1000)), RunwayWatcher(), FrequencyWatcher(),
+                 OpenCallWatcher()], emit, clock)

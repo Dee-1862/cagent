@@ -54,7 +54,7 @@ Ranked by how well evidenced and how much it hurt us. Only finding 1 is a plain 
 
 **Suggested doc change for Cartesia (small):** say on the TTS and STT WebSocket reference pages, not only on the limits page, that an unclosed socket counts against the connection cap, and whether and after how long the server closes an idle socket. We saw a close after idle (comment in `CartesiaTTS.speak`) but have no number.
 
-**Unverified:** the plan tier of our key, whether the 429 body had `error_code: concurrency_limited`, and how many sockets were open at failure. Logging the 429 body in `eval_bench.py` would settle it next time.
+**Unverified:** the plan tier of our key, whether the 429 body had `error_code: concurrency_limited`, and how many sockets were open at failure. Next time it happens the log has all three except the plan: every 429 (handshake or error event) is logged by `unstep/cockpit/cartesia_errors.py` with its status, the body (500 characters at most, secrets removed, no headers) and how many sockets this process held, `scripts/eval_bench.py` keeps them in its result as `rate_limits`, and `scripts/cartesia_live_check.py` check 5 provokes one on purpose (see the to-do list below). The socket count covers sockets opened through `CartesiaTTS`, `CartesiaManualSTT` and `CartesiaTurnSTT` only; a socket opened any other way is not counted.
 
 ## 4. Pronunciation dictionary: respelling "niner" broke our own STT (COULD BE OURS; doc gap on entry format unverified)
 
@@ -100,7 +100,26 @@ Ranked by how well evidenced and how much it hurt us. Only finding 1 is a plain 
 
 ## Still to do with live access
 
-- Run `scripts/caption_probe.py --runs 5` and save the JSON (turns cadence is unmeasured).
-- Log the 429 response body and the plan tier the next time it happens.
-- Per-word TTS to STT check of every entry in `assets/pronunciation/atc.json`.
-- Re-read the docs.cartesia.ai pages cited here before sending anything to Cartesia.
+One command now covers the first four items. Run it on a laptop that can reach Cartesia, with `CARTESIA_API_KEY`, `CARTESIA_VOICE_ID` and the new `CARTESIA_PRONUNCIATION_DICT_ID` (the unstep-atc-v2 id) in `.env`:
+
+```
+python scripts/cartesia_live_check.py            # an estimated 3 to 4 minutes (not yet timed), a few dozen short generations on your key
+python scripts/cartesia_live_check.py --dry-run  # offline rehearsal with fakes, labelled FAKE on screen
+```
+
+It prints PASS, FAIL and INFO lines and writes `data/cartesia-live/<time>.json`. **Paste back the block between `=== SUMMARY` and `=== END SUMMARY` and the JSON file.** It skips cleanly without a key, never opens more than 6 sockets (default 4, `--max-sockets`), closes every socket it opens and fails if one is left. The 429 body is logged with secrets removed and no headers. The script was only run against fakes (`tests/test_cartesia_live_check.py`); its first live run is the first test against the real API, so treat a script error as a bug in the script before treating it as a finding.
+
+| Item | What the command does | What the result will settle |
+| --- | --- | --- |
+| Caption cadence (finding 2) | Check 1 reuses `scripts/caption_probe.py` for the manual and the turns endpoint, 3 runs each | Turns cadence goes from unmeasured to measured. Which endpoint gives the smaller median gap and more updates while speaking decides `UNSTEP_CAPTION_SOURCE` and how much lag `settle_caption` costs (see `docs/cartesia-settle-caption-proposal.md`). It does not say how often a delta splits a word |
+| Turns pacing (finding 5) | Check 2 reuses `cartesia_repro.turns_pacing`, 5 runs fast and 5 paced | Whether empty `turn.end` on fast audio shows up again. Zero empties is a second non-reproduction, not proof it cannot happen. Empties on paced audio would count towards the 2 in 25 observation. Raise `--turns-runs` to 15 to match the earlier re-test |
+| TTS first audio | Check 3: one socket, first request cold, the rest warm, against a 300 ms budget that is ours | Whether today's numbers still match docs/09 (88 to 115 ms REPORTED, one cold 214 ms) |
+| Pronunciation entries (finding 4) | Check 4 speaks each entry of `assets/pronunciation/atc.json` with Sonic, hears it with ink-2 using the production key terms, with and without the dictionary, plus `niner` as a control | Which of fower, juliett, quebec, NOTAM, tree, fife and Unstep survive the round trip, and whether any respelling is worse than no entry (the niner lesson). It is a screen: 2 runs, one voice, and what counts as "heard right" is our list in `ACCEPT` |
+| HTTP 429 (finding 3) | Check 5 opens 1 to N sockets, fires one generation on each at the same time, stops at the first 429 and prints its status, body and the open socket count | A 429 at a low count with no leaked sockets is consistent with a plan concurrency limit. No 429 up to N says the limit is higher than N, nothing about leaks. The body shows whether Cartesia names concurrency (`error_code` is unverified; we have never logged a body before) |
+
+Not done by the command:
+
+- **Plan tier of the key.** Read it on the Cartesia dashboard and write it next to the 429 result. We have not seen it, and the per-plan numbers in finding 3 are from search results.
+- **Word split rate** (finding 2): the probe counts updates, not split words. Needs a longer capture.
+- **Sockets at failure in a long bench run:** `scripts/eval_bench.py --live` now records every 429 in `rate_limits` (attempt, status, body, sockets open then) and prints the first one. Rerun it only if check 5 finds no 429 and the question stays open.
+- **Re-read the docs.cartesia.ai pages cited here** before sending anything to Cartesia. Corrections for docs/09 are drafted in `docs/cartesia-docs09-corrections.patch.md`.

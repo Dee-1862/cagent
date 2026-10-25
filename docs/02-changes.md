@@ -13,9 +13,49 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+
+
+
+
+## Vercel builds only when `app/` changes
+
+- Vercel's free plan stopped new builds ("Deployment rate limited, retry in 24 hours") after we pushed many commits, each of which built a preview, including mail-only and Python-only ones. `ignoreCommand` in `vercel.json` and `app/vercel.json` now skips a build when the commit changed nothing under `app/` (exit 0 means skip; a missing parent commit makes git fail, which builds as before). The site that is up now is the last successful build; the limit lifts after the 24 hours. Not tested on Vercel from here.
+
+## Restart to answer, timed
+
+- `moss_live_check.py` part 5 also prints "restart to answer": the time from opening a restarted session to the answer to "what was my last clearance?" (open, restore, seed what is missing, ask).
+
+## Where the on-board restore time goes
+
+- `moss_live_check.py` part 5 restores three times and prints cold and warm times with a breakdown (`open_ms`, `load_from_disk_ms`), so the 45 ms live number can be split into a one-off start-up cost and a per-restore cost. `docs/25-latency-ideas.md` section 7 records what is and is not claimed (no "only Moss").
+
+## Parallel agents are now the default (live: 12.2 s against 23.4 and 33.8 s)
+
+- Rishit's live runs (R47): the original two-agent workflow took 23.4 s and 33.8 s, the parallel pair 12.2 s, the one-agent version 16.2 s; the tool-using Compliance agent is capped at 10.0 s while compliance-lite takes 5.7 s. `UNSTEP_BLOCKED_WORKFLOW` now defaults to `parallel`; the original is still available by name.
+- Intercept-lite instructions shortened (a match flag and a sentence under 20 words), since Intercept is now the slow branch. Redeploy with `--replace` to push it; untested live.
+- Rule lookup measured live: Elastic `took` 2.0 ms at 7 rules and 1.0 ms at 100, 1,000 and 5,000 (wall about 75 ms from the laptop). Hold-short now points at 3-7-2 (candidate), per Rishit's reading of the FAA text.
+- The audit record names the workflow that actually ran.
+## Cartesia: one live-check command, 429 evidence logging, and drafts for the shared files
+
+- **`scripts/cartesia_live_check.py`**: the whole live-access to-do list of docs/24 in one command for a laptop that can reach Cartesia. It reuses `caption_probe.py` (manual and turns endpoints) and `cartesia_repro.py` (turns fast versus paced), times Sonic first audio, round-trips every entry of `assets/pronunciation/atc.json` through TTS then STT with and without the dictionary, and probes for a 429 with 1 to N sockets (default 4, never above 6). PASS, FAIL and INFO lines, JSON in `data/cartesia-live/`. `--dry-run` uses fakes and passes offline; without `CARTESIA_API_KEY` it prints "skipped" and exits 0; every socket is closed and a leftover socket fails the run. Tests: `tests/test_cartesia_live_check.py`. Not yet run against the real API.
+- **429 evidence**: `unstep/cockpit/cartesia_errors.py` now logs every 429 (handshake or error event, TTS or STT) with status, response body (500 characters at most, key and Bearer tokens removed, never headers) and the number of sockets this process holds. `CartesiaTTS`, `CartesiaManualSTT` and `CartesiaTurnSTT` keep that count. `CartesiaRateLimited` carries `status`, `body` and `open_sockets`. A STT error event with status 429 now raises it too. `scripts/eval_bench.py` keeps every 429 in `rate_limits` in its result and prints the first. This settles "plan limit or our leak" the next time one happens; nothing about the cause is claimed yet.
+- **Drafts, not applied**: `docs/cartesia-docs09-corrections.patch.md` (exact wording for the two stale lines in docs/09, Rishit's file) and `docs/cartesia-settle-caption-proposal.md` (the diff to wire `settle_caption` into `room.py`, a shared file, plus a test; checked on a scratch copy only).
+- docs/24 to-do list now points at the command and says what each result settles.
+- Unverified: the real 429 body, the plan tier of our key, the script's behaviour against the live API.
+
+## Watchers: Tracking and Flow merged, and an Open-call watcher added
+
+- The Tracking watcher (stuck key, repeated stepped-on aircraft) and the Flow watcher (busy frequency) are one **Frequency watcher**: they were all about who is blocking whom.
+- New **Open-call watcher**: a stepped-on call with no decision after 15 s is flagged ("they may have missed part of the instruction") and clears when it is approved or rejected. It watches the core job, a lost instruction nobody has dealt with, which the other watchers did not. The 15 s is our own early warning.
+
 ## A freed seat deletes its on-board Moss copy
 
 - The on-board snapshot (MM1) is deleted when a seat is freed (drop without `keep_snapshot`), so the next pilot who gets that callsign starts clean and never inherits the last pilot's clearances. A hub stop keeps it, because that plane is still flying and the point is that it restarts with its memory. Test added.
+## Watchers connected to the live room (off by default)
+
+- `UNSTEP_WATCHERS=1` starts the four watchers in the room: every gateway message goes to `team.feed`, key down and up to `team.note`, and their rows go to the console's feed (atc and observer). Off by default, so nothing changes until it is switched on; an unmet expectation (a demo pilot who never reads back) would otherwise show amber rows.
+- Three small additions to `room.py`; agreed by Rishit's side (R46). The readback wait is `UNSTEP_READBACK_WAIT_S` (default 20; the QR demo uses 45).
 
 ## Four watchers side by side (module only)
 

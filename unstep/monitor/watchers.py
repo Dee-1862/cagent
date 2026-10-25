@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from unstep.cockpit.phraseology import is_restrictive
-from unstep.contracts import AnomalyEvent, ApprovedDirective, ReadbackResult
+from unstep.contracts import AnomalyEvent, ApprovedDirective, ReadbackResult, RejectedDirective
 
 READBACK_WAIT_S = 20.0  # a clearance with no readback after this long is flagged
 STUCK_MIC_S = 15.0  # a transmitter keyed this long blocks the frequency
@@ -14,6 +14,7 @@ REPEAT_WINDOW_S = 300.0
 CONGESTION_CALLS = 3  # this many stepped-on calls on the frequency in the window
 CONGESTION_WINDOW_S = 60.0
 RUNWAY_HOLD_S = 90.0  # a runway clearance is treated as open this long
+OPEN_CALL_S = 15.0  # a stepped-on call with no decision after this long is flagged
 
 
 def action(agent: str, key: str, now: int, status: str, text: str, *, station: str | None = None,
@@ -116,13 +117,16 @@ class RunwayWatcher(Watcher):
 
 
 @dataclass
-class TrackingWatcher(Watcher):
-    """Aircraft and microphones: a stuck key, and the same aircraft stepped on again and again."""
+class FrequencyWatcher(Watcher):
+    """The frequency and the people on it: a stuck key, the same aircraft stepped on again and again, and the
+    frequency as a whole getting busy. One watcher because they are all about who is blocking whom."""
 
-    name = "Tracking watcher"
+    name = "Frequency watcher"
     stuck_ms: int = int(STUCK_MIC_S * 1000)
-    keyed: dict = field(default_factory=dict)  # station -> (since, flagged)
+    keyed: dict = field(default_factory=dict)  # station -> [since, flagged]
     blocked: dict = field(default_factory=dict)  # callsign -> [times]
+    recent: list = field(default_factory=list)  # stepped-on call times, whole frequency
+    congested: bool = False
 
     def on_note(self, kind, data, now):
         if kind == "key":
@@ -137,16 +141,17 @@ class TrackingWatcher(Watcher):
         return []
 
     def on_message(self, msg, now):
-        if not isinstance(msg, AnomalyEvent):
-            return []
-        times = [t for t in self.blocked.get(msg.callsign, []) if now - t < REPEAT_WINDOW_S * 1000] + [now]
-        self.blocked[msg.callsign] = times
-        if len(times) >= REPEAT_BLOCKED:
-            return [action(self.name, f"blocked-{msg.callsign}", now, "flag",
-                           f"{msg.callsign} has been stepped on {len(times)} times in "
-                           f"{round(REPEAT_WINDOW_S / 60)} min", station=msg.callsign, event_id=msg.event_id,
-                           detail="A repeating pattern can mean a bad radio or a busy shared frequency")]
-        return []
+        out: list[dict] = []
+        if isinstance(msg, AnomalyEvent):
+            times = [t for t in self.blocked.get(msg.callsign, []) if now - t < REPEAT_WINDOW_S * 1000] + [now]
+            self.blocked[msg.callsign] = times
+            self.recent = [t for t in self.recent if now - t < CONGESTION_WINDOW_S * 1000] + [now]
+            if len(times) >= REPEAT_BLOCKED:
+                out.append(action(self.name, f"blocked-{msg.callsign}", now, "flag",
+                                  f"{msg.callsign} has been stepped on {len(times)} times in "
+                                  f"{round(REPEAT_WINDOW_S / 60)} min", station=msg.callsign, event_id=msg.event_id,
+                                  detail="A repeating pattern can mean a bad radio or a busy shared frequency"))
+        return out + self._congestion(now)
 
     def tick(self, now):
         out = []
@@ -156,31 +161,10 @@ class TrackingWatcher(Watcher):
                 out.append(action(self.name, f"mic-{station}", now, "flag",
                                   f"{station} has held the key for {round(self.stuck_ms / 1000)} s, "
                                   "which blocks everyone else", station=station))
-        return out
-
-    def open_items(self):
-        return [{"agent": self.name, "event_id": None, "text": f"{s} is holding the key"}
-                for s, v in self.keyed.items() if v[1]]
-
-
-@dataclass
-class FlowWatcher(Watcher):
-    """The frequency as a whole: congestion, and what a shift handoff would still have to mention."""
-
-    name = "Flow watcher"
-    recent: list = field(default_factory=list)
-    congested: bool = False
-
-    def on_message(self, msg, now):
-        if isinstance(msg, AnomalyEvent):
-            self.recent = [t for t in self.recent if now - t < CONGESTION_WINDOW_S * 1000] + [now]
-        return self._check(now)
-
-    def tick(self, now):
         self.recent = [t for t in self.recent if now - t < CONGESTION_WINDOW_S * 1000]
-        return self._check(now)
+        return out + self._congestion(now)
 
-    def _check(self, now):
+    def _congestion(self, now):
         busy = len(self.recent) >= CONGESTION_CALLS
         if busy and not self.congested:
             self.congested = True
@@ -191,3 +175,45 @@ class FlowWatcher(Watcher):
             self.congested = False
             return [action(self.name, "congestion", now, "done", "The frequency has quietened down")]
         return []
+
+    def open_items(self):
+        return [{"agent": self.name, "event_id": None, "text": f"{s} is holding the key"}
+                for s, v in self.keyed.items() if v[1]]
+
+
+@dataclass
+class OpenCallWatcher(Watcher):
+    """Stepped-on calls nobody has decided yet. This is the one that matters most: a pilot may have missed an
+    instruction, and every second without a decision is a second they are acting on half of it."""
+
+    name = "Open-call watcher"
+    wait_ms: int = int(OPEN_CALL_S * 1000)
+    open: dict = field(default_factory=dict)  # event_id -> [event, flagged]
+
+    def on_message(self, msg, now):
+        if isinstance(msg, AnomalyEvent):
+            self.open[msg.event_id] = [msg, False, now]
+        elif isinstance(msg, (ApprovedDirective, RejectedDirective)) and msg.event_id in self.open:
+            event, flagged, _ = self.open.pop(msg.event_id)
+            if flagged:
+                verb = "approved" if isinstance(msg, ApprovedDirective) else "rejected"
+                return [action(self.name, msg.event_id, now, "done",
+                               f"The stepped-on call to {event.callsign} was {verb}", station=event.callsign,
+                               event_id=msg.event_id)]
+        return []
+
+    def tick(self, now):
+        out = []
+        for event_id, v in self.open.items():
+            event, flagged, since = v
+            if not flagged and now - since >= self.wait_ms:
+                v[1] = True
+                out.append(action(self.name, event_id, now, "flag",
+                                  f"{event.callsign} was stepped on {round(self.wait_ms / 1000)} s ago and nobody "
+                                  "has decided what to tell them", station=event.callsign, event_id=event_id,
+                                  detail="They may have missed part of the instruction"))
+        return out
+
+    def open_items(self):
+        return [{"agent": self.name, "event_id": e, "text": f"{v[0].callsign}: stepped-on call, no decision yet"}
+                for e, v in self.open.items()]
