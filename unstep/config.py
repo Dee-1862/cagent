@@ -121,6 +121,15 @@ def cartesia_stt_timestamp_model() -> str:
 DEFAULT_MOSS_AIRCRAFT = 6
 
 
+def idle_land_s() -> float:
+    """Seconds without any input from a walk-up pilot before the hub treats the flight as landed and frees the
+    seat (UNSTEP_IDLE_LAND_S, default 600). 0 turns it off. Pings do not count, so a tab left open still lands."""
+    try:
+        return max(0.0, float(env("UNSTEP_IDLE_LAND_S", default="600")))
+    except ValueError:
+        return 600.0
+
+
 def moss_aircraft() -> int:
     """How many aircraft get their own Moss session (UNSTEP_MOSS_AIRCRAFT, default 6, the whole fleet).
 

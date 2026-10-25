@@ -94,3 +94,40 @@ def test_a_freed_seat_closes_its_cockpit_speech_connection(monkeypatch):
         await r.stop()
 
     asyncio.run(go())
+
+
+def test_an_idle_pilot_who_is_still_connected_has_landed_and_the_seat_is_freed(monkeypatch):
+    monkeypatch.setenv("UNSTEP_IDLE_LAND_S", "0.4")
+    r = make_join_room(monkeypatch)
+
+    async def go():
+        await r.start()
+        seats = [await r.claim_aircraft() for _ in range(4)]
+        walk_ups = [s for s in seats if s.id not in room_mod.TEAM_STATIONS]
+        idle, busy = walk_ups[0], walk_ups[1]
+        idle_phone, busy_phone, team_phone = FakeBrowser(), FakeBrowser(), FakeBrowser()
+        await r.join(idle.id, idle_phone)
+        await r.join(busy.id, busy_phone)
+        await r.join("N123AB", team_phone)
+        for _ in range(4):  # the busy pilot keeps typing; the idle one only has the tab open
+            await asyncio.sleep(0.35)
+            await r.handle(busy.id, {"type": "cue", "name": "joined"})
+        await asyncio.sleep(0.3)
+        assert idle.id not in r.stations and idle.callsign not in r.edges
+        assert busy.id in r.stations and "N123AB" in r.stations  # active and team planes stay
+        freed = [m for m in idle_phone.messages if m["type"] == "seat_freed"]
+        assert freed and freed[0]["reason"].startswith("landed")
+        await r.stop()
+
+    asyncio.run(go())
+
+
+def test_idle_landing_can_be_switched_off(monkeypatch):
+    from unstep.config import idle_land_s
+
+    monkeypatch.setenv("UNSTEP_IDLE_LAND_S", "0")
+    assert idle_land_s() == 0
+    monkeypatch.setenv("UNSTEP_IDLE_LAND_S", "soon")
+    assert idle_land_s() == 600
+    monkeypatch.delenv("UNSTEP_IDLE_LAND_S")
+    assert idle_land_s() == 600

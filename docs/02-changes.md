@@ -5,6 +5,13 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## Idle pilots land: stale planes free themselves
+
+- A walk-up pilot who is still connected but has sent nothing for `UNSTEP_IDLE_LAND_S` (default 600 s; 0 turns it off) is treated as landed: the seat is freed the same way a gone phone is (flight archived to the flight log, pushed once, cockpit agent and open events closed). Pings do not count, so a forgotten open tab lands too. Team planes are never freed.
+- The pilot app says "Your flight has landed after a quiet spell" when it was freed this way.
+- Touches `room.py` (an activity stamp and a sweeper task); posted to Rishit's side as D30.
+
 ## Moss connection checklist and an agent map
 
 - A plane's flight session is warmed at join (`MossMemory.warm`), so the first hint in a live room is not the slow one (Rishit measured 783 ms against 0.2 to 0.4 ms warm; the effect of warming is still to be measured).

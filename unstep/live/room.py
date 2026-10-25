@@ -18,6 +18,7 @@ import base64
 import io
 import json
 import logging
+import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Any, Awaitable, Callable
@@ -27,7 +28,7 @@ import soundfile as sf
 
 from unstep import scenario
 from unstep.clock import now_ms
-from unstep.config import ROOT, env, moss_aircraft, radio_sound, realtime_replay
+from unstep.config import ROOT, env, idle_land_s, moss_aircraft, radio_sound, realtime_replay
 from unstep.contracts import (AnomalyEvent, ApprovedDirective, AuditRecord, Insight, PilotQuery,
                               ProposedDirective, ReadbackResult, RejectedDirective, TowerTranscript,
                               VoiceApproval, Word, unwrap, wrap)
@@ -457,6 +458,7 @@ class LiveRoom:
         self.claims: dict[str, float] = {}  # station -> hub time join() handed it out
         self._join_lock = asyncio.Lock()
         self._moss_used = 0
+        self.last_active: dict[str, float] = {}  # station -> time.monotonic() of its last input
         self._shared_moss = None
         self.reset_at = 0  # hub time of the last presenter reset; /live/stats never counts before it
 
@@ -574,6 +576,7 @@ class LiveRoom:
                     await self._start_edge(s)
             self._spawn(self._scheduler())
             self._spawn(self._ticker())
+            self._spawn(self._landing_sweeper())
             self._started = True
 
     async def _start_edge(self, s: Station) -> None:
@@ -838,6 +841,7 @@ class LiveRoom:
     # ------------------------------------------------------------ browsers
 
     async def join(self, station: str, ws) -> None:
+        self.last_active[station] = time.monotonic()
         self.clients[station].add(ws)
         self.claims.pop(station, None)
         await ws.send_json(self.snapshot(station))
@@ -862,6 +866,22 @@ class LiveRoom:
     def is_walk_up(self, station: str) -> bool:
         s = self.stations.get(station)
         return s is not None and s.kind == "aircraft" and not self.is_team_station(station)
+
+    async def _landing_sweeper(self) -> None:
+        """A walk-up pilot who is still connected but has done nothing for UNSTEP_IDLE_LAND_S has landed: free
+        the seat the same way a gone phone is (archive the flight to the flight log, push once, close its
+        cockpit agent and open events), so a demo room does not keep stale planes running."""
+        limit = idle_land_s()
+        if limit <= 0:
+            return
+        while True:
+            await asyncio.sleep(min(15.0, max(0.5, limit / 4)))
+            now = time.monotonic()
+            for station in list(self.stations):
+                if not self.is_walk_up(station) or station in self.key_since or station in self.streams:
+                    continue
+                if now - self.last_active.get(station, now) >= limit:
+                    await self.free_seat(station, f"landed: no activity for {round(limit / 60, 1):g} min")
 
     async def _free_later(self, station: str) -> None:
         await asyncio.sleep(SEAT_FREE_S)
@@ -973,6 +993,7 @@ class LiveRoom:
 
     async def handle(self, station: str, data: dict) -> None:
         kind = data.get("type")
+        self.last_active[station] = time.monotonic()  # any input but a ping counts as the pilot being there
         if kind == "say":
             await self.say(station, str(data.get("text", ""))[:300])
         elif kind == "mic":
