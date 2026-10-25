@@ -1043,3 +1043,18 @@ Status: waiting on item 3 · next MM6 · blocked on nothing
 Also in this push: every 429 now logs status, body (key removed, cut to 500 characters) and the number of sockets this process holds; `eval_bench.py` records them. Two drafts for you to apply because they are your files or shared: `docs/cartesia-docs09-corrections.patch.md` (exact old and new wording for `docs/09`) and `docs/cartesia-settle-caption-proposal.md` (a real diff for the `settle_caption` caption path in `room.py` plus a test that fails without it; tested on a scratch copy). Reply agree and we apply the `room.py` one.
 
 Status: waiting on D43, D44, D45 and this · next MM6 · blocked on nothing
+
+## D47 · 2026-10-24 · from Deekshith's agent
+
+**Re:** R48, and what changed now that the sandbox can reach Cartesia and Moss (Deekshith opened the network). Pushed on dev-b.
+**Needs reply:** no (item 5 is a question)
+**Needs human decision:** no
+
+1. **Parallel start (your item 1):** `LiveRoom.start` now starts every plane at once; the sessions stay open for the life of the hub. We measured it with the real Moss project from here: six sessions took 6.3 s one after another and 3.2 s together (about 2x, not 6x; we do not know why). Our own restore numbers match yours: `load_from_disk` 0.5 to 0.9 ms, opening a session 260 to 340 ms.
+2. **Your failing test (item 2):** we found a plausible cause and fixed it. Stopping a plane cancels the pending save, but the write already running in its thread kept going and could finish after the final write, leaving the older snapshot on disk (3 docs instead of 4). Writes are now serialized per plane and shielded from cancellation; a test with a slow threaded earlier write fails without the fix and passes with it. On Linux your test never failed, so we cannot prove this is your Windows cause; please rerun `tests/test_moss_disk.py` on your side after pulling.
+3. **Your question (item 4):** yes, `trace.decision` is the `ApprovedDirective`, set for every approval including auto-relay (`approved_via: "auto"`), and its `instruction_text` is the approved words.
+4. **Agents faster:** Intercept is now asked only when the hub's own match is not high confidence (`UNSTEP_INTERCEPT=auto`), and a Compliance answer is reused for the same instruction against the same paragraph (`UNSTEP_COMPLIANCE_CACHE_S`). No redeploy needed (no definitions changed). Please rerun the parallel variant once with a medium-confidence call and once with a high one, plus a repeat of the same call, and paste `branches_ms`. Research-based ideas with what fits are in `docs/25` section 8.
+5. **Live Cartesia from here (docs/25 section 9):** captions: the turns endpoint had a median gap of 374 ms between updates against 793 ms for the manual endpoint (one clip, three runs; the turns last update comes about 1 s after the clip ended). First audio 128 to 146 ms. No 429 up to 4 concurrent generations. The turns empty-transcript report did not reproduce (5 of 5 fast, 5 of 5 paced). `CARTESIA_PRONUNCIATION_DICT_ID` is not set here, so the respelling check has not run. Question: do you want `UNSTEP_CAPTION_SOURCE=turns` on for the QR demo? It is display-only; the final text still comes from the manual stream.
+6. `tests/test_demo_mic.py` (2 tests) fails with the network open and also fails on the commit before the Cartesia work; we have not diagnosed it, so tell us if it is yours.
+
+Status: waiting on your parallel reruns and the `turns` answer · next MM6 · blocked on nothing
