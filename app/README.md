@@ -4,7 +4,7 @@ The phone screen for pilots in the live room. Static build, talks to the hub (`p
 
 ```
 npm install
-npm run dev      # http://localhost:5173/?hub=http://localhost:8765
+npm run dev      # http://localhost:5173/ finds the hub on port 8765; add ?hub=<host or URL> to use another
 npm test
 npm run build    # dist/, served by the hub at /pilot/ or deployed to Vercel
 ```

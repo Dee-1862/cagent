@@ -2,6 +2,12 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## `npm run dev` finds the local hub by itself
+
+- Opening `http://localhost:5173/` showed errors: with no `?hub=` the pilot app assumed the page was the hub, but port 5173 is only Vite's dev server. It answered `/live/stations` with its own HTML (200, `text/html`), which the app cannot read as a station list.
+- `hubFromLocation` now points a dev page on port 5173 at the hub on the same machine, port 8765 (`localhost` stays `localhost`, `127.0.0.1` stays `127.0.0.1`, so the hub's origin rules match). A `?hub=` link still wins, and a built copy on that port is left alone.
+- Tests: two cases added in `clock.test.ts` (33 app tests pass). The hub must still allow the page's origin: `UNSTEP_ALLOWED_ORIGINS=http://localhost:5173` in `.env` (the hub on this machine already sends that header).
+
 ## Loading the airport index retries when Moss says it changed
 
 - Seen on startup of `python -m unstep.live`: "memory open failed at startup ... MossError: The index changed while the operation ran. Retry the operation." Moss raises it when the cloud index is written or loaded at the same moment; our code gave up on the first one and the plane flew on local memory.

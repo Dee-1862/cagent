@@ -11,7 +11,7 @@ const STORE = "unstep.hub";
 // The public demo hub (render.yaml). Not a secret: the room code, when set, is separate.
 const PUBLIC_HUB = "https://unstep.onrender.com";
 
-export function hubFromLocation(loc: Location = window.location): Hub | null {
+export function hubFromLocation(loc: Location = window.location, dev: boolean = import.meta.env.DEV): Hub | null {
   const q = new URLSearchParams(loc.search);
   let raw = q.get("hub");
   let token = q.get("token");
@@ -32,6 +32,8 @@ export function hubFromLocation(loc: Location = window.location): Hub | null {
     raw = built;
     token = token || (import.meta.env.VITE_UNSTEP_TOKEN as string | undefined) || null;
   }
+  // `npm run dev` serves this app on :5173, which is not the hub: use the hub on this machine (port 8765).
+  if (!raw && dev && loc.port === "5173") raw = `${loc.protocol}//${loc.hostname}:8765`;
   if (!raw && !loc.hostname.endsWith(".vercel.app")) raw = loc.origin; // served by the hub itself
   return raw ? parseHub(raw, token) : null;
 }
