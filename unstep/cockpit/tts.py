@@ -21,7 +21,8 @@ from typing import Callable, Optional, Protocol
 
 import numpy as np
 
-from unstep.cockpit.cartesia_errors import CartesiaRateLimited, connect_with_backoff
+from unstep.cockpit.cartesia_errors import (connect_with_backoff, rate_limited_from_event, socket_closed,
+                                            socket_opened)
 from unstep.cockpit.phraseology import normalize_for_speech
 
 SAMPLE_RATE = 24000
@@ -187,12 +188,16 @@ class CartesiaTTS:
                 additional_headers={"X-API-Key": self.api_key},
                 max_size=None,
             ))
+            socket_opened("tts")
         return self._ws
 
     async def close(self) -> None:
         if self._ws is not None:
-            await self._ws.close()
-            self._ws = None
+            ws, self._ws = self._ws, None
+            try:
+                await ws.close()
+            finally:
+                socket_closed("tts")
 
     def request(self, text: str, context_id: str, language: Optional[str] = None,
                 speed: Optional[float] = None) -> dict:
@@ -229,6 +234,8 @@ class CartesiaTTS:
         try:
             return await asyncio.wait_for(self._speak_once(text, context_id, track, language, speed), SPEAK_DEADLINE_S)
         except (ConnectionClosed, OSError, asyncio.TimeoutError):
+            if self._ws is not None and getattr(self._ws, "close_code", None) is not None:
+                socket_closed("tts")  # already closed by the server; a socket that is still open stays counted
             self._ws = None
             if heard:
                 # Audio already went out: retrying would say the line twice.
@@ -269,7 +276,7 @@ class CartesiaTTS:
                 break
             elif kind == "error":
                 if msg.get("status_code") == 429:
-                    raise CartesiaRateLimited(f"Cartesia TTS rate limited: {msg.get('title')}: {msg.get('message')}")
+                    raise rate_limited_from_event(msg, "tts")  # logs status, body and open sockets
                 raise RuntimeError(f"Cartesia TTS error: {msg.get('title')}: {msg.get('message')}")
         return SpeechResult(b"".join(chunks), self.sample_rate, first_ms, words,
                             cancelled=context_id in self._cancelled, context_id=context_id)
