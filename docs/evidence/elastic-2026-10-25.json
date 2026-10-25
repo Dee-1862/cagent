@@ -1,0 +1,133 @@
+{
+ "run_at": "2026-10-25T14:51:54+00:00",
+ "objects": {
+  "agents": {
+   "http": 200,
+   "total_on_project": 9,
+   "ours": 8,
+   "ids": [
+    "unstep-audit",
+    "unstep-coach",
+    "unstep-compliance",
+    "unstep-compliance-lite",
+    "unstep-ground",
+    "unstep-intercept",
+    "unstep-intercept-lite",
+    "unstep-readback-auditor"
+   ]
+  },
+  "tools": {
+   "http": 200,
+   "total_on_project": 35,
+   "ours": 9,
+   "ids": [
+    "unstep_audit_auto_resends",
+    "unstep_audit_blocked_by_callsign",
+    "unstep_audit_blocked_per_minute",
+    "unstep_audit_landed_flights",
+    "unstep_audit_readback_outcomes",
+    "unstep_faa_search",
+    "unstep_readback_history",
+    "unstep_recent_blocked_calls",
+    "unstep_trend_decisions"
+   ]
+  },
+  "workflows": {
+   "http": 200,
+   "ours": 7,
+   "ids": [
+    "unstep-blocked-call",
+    "unstep-blocked-call-fast",
+    "unstep-blocked-compliance",
+    "unstep-blocked-intercept",
+    "unstep-briefing",
+    "unstep-nightly-review",
+    "unstep-readback-audit"
+   ]
+  }
+ },
+ "faa_citation_hybrid_rerank": {
+  "timing_ms": {
+   "n": 30,
+   "p50": 893.2,
+   "p95": 1000.8,
+   "mean": 857.3,
+   "max": 1139.8
+  },
+  "answers": 30,
+  "reranked": 30,
+  "paragraphs": [
+   "3-10-9",
+   "3-7-4",
+   "3-9-10",
+   "3-9-4",
+   "3-9-9"
+  ]
+ },
+ "geo_shape_area_lookup": {
+  "elastic_took_ms": {
+   "n": 30,
+   "p50": 0,
+   "p95": 0,
+   "mean": 0.0,
+   "max": 0
+  },
+  "wall_ms": {
+   "n": 30,
+   "p50": 84.9,
+   "p95": 124.5,
+   "mean": 145.8,
+   "max": 1845.6
+  },
+  "backend_answered": 30,
+  "area_example": [
+   "Taxiway B"
+  ]
+ },
+ "audit_trail": {
+  "documents": {
+   "unstep-events": 1493,
+   "unstep-proposals": 25,
+   "unstep-policy": "HTTP 404",
+   "unstep-clearances": 23,
+   "unstep-flights": 7,
+   "unstep-faa": 52,
+   "unstep-rules": 7,
+   "unstep-flightplans": 2,
+   "unstep-airport": 5,
+   "unstep-positions": 7770,
+   "kibana_maps": {
+    "http": 400,
+    "titles": []
+   }
+  },
+  "esql_events_and_planes": [
+   [
+    1493,
+    6
+   ]
+  ],
+  "esql_wall_ms": {
+   "n": 10,
+   "p50": 89.0,
+   "p95": 118.9,
+   "mean": 92.1,
+   "max": 118.9
+  }
+ },
+ "mcp": {
+  "http": 200,
+  "tools_exposed": 31,
+  "ours": [
+   "unstep_audit_auto_resends",
+   "unstep_audit_blocked_by_callsign",
+   "unstep_audit_blocked_per_minute",
+   "unstep_audit_landed_flights",
+   "unstep_audit_readback_outcomes",
+   "unstep_faa_search",
+   "unstep_readback_history",
+   "unstep_recent_blocked_calls",
+   "unstep_trend_decisions"
+  ]
+ }
+}

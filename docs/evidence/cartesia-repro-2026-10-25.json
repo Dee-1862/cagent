@@ -1,0 +1,59 @@
+{
+ "clip": "assets\\clips\\real\\correct_readback.wav",
+ "clip_s": 4.12,
+ "runs": 30,
+ "started": "2026-10-25 07:57:59 Pacific Daylight Time",
+ "results": {
+  "manual_pacing": {
+   "fast": {
+    "empty": 0,
+    "correct": 30,
+    "finalize_ms": {
+     "n": 30,
+     "min": 861.2,
+     "p50": 876.25,
+     "p95": 942.5,
+     "max": 976.1
+    },
+    "total_ms": {
+     "n": 30,
+     "min": 977.2,
+     "p50": 1027.1999999999998,
+     "p95": 1114.5,
+     "max": 1188.3
+    },
+    "examples": [
+     "hold short runway 33 Cessna 123.",
+     "hold short runway 33 Cessna 123.",
+     "hold short runway 33 Cessna 123."
+    ]
+   },
+   "paced": {
+    "empty": 0,
+    "correct": 30,
+    "finalize_ms": {
+     "n": 30,
+     "min": 116.2,
+     "p50": 141.25,
+     "p95": 298.4,
+     "max": 325.1
+    },
+    "total_ms": {
+     "n": 30,
+     "min": 4449.2,
+     "p50": 4510.75,
+     "p95": 5003.9,
+     "max": 5545.4
+    },
+    "examples": [
+     "hold short runway 33 Cessna 123.",
+     "hold short runway 33 Cessna 123.",
+     "hold short runway 33 Cessna 123."
+    ]
+   }
+  },
+  "finalize": {
+   "error": "TimeoutError: "
+  }
+ }
+}

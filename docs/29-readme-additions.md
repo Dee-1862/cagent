@@ -1,5 +1,7 @@
 # README additions: pictures, and the three sponsors
 
+> **Superseded.** The README now carries the sponsor tables, written by `scripts/readme_tables.py` from `docs/evidence/`. Read the README for the current numbers; this draft is kept for its wording and the built-in-a-day table.
+
 Ready to paste into `README.md`. Two parts: **A. Unstep in pictures** (after "One complete flow") and **B. For the sponsors** (before "Measured results"). The README is Rishit's file, so nothing here has been applied to it; see "How to apply" at the end.
 
 | Field | Value |

@@ -1,0 +1,77 @@
+{
+ "run_at": "2026-10-25T15:07:07+00:00",
+ "keyterms": {
+  "n": 200,
+  "condition": "radio-10 (10 dB signal to noise), three voices, synthetic speech",
+  "seed": 7,
+  "callsign": {
+   "without": 0.615,
+   "with": 0.935,
+   "ci95_without": [
+    0.546,
+    0.6797
+   ],
+   "ci95_with": [
+    0.892,
+    0.9616
+   ],
+   "n": 200
+  },
+  "runway": {
+   "without": 0.7868,
+   "with": 0.9926,
+   "ci95_without": [
+    0.7105,
+    0.8472
+   ],
+   "ci95_with": [
+    0.9595,
+    0.9987
+   ],
+   "n": 136
+  },
+  "wer": {
+   "without": 0.211,
+   "with": 0.012
+  },
+  "callsign_by_voice_with_terms": {
+   "tower": 1.0,
+   "pilot": 0.806,
+   "heli": 1.0
+  }
+ },
+ "stt_streaming_finalize_ms": {
+  "n": 30,
+  "p50": 141.25,
+  "p95": 298.4,
+  "correct": 30
+ },
+ "stt_burst_finalize_ms": {
+  "n": 30,
+  "p50": 876.25,
+  "p95": 942.5
+ },
+ "tts_first_audio_ms": {
+  "n": 30,
+  "p50": 92.9,
+  "p95": 207.3,
+  "min": 77.7,
+  "first_request_on_the_socket": 277.8
+ },
+ "captions": {
+  "runs": 5,
+  "last_update_after_release_ms": {
+   "p50": 154,
+   "max": 215
+  },
+  "median_gap_between_updates_ms": 784,
+  "first_text_ms": 1819
+ },
+ "files": [
+  "cartesia-bench-2026-10-25.json",
+  "cartesia-repro-2026-10-25.json",
+  "cartesia-live-check-2026-10-25.json"
+ ],
+ "captions_text": "final caption 154 ms after release (median of 5 runs, worst 215 ms); while speaking, a caption update about every 0.8 s",
+ "note": "Streaming the audio while the key is held finalizes in 141.25 ms (median), against 876.25 ms when the whole clip is sent at once; that is why the room streams. Of the three voices the pilot's is the hardest (callsign 80.6% with key terms)."
+}
