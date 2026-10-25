@@ -490,7 +490,7 @@ function keyParts(text: string): { runway: string | null; action: string | null;
   const rw = t.match(/\brunway\s+(\d{1,2})\b/);
   const action = /\bclear(ed)?\b.{0,16}\btake ?off\b/.test(t) ? "cleared for takeoff" : /\bline ?up\b/.test(t) ? "line up and wait"
     : /\bhold short\b/.test(t) ? "hold short" : /\btaxi\b/.test(t) ? "taxi" : null;
-  const pl = t.match(/(to|at)\s+(?:taxiway\s+)?(alpha|bravo|a|b)\s?([1-4])/);
+  const pl = t.match(/\b(to|at)\s+(?:taxiway\s+)?(alpha|bravo|a|b)\s?([1-4])\b/);
   return { runway: rw ? rw[1] : null, action, place: pl ? `${pl[2][0].toUpperCase()}${pl[3]}` : null };
 }
 function readbackVerdict(told: string, said: string): { ok: boolean; why: string } {
