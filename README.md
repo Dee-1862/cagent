@@ -157,6 +157,18 @@ Unstep is not a way to run a tower with fewer controllers. It is a second set of
 
 **What we have not measured:** whether this reduces missed calls or controller workload in a real facility. We have not tested it in one. Do not quote a safety or staffing effect from this project.
 
+## What we decided with the other side
+
+Two people, two agents. Deekshith's side builds the pilot app and the hub; Rishit's side builds the controller console. They agree changes by mail (`agent-mail` branch) and never overwrite each other's work. Decisions so far:
+
+- **The pitch is a safety net, not fewer controllers.** A staffing or roster model was proposed and dropped (R33): it read as "AI replaces controllers", and we cannot back it with data. Unstep takes routine checking off a controller who is short-staffed.
+- **The controller always decides.** Agents propose and cite; fixed rules route. There is no master agent. A spoken sentence is checked by fixed code, and only the agents that event needs are called ([docs/20-agent-map.md](docs/20-agent-map.md)).
+- **Elastic stays with Deekshith's side**, reviewed by Rishit's. Rishit ran the first live deploy (agents, tools, workflows, 52 FAA paragraphs), which worked after two fixes.
+- **Moss:** each plane has its own memory; the newest clearance gives the hint and Moss supplies the search evidence behind it. Flight logs are pushed once, never per plane. "Survives a restart" is not claimed until the live check passes (the test project hit a usage limit).
+- **Agents at work:** the console gets one live feed of what the agents did. The first four jobs are: no readback, stuck mic, conflicting clearances (flag only), and a shift handoff briefing. The rest (say-again counter, held too long, runway change, priority) come later.
+- **Not agreed, not built:** a triage ranker, and routing work between people on shift.
+- **Honesty rules:** simulated traffic is always labelled; nothing is quoted as measured unless it was run live; thresholds are our own early warnings, not FAA procedures.
+
 ## Responsible use
 
 - **A human authored or approved every directive.** The policy agent may auto-resend a blocked call only when it repeats the controller's own transmitted words, is a stop/wait instruction, is fresh and high confidence; the gateway re-checks it. Every auto-resend appears on the ATC console with its checks, one switch turns auto-resend off, and everything else (anything that lets a plane move) waits for the controller's Approve.
