@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
 import {OrbitControls} from "three/addons/controls/OrbitControls.js";
+import {mergeGeometries} from "three/addons/utils/BufferGeometryUtils.js";
+import {RoomEnvironment} from "three/addons/environments/RoomEnvironment.js";
 
 const colors = {blue:0x0a84ff, green:0x30d158, amber:0xffd60a, red:0xff453a, violet:0xbf5af2};
 const models = ["small-plane", "helicopter", "jet", "airliner-747"];
@@ -12,73 +14,200 @@ const modelFor = (s, i) => {
 export function createAirport(container, {quality = "high", followStation} = {}) {
   const reduced = matchMedia("(prefers-reduced-motion: reduce)");
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0b0d10);
-  scene.fog = new THREE.Fog(0x0b0d10, 42, 95);
-  const camera = new THREE.PerspectiveCamera(40, 1, .1, 160);
+  scene.background = new THREE.Color(0x0a0b0d);
+  scene.fog = new THREE.Fog(0x0a0b0d, 75, 170);
+  const camera = new THREE.PerspectiveCamera(38, 1, .1, 320);
   camera.position.set(23, 30, 32);
-  const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+  const renderer = new THREE.WebGLRenderer({antialias:quality!=="low", alpha:false});
+  renderer.setPixelRatio(quality === "low" ? 1 : Math.min(devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = quality === "high";
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.35;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const room = new RoomEnvironment();
+  scene.environment = pmrem.fromScene(room).texture;
+  room.dispose();
+  const composer = null;  // bloom removed: it rendered only a corner of the frame; glow comes from emissive materials
   container.append(renderer.domElement);
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(0, 0, 0);
   controls.enableDamping = true;
-  controls.minDistance = 17; controls.maxDistance = 65;
-  controls.maxPolarAngle = Math.PI * .46;
-  controls.minPolarAngle = Math.PI * .16;
+  controls.minDistance = 14; controls.maxDistance = 110;
+  controls.maxPolarAngle = Math.PI / 2;
+  controls.minPolarAngle = 0;
   const homeAngle = Math.atan2(23, 32);
-  controls.minAzimuthAngle = homeAngle - THREE.MathUtils.degToRad(8);
-  controls.maxAzimuthAngle = homeAngle + THREE.MathUtils.degToRad(8);
+  controls.minAzimuthAngle = -Infinity;
+  controls.maxAzimuthAngle = Infinity;
   controls.autoRotate = false;
   controls.update();
-  let idle = true;
+  let idle = true, autoSway = true, viewName = "overview", transition = null;
+  const views = {
+    overview:{position:[44,46,62],target:[0,0,-3]},
+    runway:{position:[8,15,44],target:[-10,0,16]},
+    gates:{position:[20,28,14],target:[-4,0,-12]},
+    top:{position:[0,100,-2.001],target:[0,0,-2]}
+  };
+  camera.position.set(...views.overview.position);controls.target.set(...views.overview.target);controls.update();
+  function setView(name) {
+    if(!views[name])return;
+    viewName=name;idle=false;
+    transition={start:performance.now(),from:camera.position.clone(),targetFrom:controls.target.clone(),to:new THREE.Vector3(...views[name].position),targetTo:new THREE.Vector3(...views[name].target)};
+  }
+  function setAutoSway(on){autoSway=!!on;idle=!!on;}
   renderer.domElement.addEventListener("pointerdown", () => { idle = false; });
-  renderer.domElement.addEventListener("dblclick", () => {idle = true; size(); controls.target.set(0,0,0); controls.update();});
-  scene.add(new THREE.HemisphereLight(0xb9d8ff, 0x20232a, 2.2));
-  const sun = new THREE.DirectionalLight(0xffe9d0, 2.5);
-  sun.position.set(-12, 25, 14); sun.castShadow = quality === "high";
+  renderer.domElement.addEventListener("dblclick", () => setView("overview"));
+  scene.add(new THREE.HemisphereLight(0xc5d4e4, 0x12151b, 2.1));
+  const sun = new THREE.DirectionalLight(0xe9efff, 2.3);
+  sun.position.set(-22, 40, 26); sun.castShadow = quality === "high";
   sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, {left:-28,right:28,top:28,bottom:-28,near:1,far:65});
+  Object.assign(sun.shadow.camera, {left:-48,right:48,top:48,bottom:-48,near:1,far:120});
   sun.shadow.bias = -.0002; scene.add(sun);
-  const matte = (c, extra = {}) => new THREE.MeshStandardMaterial({color:c, roughness:1, metalness:0, ...extra});
+  const materialCache = new Map();  // one material per colour+options, so batched markings share draw calls
+  const matte = (c, extra = {}) => { const key = c + JSON.stringify(extra); if (!materialCache.has(key)) materialCache.set(key, new THREE.MeshStandardMaterial({color:c, roughness:1, metalness:0, ...extra})); return materialCache.get(key); };
   function box(w,h,d,x,y,z,material,shadow=false) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), material);
     mesh.position.set(x,y,z); mesh.receiveShadow = true; mesh.castShadow = shadow; scene.add(mesh); return mesh;
   }
-  box(100,.12,100,0,-.12,0,matte(0x14181d));
-  box(6,.04,42,0,.005,0,matte(0x252b32));
-  box(6.8,.015,43,0,-.005,0,matte(0x323a43));
-  for (let z=-17; z<=17; z+=4) box(.12,.02,1.6,0,.035,z,matte(0xd4d9de));
-  for (const x of [-2.65,2.65]) box(.1,.02,39,x,.035,0,matte(0xa6afb8));
-  function paint(text,z,rotation=0) {
+  // Flat markings and light dots are merged per material: one draw call each instead of hundreds.
+  const batches=new Map();
+  const addBatch=(geometry,material)=>{ if(!batches.has(material)) batches.set(material,[]); batches.get(material).push(geometry); };
+  function mark(w,h,d,x,y,z,material){ const g=new THREE.BoxGeometry(w,h,d); g.translate(x,y,z); addBatch(g,material); }
+  function dot(r,material,x,y,z){ const g=new THREE.SphereGeometry(r,6,4); g.translate(x,y,z); addBatch(g,material); }
+  function flushBatches(){ for(const [material,list] of batches){ const merged=mergeGeometries(list,false); list.forEach(g=>g.dispose()); const m=new THREE.Mesh(merged,material); m.receiveShadow=true; scene.add(m);} batches.clear(); }
+  // ---- ground: dark field, apron, fine grid (the digital-twin floor) ----
+  box(260,.12,260,0,-.12,0,matte(0x0d0f12));
+  mark(100,.02,40,0,-.04,-12,matte(0x14181d));
+  const grid = new THREE.GridHelper(260, 260, 0x2d3842, 0x222b34);
+  grid.material.transparent = true; grid.material.opacity = .14; grid.position.y = -.035; scene.add(grid);
+  const majorGrid = new THREE.GridHelper(260, 26, 0x4a5763, 0x4a5763);
+  majorGrid.material.transparent = true; majorGrid.material.opacity = .1; majorGrid.position.y = -.03; scene.add(majorGrid);
+
+  // ---- runway 33/15 (south of the terminal) and taxiway B ----
+  const RWY_Z = 22;
+  box(76,.04,5.2,0,.005,RWY_Z,matte(0x1b2026));
+  box(77,.015,6,0,-.005,RWY_Z,matte(0x2c343c));
+  for (let x=-33; x<=33; x+=4.5) mark(1.8,.02,.13,x,.035,RWY_Z,matte(0xd4d9de));
+  for (const dz of [-2.35,2.35]) mark(72,.02,.1,0,.035,RWY_Z+dz,matte(0xa6afb8));
+  for (const x of [-35.5,35.5]) for (let k=-2;k<=2;k++) mark(.9,.02,.35,x,.035,RWY_Z+k*.85,matte(0xd4d9de));
+  function paint(text,x,z,rotation=0) {
     const canvas=document.createElement("canvas"); canvas.width=256; canvas.height=256;
     const ctx=canvas.getContext("2d"); ctx.fillStyle="#e8ecef"; ctx.font="bold 165px Arial"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(text,128,128);
-    const mesh=new THREE.Mesh(new THREE.PlaneGeometry(3,3),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(canvas),transparent:true,depthWrite:false}));
-    mesh.rotation.x=-Math.PI/2; mesh.rotation.z=rotation; mesh.position.set(0,.055,z); scene.add(mesh);
+    const mesh=new THREE.Mesh(new THREE.PlaneGeometry(3.4,3.4),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(canvas),transparent:true,depthWrite:false}));
+    mesh.rotation.x=-Math.PI/2; mesh.rotation.z=rotation; mesh.position.set(x,.055,z); scene.add(mesh);
   }
-  paint("33",-18); paint("15",18,Math.PI);
-  box(19,.035,4.5,-11,.015,0,matte(0x313940));
-  for (let x=-20;x<-3;x+=3) box(1.1,.02,.09,x,.045,0,matte(0xb7a478));
-  const hold=box(.14,.025,4.7,-3.55,.065,0,matte(colors.amber,{emissive:colors.amber,emissiveIntensity:.15}));
-  box(.14,.025,4.7,-3.85,.065,0,matte(colors.amber));
-  for(let i=0;i<7;i++) {
-    const x=-20+i*2.35;
-    box(.08,.018,3,x,.045,-7.4,matte(0x57616a));
-    box(.08,.018,3,x,.045,7.4,matte(0x57616a));
+  paint("33",-32,RWY_Z,-Math.PI/2); paint("15",32,RWY_Z,Math.PI/2);
+  const TWY_Z = 14;   // taxiway B, parallel to the runway
+  mark(80,.035,2.6,-4,.012,TWY_Z,matte(0x20262c));
+  for (let x=-43;x<35;x+=2.2) mark(1,.02,.07,x,.04,TWY_Z,matte(0xb7a478));
+  mark(2.6,.035,RWY_Z-TWY_Z,-10,.012,(RWY_Z+TWY_Z)/2,matte(0x20262c));   // connector B1 onto the runway
+  for (let z=TWY_Z+.8;z<RWY_Z-2.6;z+=1.4) mark(.07,.02,.8,-10,.04,z,matte(0xb7a478));
+  const HOLD_Z = RWY_Z-3.4;   // hold-short line on the connector
+  const hold=box(2.7,.025,.14,-10,.065,HOLD_Z,matte(colors.amber,{emissive:colors.amber,emissiveIntensity:.15}));
+  mark(2.7,.025,.14,-10,.065,HOLD_Z-.3,matte(colors.amber));
+  const twyLight=new THREE.MeshBasicMaterial({color:0x5fa8ff}), rwyLight=new THREE.MeshBasicMaterial({color:0xf2f4f6});
+  for (let x=-43;x<35;x+=3.3) for (const dz of [-1.5,1.5]) { dot(.07,twyLight,x,.07,TWY_Z+dz); }
+  for (let x=-36;x<=36;x+=2.4) for (const dz of [-2.9,2.9]) { dot(.06,rwyLight,x,.07,RWY_Z+dz); }
+
+  // ---- terminal: a spine, three piers and a main hall; dark roof over a softly lit glass band ----
+  const roofMat=new THREE.MeshStandardMaterial({color:0x22272e,metalness:.35,roughness:.45});
+  const glassMat=new THREE.MeshStandardMaterial({color:0x2a3540,emissive:0x8fa6b8,emissiveIntensity:.12,metalness:.2,roughness:.3});
+  const edgeMat=new THREE.LineBasicMaterial({color:0xc9d6e0,transparent:true,opacity:.45});
+  const bridgeMat=new THREE.MeshStandardMaterial({color:0x9aa1a8,metalness:.25,roughness:.55});
+  function slab(length,width,x,z,{angle=0,height=1.6,round=1}={}) {
+    // A rounded slab: glass band below, a dark bevelled roof above with a light edge (as in the reference).
+    const r=Math.min(width/2,round*width/2), l=length/2-r, w=width/2;
+    const shape=new THREE.Shape();
+    shape.moveTo(-l,-w); shape.lineTo(l,-w); shape.absarc(l,-w+r,r,-Math.PI/2,0,false); shape.lineTo(l+r,w-r);
+    shape.absarc(l,w-r,r,0,Math.PI/2,false); shape.lineTo(-l,w); shape.absarc(-l,w-r,r,Math.PI/2,Math.PI,false);
+    shape.lineTo(-l-r,-w+r); shape.absarc(-l,-w+r,r,Math.PI,1.5*Math.PI,false);
+    const roof=new THREE.ExtrudeGeometry(shape,{depth:.35,bevelEnabled:true,bevelThickness:.25,bevelSize:.3,bevelSegments:5,curveSegments:16});
+    roof.rotateX(-Math.PI/2);
+    const g=new THREE.Group(); g.position.set(x,0,z); g.rotation.y=angle; scene.add(g);
+    const roofMesh=new THREE.Mesh(roof,roofMat); roofMesh.position.y=height; roofMesh.castShadow=quality==="high"; roofMesh.receiveShadow=true; g.add(roofMesh);
+    const edge=new THREE.LineSegments(new THREE.EdgesGeometry(roof,30),edgeMat); edge.position.y=height; g.add(edge);
+    const bandGeo=new THREE.ExtrudeGeometry(shape,{depth:height,bevelEnabled:false,curveSegments:16}); bandGeo.rotateX(-Math.PI/2); bandGeo.scale(.94,1,.9);
+    g.add(new THREE.Mesh(bandGeo,glassMat));
+    return g;
   }
-  box(2.2,6,2.2,8,3,-8,matte(0x343c46),true);
-  box(3.1,1.5,3.1,8,6.75,-8,matte(0x183656,{emissive:colors.blue,emissiveIntensity:.35}),true);
-  const cab=new THREE.Mesh(new THREE.CylinderGeometry(1.75,1.75,.22,8),matte(0x394451)); cab.position.set(8,7.65,-8); cab.castShadow=true; scene.add(cab);
-  box(2,.02,1,8,.02,-4.7,matte(0x52708b));
+  const SPINE_Z=-26;
+  slab(66,3.6,-4,SPINE_Z,{height:1.5});                                   // spine
+  const PIERS=[-28,-5,18];
+  for (const px of PIERS) slab(26,2.8,px,SPINE_Z+14.2,{angle:Math.PI/2,height:1.35});   // piers point south, toward the airfield
+  slab(13,11,36,SPINE_Z+2.5,{height:2.2,round:.55});                      // main hall
+  const sky=new THREE.Mesh(new THREE.CircleGeometry(2.2,32),new THREE.MeshBasicMaterial({color:0x5b8fb8,transparent:true,opacity:.55}));
+  sky.rotation.x=-Math.PI/2; sky.scale.set(1.6,1,1); sky.position.set(36,2.95,SPINE_Z+2.5); scene.add(sky);
+
+  // ---- jet bridges along both sides of each pier; white airliners parked nose-in ----
+  const gateSpots=[];
+  for (const px of PIERS) for (const side of [-1,1]) for (let i=0;i<4;i++) {
+    const z=SPINE_Z+6+i*6.2, x0=px+side*1.7;
+    box(2.6,.55,.6,x0+side*1.3,1.05,z,bridgeMat,true);
+    const rot=new THREE.Mesh(new THREE.CylinderGeometry(.42,.42,.62,12),bridgeMat); rot.position.set(x0+side*2.75,1.05,z); rot.castShadow=quality==="high"; scene.add(rot);
+    for (const lx of [x0+side*1.6,x0+side*2.75]) box(.08,.8,.08,lx,.4,z,bridgeMat);
+    gateSpots.push({x:x0+side*6.0,z,noseYaw:side>0?Math.PI:0});           // nose points back at the pier
+  }
+  const tmpV=new THREE.Vector3();
+  function prepareAircraft(root,length) {
+    // A group whose +X is the aircraft's nose (the tail fin is the model's highest point), scaled to `length`.
+    root.updateMatrixWorld(true);
+    root.traverse(o=>{ if(o.isMesh && o.geometry && !o.geometry.attributes.normal) o.geometry.computeVertexNormals(); });
+    const box0=new THREE.Box3().setFromObject(root), size0=box0.getSize(new THREE.Vector3());
+    const longX=size0.x>=size0.z; let top=-Infinity, along=0;
+    root.traverse(o=>{ if(!o.isMesh) return; const pos=o.geometry.attributes.position; const step=Math.max(1,Math.floor(pos.count/3000));
+      for(let i=0;i<pos.count;i+=step){ tmpV.fromBufferAttribute(pos,i).applyMatrix4(o.matrixWorld); if(tmpV.y>top){top=tmpV.y; along=longX?tmpV.x:tmpV.z;} } });
+    const mid=longX?(box0.min.x+box0.max.x)/2:(box0.min.z+box0.max.z)/2, tailPositive=along>mid;
+    const turn=new THREE.Group(); turn.add(root);
+    turn.rotation.y = longX ? (tailPositive?Math.PI:0) : (tailPositive?-Math.PI/2:Math.PI/2);
+    const holder=new THREE.Group(); holder.add(turn); holder.updateMatrixWorld(true);
+    const size1=new THREE.Box3().setFromObject(holder).getSize(new THREE.Vector3());
+    holder.scale.setScalar(length/Math.max(size1.x,size1.z)); holder.updateMatrixWorld(true);
+    const box2=new THREE.Box3().setFromObject(holder), c=box2.getCenter(new THREE.Vector3());
+    turn.position.set(-c.x/holder.scale.x,-box2.min.y/holder.scale.y,-c.z/holder.scale.z);
+    root.traverse(o=>{ if(o.isMesh){ o.material=new THREE.MeshStandardMaterial({color:0xe9ecef,roughness:.5,metalness:.05,side:THREE.DoubleSide}); o.castShadow=quality==="high"; o.receiveShadow=true; } });
+    return holder;
+  }
+  const parkedTypes=["airliner-a","airliner-b","regional-jet","airliner-747","airliner-a","airliner-b"];
+  // "low" (narrow screens, the headless recorder) skips the parked fleet: it's decoration and the heaviest part.
+  if (quality!=="low") gateSpots.filter((_,i)=>i%4!==3).forEach(async (spot,i)=>{ try {
+    const gltf=await new GLTFLoader().loadAsync(`/live/static/atc/models/${parkedTypes[i%parkedTypes.length]}.glb`); if(disposed) return;
+    const plane=prepareAircraft(gltf.scene,5.6); plane.position.set(spot.x,0,spot.z); plane.rotation.y=spot.noseYaw; scene.add(plane);
+  } catch(e) { console.warn("Parked aircraft unavailable",e); } });
+
+  // ---- taxi routes: every gate -> lead-in line -> taxiway A (pier tips) -> connector -> taxiway B -> hold short -> runway ----
+  const TWYA_Z = SPINE_Z+30.5;
+  const taxiMat=matte(0x20262c), lineMat=matte(0xb7a478,{emissive:0xb7a478,emissiveIntensity:.08});
+  mark(84,.035,2.4,0,.012,TWYA_Z,taxiMat);
+  for (let x=-41;x<42;x+=2.2) mark(1,.02,.07,x,.04,TWYA_Z,lineMat);
+  for (const cx of [-38,-17,6,30]) {
+    mark(2.4,.035,TWY_Z-TWYA_Z,cx,.012,(TWY_Z+TWYA_Z)/2,taxiMat);
+    for (let z=TWYA_Z+.9;z<TWY_Z-.9;z+=1.3) mark(.07,.02,.75,cx,.04,z,lineMat);
+  }
+  for (const spot of gateSpots) {                                     // lead-in: from the stand out to taxiway A
+    const len=TWYA_Z-spot.z; mark(.08,.02,len,spot.x,.04,spot.z+len/2,lineMat);
+    mark(.9,.02,.08,spot.x,.04,spot.z,lineMat);                        // stop bar at the stand
+  }
+  // ---- control tower, west of the field ----
+  const TOWER={x:-46,z:-8};
+  const shaft=new THREE.Mesh(new THREE.CylinderGeometry(.45,.7,9,20),roofMat); shaft.position.set(TOWER.x,4.5,TOWER.z); shaft.castShadow=quality==="high"; scene.add(shaft);
+  const towerCab=new THREE.Mesh(new THREE.CylinderGeometry(1.35,1.05,1.1,16),glassMat); towerCab.position.set(TOWER.x,9.4,TOWER.z); scene.add(towerCab);
+  const cab=new THREE.Mesh(new THREE.CylinderGeometry(1.55,1.55,.18,16),roofMat); cab.position.set(TOWER.x,10.05,TOWER.z); scene.add(cab);
+
+  // ---- apron lights: small scattered points, like the reference ----
+  const lightMat=new THREE.MeshBasicMaterial({color:0xdfe7ee});
+  for(let i=0;i<(quality==="low"?30:90);i++) {
+    const x=-44+((i*37)%92), z=-30+((i*53)%36);
+    dot(.06,lightMat,x,.05,z);
+  }
+  flushBatches();
   const loader=new GLTFLoader();
   const entries=new Map(); let selected=null, disposed=false, onPick=()=>{};
   const raycaster=new THREE.Raycaster(); const pointer=new THREE.Vector2();
-  const slots=[[-17,0],[-11,0],[-18,-7.4],[-12,-7.4],[-18,7.4],[-12,7.4],[-6,-7.4],[-6,7.4]];
-  const ringGeometry=new THREE.RingGeometry(.95,1.06,48);
+  const slots=[[-15,TWY_Z],[-21,TWY_Z],[-27,TWY_Z],[-4,TWY_Z],[2,TWY_Z],[8,TWY_Z],[-32,TWY_Z],[14,TWY_Z]];
+  const ringGeometry=new THREE.RingGeometry(2.3,2.5,64);
   const towerRing=new THREE.Mesh(ringGeometry,new THREE.MeshBasicMaterial({color:colors.blue,transparent:true,opacity:0,side:THREE.DoubleSide,depthWrite:false}));
-  towerRing.rotation.x=-Math.PI/2;towerRing.position.set(8,.09,-8);scene.add(towerRing);
+  towerRing.rotation.x=-Math.PI/2;towerRing.position.set(TOWER.x,.09,TOWER.z);scene.add(towerRing);
   const beamMaterial=new THREE.LineBasicMaterial({color:colors.violet,transparent:true,opacity:.8});
   const beams=[];
   function ring(color) {
@@ -90,13 +219,7 @@ export function createAirport(container, {quality = "high", followStation} = {})
     try {
       const gltf=await loader.loadAsync(`/live/static/atc/models/${type}.glb`);
       if(disposed || entries.get(entry.id)!==entry) return;
-      const root=gltf.scene;
-      const bounds=new THREE.Box3().setFromObject(root), size=bounds.getSize(new THREE.Vector3());
-      root.scale.setScalar(2.5/Math.max(size.x,size.z,size.y));
-      const fitted=new THREE.Box3().setFromObject(root), center=fitted.getCenter(new THREE.Vector3());
-      root.position.set(-center.x,-fitted.min.y,-center.z);
-      root.traverse(o=>{if(o.isMesh){o.castShadow=quality==="high";o.receiveShadow=true;}});
-      entry.group.add(root);
+      entry.group.add(prepareAircraft(gltf.scene,/helicopter/.test(type)?3.6:4.6));
     } catch(error) {console.warn("Aircraft model unavailable",type,error);}
   }
   function setStations(list) {
@@ -106,7 +229,7 @@ export function createAirport(container, {quality = "high", followStation} = {})
     aircraft.forEach((s,i)=>{
       if(entries.has(s.id)) {entries.get(s.id).station=s;entries.get(s.id).removing=false;return;}
       const [x,z]=slots[i%slots.length];
-      const group=new THREE.Group(); group.position.set(x,0,z); group.rotation.y=Math.PI/2; scene.add(group);
+      const group=new THREE.Group(); group.position.set(x,0,z); group.rotation.y=0; scene.add(group);
       const e={id:s.id,station:s,group,ring:ring(colors.blue),born:performance.now(),removing:false,opacity:1,flashUntil:0,needs:false,hold:false};
       e.ring.position.set(x,.07,z); entries.set(s.id,e); attachModel(e,modelFor(s,i));
     });
@@ -116,7 +239,7 @@ export function createAirport(container, {quality = "high", followStation} = {})
   function steppedOn(ids) {steppedIds=new Set(ids); ids.forEach(id=>{const e=entries.get(id);if(e) flash(e,colors.red,2500);}); setTimeout(()=>{steppedIds.clear();},2500);}
   function advisory(id) {const e=entries.get(id);if(e){
     flash(e,colors.violet,2400);
-    const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(8,6.8,-8),e.group.position.clone().add(new THREE.Vector3(0,1.1,0))]),beamMaterial.clone());
+    const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(TOWER.x,9.4,TOWER.z),e.group.position.clone().add(new THREE.Vector3(0,1.1,0))]),beamMaterial.clone());
     scene.add(line);beams.push({line,until:performance.now()+2400});
   }}
   function readback(id,ok) {const e=entries.get(id);if(e) flash(e,ok?colors.green:colors.red);}
@@ -124,7 +247,7 @@ export function createAirport(container, {quality = "high", followStation} = {})
   function needsYou(id,on) {const e=entries.get(id);if(e)e.needs=on;}
   function project(id) {
     const e=entries.get(id); if(!e)return null;
-    const p=e.group.position.clone().add(new THREE.Vector3(0,2.2,0)).project(camera);
+    const p=e.group.position.clone().add(new THREE.Vector3(0,3,0)).project(camera);
     return {x:(p.x+1)*container.clientWidth/2,y:(1-p.y)*container.clientHeight/2,visible:p.z<1 && p.z>-1,opacity:e.opacity};
   }
   function click(event) {
@@ -138,11 +261,9 @@ export function createAirport(container, {quality = "high", followStation} = {})
     const w=container.clientWidth,h=container.clientHeight;
     if(!w||!h)return;
     const column=Math.min(360,Math.max(0,w-700));
-    const distance=56*Math.max(1,900/h);
-    camera.position.set(Math.sin(homeAngle)*distance*.62,distance*.68,Math.cos(homeAngle)*distance*.62);
     camera.aspect=w/h;
     camera.setViewOffset(w+column,h,column,0,w,h);
-    camera.updateProjectionMatrix();renderer.setSize(w,h);
+    camera.updateProjectionMatrix();renderer.setSize(w,h);composer?.setSize(w,h);
   };
   const observer=new ResizeObserver(size);observer.observe(container);size();
   const clock=new THREE.Clock();let frame=0;
@@ -150,10 +271,13 @@ export function createAirport(container, {quality = "high", followStation} = {})
     if(disposed)return; frame=requestAnimationFrame(animate);
     if(document.hidden)return;
     const t=performance.now(), dt=clock.getDelta();
-    if (idle && !reduced.matches && !followStation) {
-      const a=homeAngle+THREE.MathUtils.degToRad(8)*Math.sin(t/9000);
-      const radius=Math.hypot(camera.position.x,camera.position.z);
-      camera.position.x=Math.sin(a)*radius; camera.position.z=Math.cos(a)*radius;
+    if(transition){
+      const p=Math.min(1,(t-transition.start)/800),ease=p*p*(3-2*p);
+      camera.position.copy(transition.from).lerp(transition.to,ease);
+      controls.target.copy(transition.targetFrom).lerp(transition.targetTo,ease);
+      if(p===1)transition=null;
+    } else if (idle && autoSway && viewName==="overview" && !reduced.matches && !followStation) {
+      camera.position.x=views.overview.position[0]+Math.sin(t/9000)*1.5;
     }
     controls.update();
     hold.material.emissiveIntensity=[...entries.values()].some(e=>e.hold) ? (reduced.matches?.8:.65+.25*Math.sin(t/260)) : .15;
@@ -173,8 +297,8 @@ export function createAirport(container, {quality = "high", followStation} = {})
       e.ring.material.opacity=e.opacity*(reduced.matches?.75:keyedIds.has(id)?1-(t%1300)/1300:.7);
       if(e.removing&&e.opacity===0){scene.remove(e.group,e.ring);e.ring.material.dispose();entries.delete(id);}
     }
-    renderer.render(scene,camera);
+    if(composer)composer.render();else renderer.render(scene,camera);
   }
   animate();
-  return {setStations,keyed,steppedOn,advisory,readback,holdShort,needsYou,onSelect(callback){onPick=callback;},project,dispose(){disposed=true;cancelAnimationFrame(frame);observer.disconnect();controls.dispose();renderer.domElement.removeEventListener("click",click);for(const b of beams){b.line.geometry.dispose();b.line.material.dispose();}ringGeometry.dispose();towerRing.material.dispose();renderer.dispose();container.replaceChildren();}};
+  return {setStations,keyed,steppedOn,advisory,readback,holdShort,needsYou,setView,setAutoSway,onSelect(callback){onPick=callback;},project,dispose(){disposed=true;cancelAnimationFrame(frame);observer.disconnect();controls.dispose();renderer.domElement.removeEventListener("click",click);for(const b of beams){b.line.geometry.dispose();b.line.material.dispose();}ringGeometry.dispose();towerRing.material.dispose();composer?.dispose();pmrem.dispose();renderer.dispose();container.replaceChildren();}};
 }
