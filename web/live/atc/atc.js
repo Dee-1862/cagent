@@ -193,7 +193,10 @@ function receive(message) {
     }
     case "trace":
       state.traces.set(message.trace.event_id, message.trace);
-      if (message.trace.status === "delivered") sceneCall("advisory", message.trace.callsign);
+      if (message.trace.status === "delivered") {
+        sceneCall("advisory", message.trace.callsign);
+        obey(`evt-${message.trace.event_id}`, message.trace.callsign, message.trace.decision?.instruction_text || message.trace.proposal?.instruction_text);
+      }
       if (["confirmed", "readback_wrong"].includes(message.trace.status)) sceneCall("readback", message.trace.callsign, message.trace.status === "confirmed");
       if (message.trace.status !== "needs_you") state.pending.delete(message.trace.event_id);
       renderTraces(); renderRadio(); break;
@@ -468,6 +471,46 @@ function radioSentence(radio) {
   const overlapping = [...new Set((radio.overlaps || []).flatMap((o) => o.stations))];
   return overlapping.length ? `${overlapping.map(shortName).join(" and ")} talked at the same time; their radio calls were talked over.` : `${shortName(radio.transmissions.at(-1)?.station)} transmitted on the shared radio.`;
 }
+// Instructions move the planes, but only words a plane actually heard, or that Unstep delivered to it.
+// A stepped-on call leaves the plane where it is; Unstep's private advisory then makes it obey.
+const NUMBER_WORDS = {zero:"0", one:"1", two:"2", three:"3", tree:"3", four:"4", fower:"4", five:"5", fife:"5", six:"6", seven:"7", eight:"8", nine:"9", niner:"9"};
+const obeyed = new Set();
+function normalizeCall(text) {
+  return String(text || "").toLowerCase().replace(/[-,.]/g, " ").split(/\s+/).map((w) => NUMBER_WORDS[w] ?? w).join(" ").replace(/(\d)\s+(?=\d)/g, "$1");
+}
+function addressee(text) {
+  const t = normalizeCall(text);
+  return visibleAircraft().find((s) => {
+    const spoken = normalizeCall(s.spoken || s.callsign || ""), type = spoken.split(" ")[0], digits = spoken.replace(/\D/g, "");
+    return digits && t.includes(digits) && (!type || /\d/.test(type) || t.includes(type));
+  });
+}
+function actionFor(text) {
+  const t = normalizeCall(text);
+  if (/cleared (for )?take ?off/.test(t)) return "takeoff";
+  if (/line up and wait/.test(t)) return "line_up";
+  if (/hold short/.test(t)) return "hold_short";
+  if (/hold position|\bstop\b/.test(t)) return "stop";
+  if (/\btaxi\b/.test(t)) return "hold_short";
+  return null;
+}
+function obey(key, stationId, text) {
+  if (obeyed.has(key)) return;
+  const action = actionFor(text);
+  if (!stationId || !action) return;
+  obeyed.add(key);
+  sceneCall("command", stationId, action);
+}
+function obeyIfHeard(tx) {
+  // Give the cockpit a moment to report a blocked call; a plane that missed the words doesn't move.
+  setTimeout(() => {
+    const text = tx.text || state.lanes.get("atc")?.text || state.captions.get("atc")?.text;
+    const target = addressee(text);
+    if (!target) return;
+    const missed = [...state.traces.values()].some((tr) => tr.callsign === target.id && (tr.created_ms || 0) >= tx.start_ms - 1000);
+    if (!missed) obey(`tx-${tx.start_ms}`, target.id, text);
+  }, 1500);
+}
 function radioEvent(radio, announce = true) {
   radio.transmissions.forEach((tx) => {
     // An older cluster must not clear a newer live warning.
@@ -475,6 +518,7 @@ function radioEvent(radio, announce = true) {
     const blocked = (radio.overlaps || []).some((o) => o.stations.includes(tx.station) && o.start_ms < tx.end_ms && o.end_ms > tx.start_ms);
     const prior = state.lanes.get(tx.station);
     if (!prior || tx.start_ms >= prior.start_ms) state.lanes.set(tx.station, {...tx, blocked});
+    if (announce && tx.station === "atc" && !blocked && tx.end_ms) obeyIfHeard(tx);
   });
   if (announce) { $("happened").textContent = radioSentence(radio); renderMap(); renderRadio(); }
 }
