@@ -23,7 +23,7 @@ from pathlib import Path
 from urllib.parse import quote, urlparse
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import ValidationError
@@ -290,12 +290,15 @@ def create_app(sink=None, pending_ttl_s: float = PENDING_TTL_S,
     @app.get("/health")
     async def health():
         stored = {k: getattr(gw.sink, k) for k in ("sent", "failed", "dropped") if hasattr(gw.sink, k)}
-        return {
+        body = {
             "ok": True,
             "clients": {r: len(c) for r, c in gw.clients.items()},
             "pending": len(gw.pending),
             "sink": {"kind": type(gw.sink).__name__, **stored},
         }
+        # Readable from any page: only counts, and it lets the pilot app tell "the hub is up but
+        # refuses this site" from "the hub is asleep or down" (a Render 502 carries no CORS headers).
+        return JSONResponse(body, headers={"Access-Control-Allow-Origin": "*"})
 
     @app.get("/")
     async def dashboard():

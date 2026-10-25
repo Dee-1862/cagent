@@ -1,0 +1,106 @@
+{
+ "starts": {
+  "console": 1792929089015.3,
+  "phoneA": 1792929089086.6,
+  "phoneB": 1792929089141.1
+ },
+ "files": {
+  "console": "console.webm",
+  "phoneA": "phoneA.webm",
+  "phoneB": "phoneB.webm"
+ },
+ "marks": [
+  {
+   "t": 1792929098560.362,
+   "beat": "queue"
+  },
+  {
+   "t": 1792929098560.362,
+   "beat": "plane A asks: request taxi"
+  },
+  {
+   "t": 1792929104041.137,
+   "beat": "clearance card"
+  },
+  {
+   "t": 1792929107616.0925,
+   "beat": "clearance sent"
+  },
+  {
+   "t": 1792929117117.9304,
+   "beat": "readback N123AB: taxi to runway 33 via bravo, hold short of runway 33, Cessna 123"
+  },
+  {
+   "t": 1792929125182.237,
+   "beat": "readback ok, taxiing"
+  },
+  {
+   "t": 1792929128489.9268,
+   "beat": "holding short 33"
+  },
+  {
+   "t": 1792929131170.7676,
+   "beat": "tower: Cessna 1-2-3, hold short runway 33  +  Plane B talks at the same time"
+  },
+  {
+   "t": 1792929137813.8848,
+   "beat": "TALKED OVER"
+  },
+  {
+   "t": 1792929140399.9683,
+   "beat": "controller approves"
+  },
+  {
+   "t": 1792929141240.607,
+   "beat": "private advisory on Plane A"
+  },
+  {
+   "t": 1792929147743.4497,
+   "beat": "readback of the advisory"
+  },
+  {
+   "t": 1792929153752.9534,
+   "beat": "tower: Cessna 123 line up and wait runway 33"
+  },
+  {
+   "t": 1792929161265.706,
+   "beat": "readback N123AB: line up and wait runway 13, Cessna 123"
+  },
+  {
+   "t": 1792929166277.8418,
+   "beat": "wrong readback flagged"
+  },
+  {
+   "t": 1792929169285.8767,
+   "beat": "readback N123AB corrected"
+  },
+  {
+   "t": 1792929176719.244,
+   "beat": "lined up 33"
+  },
+  {
+   "t": 1792929177573.0793,
+   "beat": "agent proposes takeoff unasked"
+  },
+  {
+   "t": 1792929180647.8813,
+   "beat": "takeoff clearance sent"
+  },
+  {
+   "t": 1792929187622.5579,
+   "beat": "readback N123AB: runway 33 cleared for takeoff, Cessna 123"
+  },
+  {
+   "t": 1792929195476.3904,
+   "beat": "Plane A airborne"
+  },
+  {
+   "t": 1792929199491.885,
+   "beat": "evidence: how Unstep handled it"
+  },
+  {
+   "t": 1792929205510.724,
+   "beat": "safety analytics (Elastic)"
+  }
+ ]
+}

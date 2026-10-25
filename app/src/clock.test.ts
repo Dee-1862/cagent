@@ -65,3 +65,15 @@ describe("public demo default", () => {
     expect(hubFromLocation(loc)?.http).toBe("https://unstep.onrender.com");
   });
 });
+
+describe("the Vite dev server", () => {
+  const at = (href: string) => new URL(href) as unknown as Location;
+  it("npm run dev on :5173 talks to the hub on this machine, not to itself", () => {
+    expect(hubFromLocation(at("http://localhost:5173/"), true)?.http).toBe("http://localhost:8765");
+    expect(hubFromLocation(at("http://127.0.0.1:5173/"), true)?.http).toBe("http://127.0.0.1:8765");
+  });
+  it("a ?hub= link still wins, and a built copy on :5173 is left alone", () => {
+    expect(hubFromLocation(at("http://localhost:5173/?hub=http://10.0.0.5:8765"), true)?.http).toBe("http://10.0.0.5:8765");
+    expect(hubFromLocation(at("http://localhost:5173/"), false)?.http).toBe("http://localhost:5173");
+  });
+});

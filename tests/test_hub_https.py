@@ -66,7 +66,7 @@ def test_hub_serves_https_and_wss(tmp_path):
         deadline = time.time() + 20
         while True:
             try:
-                r = httpx.get(f"https://127.0.0.1:{port}/live/", verify=ctx, timeout=2, trust_env=False)
+                r = httpx.get(f"https://127.0.0.1:{port}/live/atc/", verify=ctx, timeout=2, trust_env=False)
                 break
             except httpx.TransportError:
                 if time.time() > deadline or proc.poll() is not None:

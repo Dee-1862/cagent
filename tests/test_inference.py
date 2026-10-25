@@ -264,3 +264,38 @@ def test_empty_question_gets_say_again_and_never_reaches_the_llm():
 
     q = asyncio.run(answer_query(LocalMemory(), flight_index("N123AB"), "N123AB", "  ", answerer=Boom()))
     assert q.answer == SAY_AGAIN and q.source_doc_id is None
+
+
+def test_airport_load_retries_when_moss_says_the_index_changed():
+    calls = []
+
+    async def load_index(name):
+        calls.append(name)
+        if len(calls) < 3:
+            raise RuntimeError("The index changed while the operation ran. Retry the operation.")
+
+    memory = MossMemory.__new__(MossMemory)
+    memory.owners, memory.sessions, memory.client = {}, {}, SimpleNamespace(load_index=load_index)
+
+    async def go():
+        await asyncio.gather(*(memory.load_airport("airport-KUNS") for _ in range(4)))  # planes start together
+
+    run(go())
+    assert calls == ["airport-KUNS"] * 3  # two retries, then loaded once; the other three callers waited
+
+
+def test_airport_load_gives_up_on_other_errors_and_after_the_last_try(monkeypatch):
+    memory = MossMemory.__new__(MossMemory)
+    memory.owners, memory.sessions = {}, {}
+    memory.client = SimpleNamespace(load_index=AsyncMock(side_effect=RuntimeError("bad credentials")))
+    with pytest.raises(RuntimeError, match="bad credentials"):
+        run(memory.load_airport("airport-KUNS"))
+    assert memory.client.load_index.await_count == 1  # not a "changed" error, so no retry
+
+    monkeypatch.setenv("UNSTEP_MOSS_LOAD_TRIES", "2")
+    memory2 = MossMemory.__new__(MossMemory)
+    memory2.owners, memory2.sessions = {}, {}
+    memory2.client = SimpleNamespace(load_index=AsyncMock(side_effect=RuntimeError("The index changed while the operation ran.")))
+    with pytest.raises(RuntimeError, match="changed"):
+        run(memory2.load_airport("airport-KUNS"))
+    assert memory2.client.load_index.await_count == 2

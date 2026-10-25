@@ -569,7 +569,9 @@ async function trackGeo() {
       const where = areas || (g.alt_m > 20 ? "airborne" : "no marked area");
       state.actions.set(`geo-${id}`, {id: `geo-${id}`, ts: now(), agent: "Geo", kind: "agent", status: "done", station: id,
         text: `${shortName(id)} now in ${where} at ${g.lat.toFixed(5)}, ${g.lon.toFixed(5)} (${how})`, sponsor: res.backend === "elastic" ? "Elastic" : null});
-      if (areas.includes("Runway") && !(before || "").includes("Runway") && !ON_RUNWAY_OK.includes(g.state)) {
+      // on the runway is fine once lined up or rolling, or while taxiing there under a line-up or take-off clearance
+      const cleared = ON_RUNWAY_OK.includes(g.state) || ["line_up", "takeoff"].includes(lastAction.get(id));
+      if (areas.includes("Runway") && !(before || "").includes("Runway") && !cleared) {
         state.actions.set(`incursion-${id}`, {id: `incursion-${id}`, ts: now(), agent: "Geo", kind: "agent", status: "flag", station: id,
           text: `Runway incursion: ${shortName(id)} entered Runway 33/15 without a line-up or take-off clearance (${how})`, sponsor: "Elastic"});
         notice(`Runway incursion: ${shortName(id)} is on the runway without a clearance.`);
@@ -915,7 +917,7 @@ async function loadStats() {
 }
 
 async function loadPilotLink() {
-  showPilotLink(`${location.origin}/live/${window.UNSTEP_TOKEN_QUERY || ""}`);
+  showPilotLink(`${location.origin}/pilot/${window.UNSTEP_TOKEN_QUERY || ""}`);
   try {
     const response = await fetch("/live/pilot-link");
     if (!response.ok) throw new Error("Pilot link unavailable");

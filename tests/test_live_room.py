@@ -190,8 +190,7 @@ def test_app_serves_seats_and_joins(monkeypatch):
     monkeypatch.delenv("UNSTEP_GATEWAY_TOKEN", raising=False)
     app = create_live_app(live=False, sink=MemorySink())
     client = TestClient(app)
-    assert "Pick your seat" in client.get("/live/").text
-    assert client.get("/live/static/live.js").status_code == 200
+    assert client.get("/live/", follow_redirects=False).headers["location"] == "/live/atc/"
     seats = client.get("/live/stations").json()
     assert [s["id"] for s in seats["stations"]] == ["atc", "N123AB", "H456", "observer"]
     with client.websocket_connect("/live/ws/atc") as ws:

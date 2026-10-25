@@ -269,3 +269,44 @@ input,.join select { background:var(--raised); border-color:var(--line); border-
 .say-verdict { margin-bottom: 8px; font-size: 15px; font-weight: 700; }
 .say-guide.wrong .say-verdict { color: var(--red); }
 .say-guide.right .say-verdict { color: var(--green); }
+
+/* Apple-style surfaces (iOS dark mode): borderless rounded cards on layered greys, no accent bars or outlines.
+   Colour lives in small labels and tinted fills only. Placed last so it wins over the earlier rules. */
+:root { --bg:#000; --panel:#1c1c1e; --raised:#2c2c2e; --line:rgba(84,84,88,.36); --text:#fff; --muted:rgba(235,235,245,.6);
+  --cyan:#0a84ff; --green:#30d158; --red:#ff453a; --amber:#ff9f0a; --purple:#bf5af2; }
+body { background:var(--bg); font-family:-apple-system,"SF Pro Text",Inter,system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+.me { border-left:0; padding-left:2px; }
+.me b { font-size:30px; font-weight:700; letter-spacing:-.03em; }
+.me span { color:var(--muted); font-size:15px; }
+.dot { box-shadow:none; }
+.stage .ptt,.ptt,.ptt.idle,.ptt.busy,.ptt.air,.ptt.clash { border:0; border-radius:24px; background:var(--panel); }
+.ptt::before { background:rgba(10,132,255,.16); border:0; box-shadow:none; }
+.ptt.busy::before { background:rgba(255,159,10,.16); }
+.ptt.off::before,.ptt:disabled::before { background:var(--raised); }
+.ptt-main { letter-spacing:0; font-size:17px; font-weight:600; }
+.stage.recording .ptt { border:0; }
+.lyrics { border:0; border-radius:22px; background:var(--panel); padding:18px; }
+.lyrics .line.advisory { background:rgba(191,90,242,.15); border:0; border-radius:16px; padding:12px 14px; }
+.only-you { font-size:13px; font-weight:600; letter-spacing:0; text-transform:none; }
+.only-you::after { content:" · left ear"; }
+.lyrics .line.event { border:0; }
+.alert,.state,.ear,.prompter,.details,.waveform { border:0; border-radius:18px; }
+.alert,.alert.mine { border:0; background:rgba(255,69,58,.15); }
+.state.wait,.state.go,.state.ok,.state.bad { border:0; }
+.state.ok { background:rgba(48,209,88,.13); }
+.state.bad { background:rgba(255,69,58,.15); }
+.state::before { background:none; padding:0; font-size:13px; letter-spacing:0; text-transform:none; }
+.ear { border:0; background:rgba(191,90,242,.15); }
+.ear-head { font-size:13px; text-transform:none; letter-spacing:0; }
+.prompter.now { border:0; background:rgba(255,69,58,.13); }
+.say-guide { border:0; border-radius:22px; background:var(--panel); padding:16px 18px; }
+.say-guide.wrong { background:rgba(255,69,58,.14); }
+.say-guide.right { background:rgba(48,209,88,.12); }
+.say-label { color:var(--muted); font-size:13px; font-weight:600; letter-spacing:0; text-transform:none; }
+.say-line { font-size:21px; font-weight:600; letter-spacing:-.015em; }
+.say-parts span { border:0; background:var(--raised); border-radius:12px; padding:7px 11px; }
+.say-parts b { font-size:12px; font-weight:500; letter-spacing:0; text-transform:none; color:var(--muted); }
+.say-verdict { font-weight:600; }
+.chips button,.ghost,.ask button { border:0; background:var(--raised); }
+.big { border:0; background:var(--cyan); color:#fff; }
+input,.join select { border:0; }

@@ -5,11 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Unstep · Control Tower</title>
   <link rel="stylesheet" href="/live/static/atc/atc.css">
+  <link rel="stylesheet" href="/live/static/atc/extras.css">
 </head>
 <body id="atc">
   <div id="scene3d" aria-hidden="true"></div><div id="plane-tags"></div>
   <header>
-    <button class="menu-icon" type="button" aria-label="Menu">&#9776;</button><a class="brand" href="/live/">KUNS Airport</a><div class="identity"><strong>&rsaquo; Control Tower</strong><small>&rsaquo; <span id="frequency">118.700</span></small></div>
+    <button class="menu-icon" type="button" aria-label="Menu">&#9776;</button><a class="brand" href="/live/atc/">KUNS Airport</a><div class="identity"><strong>&rsaquo; Control Tower</strong><small>&rsaquo; <span id="frequency">118.700</span></small></div>
     <span id="projector-seat" class="sr-only">Control Tower projector seat</span>
     <div class="presence"><b id="planes">0 planes connected</b><small id="password-state">Checking tower access…</small></div>
     <span class="time-chip"><span id="connection" class="connection">OFFLINE</span> &middot; <time id="local-time"></time></span>
@@ -17,7 +18,7 @@
     <button id="reset" class="quiet" disabled title="Frees every walk-up plane and clears the board. The two team planes stay.">Reset room</button>
   </header>
   <main><details class="legend-card"><summary>Legend</summary><div><span>&bull; Listening</span><span class="cyan">&bull; On air</span><span class="bad">&bull; Talked over</span><span class="violet">&bull; Private advisory</span><span class="good">&bull; Read back OK</span><span class="amber">&bull; Needs you</span></div></details>
-    <div class="pilot-join"><a id="join-qr" href="/live/"><img id="qr" width="120" height="120" alt="Scan to join as a plane"></a><div class="join"><small>Scan to fly</small><a id="join-url" href="/live/"></a><small id="phone-hint" hidden>Phones: start with --host 0.0.0.0 and open this page via the laptop's LAN IP</small></div></div>
+    <div class="pilot-join"><a id="join-qr" href="/pilot/"><img id="qr" width="120" height="120" alt="Scan to join as a plane"></a><div class="join"><small>Scan to fly</small><a id="join-url" href="/pilot/"></a><small id="phone-hint" hidden>Phones: start with --host 0.0.0.0 and open this page via the laptop's LAN IP</small></div></div>
     <section class="headline" aria-live="polite">
       <h1 class="sr-only">What just happened</h1>
       <p id="happened">Waiting for the first radio call.</p>
@@ -48,6 +49,7 @@
       <section class="decisions panel" id="side-panel"><button class="side-collapse" type="button" aria-expanded="true">Agents at work <span>&#8963;</span></button>
         <nav class="side-tabs" aria-label="Console views"><button type="button" data-tab="agents" aria-selected="true">Agents</button><button type="button" data-tab="safety" aria-selected="false">Safety</button><button type="button" data-tab="ask" aria-selected="false">Ask</button></nav>
         <div class="tab-pane" data-pane="agents">
+        <div id="team-strip"></div>
         <div class="section-title"><h2>Agents at work</h2><small><span id="decision-count">0</span> need you</small></div>
         <div id="requests" aria-live="polite"></div><div id="inbox"></div>
         <ol id="feed" class="feed" aria-live="polite"></ol>
@@ -67,10 +69,12 @@
     <aside id="notice" role="status"></aside>
     <div class="field-readout">RWY 33 · 330° · KUNS 118.700</div><footer><span id="mode">Connecting to the room…</span> · Illustration: positions are not live tracking · 3D models: Vojtěch Balák, Poly by Google, Miha Lunar · CC-BY 3.0</footer>
   </main>
-  <dialog id="auth"><form id="auth-form"><h2>Control Tower access</h2><p id="auth-note">Enter the ATC password to join.</p><label for="password">ATC password</label><input id="password" type="password" autocomplete="current-password"><button>Enter Control Tower</button><a href="/live/">Choose another seat</a></form></dialog>
+  <dialog id="auth"><form id="auth-form"><h2>Control Tower access</h2><p id="auth-note">Enter the ATC password to join.</p><label for="password">ATC password</label><input id="password" type="password" autocomplete="current-password"><button>Enter Control Tower</button></form></dialog>
   <script>window.UNSTEP_TOKEN_QUERY = "__UNSTEP_TOKEN_QUERY__"; window.UNSTEP_HUB_HOST = "__UNSTEP_HUB_HOST__";</script>
   <script type="importmap">{"imports":{"three":"/live/static/atc/vendor/three.module.js","three/addons/":"/live/static/atc/vendor/addons/"}}</script>
   <script type="module" src="/live/static/atc/atc.js"></script>
   <script type="module" src="/live/static/atc/audit.js"></script>
+  <script type="module" src="/live/static/atc/team.js"></script>
+  <script type="module" src="/live/static/atc/join-extras.js"></script>
 </body>
 </html>

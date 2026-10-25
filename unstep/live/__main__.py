@@ -13,12 +13,14 @@ phone) or pass your own --cert and --key.
 """
 
 import argparse
+import os
 import socket
 import webbrowser
 
 import uvicorn
 
 from unstep.config import env
+from unstep.live.addresses import lan_addresses
 from unstep.live.app import create_live_app
 
 
@@ -45,6 +47,10 @@ def main() -> None:
     if bool(args.cert) != bool(args.key):
         parser.error("--cert and --key go together")
     live = not args.offline and bool(env("CARTESIA_API_KEY"))
+    if args.host not in ("127.0.0.1", "localhost"):  # open to the LAN: this computer's own addresses are valid Hosts
+        mine = ",".join(a for a in lan_addresses() if a not in (env("UNSTEP_ALLOWED_HOSTS") or ""))
+        if mine:
+            os.environ["UNSTEP_ALLOWED_HOSTS"] = ",".join(x for x in ((env("UNSTEP_ALLOWED_HOSTS") or ""), mine) if x)
     ip = lan_address() if args.host not in ("127.0.0.1", "localhost") else None
     tls = {}
     if args.cert:
@@ -56,7 +62,7 @@ def main() -> None:
         tls = {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
         print(f"Self-signed certificate: {cert} (each phone accepts the warning once)")
     scheme = "https" if tls else "http"
-    url = f"{scheme}://127.0.0.1:{args.port}/live/"
+    url = f"{scheme}://127.0.0.1:{args.port}/live/atc/"
     mode = 'LIVE: Cartesia speech' if live else 'offline: fake speech'
     public = env("UNSTEP_PUBLIC_URL")
     if public:  # hosted (Render): the inside addresses below mean nothing to visitors
@@ -65,12 +71,15 @@ def main() -> None:
     else:
         print(f"Unstep live room ({mode}): {url}")
     if ip and not public:
-        print(f"Others on this network: {scheme}://{ip}:{args.port}/live/ (add {ip} to UNSTEP_ALLOWED_HOSTS"
-              + ("; set UNSTEP_PUBLIC_URL=https://%s:%d for the QR)" % (ip, args.port) if tls
-                 else "; microphones need https: add --https)"))
+        print(f"Others on this network: {scheme}://{ip}:{args.port}/pilot/ (the console's QR; "
+              + ("set UNSTEP_PUBLIC_URL=https://%s:%d for it)" % (ip, args.port) if tls
+                 else "microphones need https: add --https)"))
     if not args.no_browser:
         webbrowser.open(url)
-    uvicorn.run(create_live_app(live=live, warm_start=True), host=args.host, port=args.port, log_level="warning", **tls)
+    app = create_live_app(live=live, warm_start=True)
+    app.state.bind_host = args.host  # the console's "change link" says whether phones can reach this hub
+    app.state.bind_port, app.state.scheme = args.port, scheme
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning", **tls)
 
 
 if __name__ == "__main__":

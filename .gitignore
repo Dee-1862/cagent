@@ -10,3 +10,6 @@ __pycache__/
 .pytest_cache/
 .venv/
 data/
+
+# Private playbook: lives in docs/ on this machine only, never committed
+docs/28-larp-book.md

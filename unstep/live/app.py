@@ -16,13 +16,14 @@ from qrcode.image.svg import SvgPathImage
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from unstep.clock import now_ms
 from unstep.config import ROOT, allowed_origins, env, gateway_token
 from unstep.gateway.server import create_app, origin_listed, origin_ok
 from unstep.cockpit.translate import LANGUAGES
+from unstep.live.addresses import lan_addresses, own_hostnames, reachable_from_lan
 from unstep.live.flightplans import FlightPlans, last_tower_call
 from unstep.ground.reports import reports_from_env
 from unstep.live.geo import AREAS, Geo, area_polygon
@@ -31,6 +32,7 @@ from unstep.live.room import LiveRoom
 log = logging.getLogger("unstep.live")
 WEB = ROOT / "web" / "live"
 PILOT_APP = ROOT / "app" / "dist"
+LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]"}
 WARMING_NOTICE_S = 0.5  # a seat waiting longer than this for the room to start is told so
 STATS_CACHE_MS = 2000  # consoles poll /live/stats every 5 s; Elastic is asked at most this often
 
@@ -70,12 +72,10 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
 
     @app.get("/live")
     @app.get("/live/")
-    async def live_page():
-        # Served by this gateway, so it may carry the token like the dashboard (FR-13).
-        token = gateway_token()
-        query = f"?token={quote(token, safe='')}" if token else ""
-        html = (WEB / "index.html").read_text(encoding="utf-8")
-        return HTMLResponse(html.replace("__UNSTEP_TOKEN_QUERY__", query))
+    async def live_page(request: Request):
+        # The old "Pick your seat" page is gone: the console's QR is the one way in. Old links land on the console.
+        query = f"?{request.url.query}" if request.url.query else ""
+        return RedirectResponse(f"/live/atc/{query}", status_code=307)
 
     @app.get("/live/record/")
     @app.get("/live/record")
@@ -102,17 +102,27 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
         app.add_middleware(CORSMiddleware, allow_origin_regex="|".join(fnmatch.translate(o) for o in origins),
                            allow_methods=["GET", "POST"], allow_headers=["content-type"])
 
+    def usable_link(link: str, request: Request) -> bool:
+        """A join link this hub may hand out: plain http(s), no credentials, and a host that is this hub's own
+        (as the request saw it, a LAN address of this computer, or UNSTEP_PUBLIC_URL) or a listed pilot app."""
+        try:
+            url = urlsplit(link)
+            return (url.scheme in {"http", "https"} and url.username is None and url.password is None
+                    and bool(url.hostname)
+                    and (url.hostname == request.url.hostname
+                         or url.hostname in own_hostnames(env("UNSTEP_PUBLIC_URL"))
+                         or origin_listed(f"{url.scheme}://{url.netloc}")))
+        except ValueError:
+            return False
+
+    def is_local_viewer(request: Request) -> bool:
+        """The console is open on this computer (localhost or one of its own addresses), not through a public link."""
+        host = request.url.hostname or ""
+        return host in LOOPBACK_HOSTS or host in set(lan_addresses())
+
     @app.get("/live/qr.svg")
     async def live_qr(request: Request, u: str):
-        try:
-            url = urlsplit(u)
-            # This hub, or the hosted pilot app listed in UNSTEP_ALLOWED_ORIGINS.
-            valid = (url.scheme in {"http", "https"} and url.username is None and url.password is None
-                     and (url.hostname == request.url.hostname
-                          or origin_listed(f"{url.scheme}://{url.netloc}")))
-        except ValueError:
-            valid = False
-        if not valid:
+        if not usable_link(u, request):
             raise HTTPException(status_code=400, detail="QR URL must use this server's host")
         qr = qrcode.make(u, image_factory=SvgPathImage)
         return Response(qr.to_string(), media_type="image/svg+xml")
@@ -121,7 +131,15 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
     async def pilot_link(request: Request):
         """The link pilots scan: the hosted pilot app (UNSTEP_PILOT_APP_URL) pointed at this
         hub's public address (UNSTEP_PUBLIC_URL, e.g. the tunnel), or the copy this hub serves."""
-        hub = (env("UNSTEP_PUBLIC_URL") or str(request.base_url)).rstrip("/")
+        base = request.query_params.get("base")  # the console's "change link": one of /live/addresses
+        if base and not usable_link(base, request):
+            raise HTTPException(status_code=400, detail="That address is not one this hub can hand out")
+        hub = (base or env("UNSTEP_PUBLIC_URL") or str(request.base_url)).rstrip("/")
+        if (not base and not env("UNSTEP_PUBLIC_URL") and request.url.hostname in LOOPBACK_HOSTS
+                and reachable_from_lan(getattr(app.state, "bind_host", None)) and lan_addresses()):
+            # The console is open on this computer, but a QR for localhost only works here: use the wifi address.
+            port = getattr(app.state, "bind_port", None) or request.url.port or (443 if request.url.scheme == "https" else 80)
+            hub = f"{getattr(app.state, 'scheme', None) or request.url.scheme}://{lan_addresses()[0]}:{port}"
         token = gateway_token()
         app_url = env("UNSTEP_PILOT_APP_URL")
         if app_url:
@@ -129,6 +147,43 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
             return {"url": f"{app_url.rstrip('/')}/?{urlencode(query)}", "hosted": True}
         query = f"?token={quote(token, safe='')}" if token else ""
         return {"url": f"{hub}/pilot/{query}", "hosted": False}
+
+    @app.get("/live/addresses")
+    async def live_addresses(request: Request):
+        """What people could open instead of `localhost`: this computer only, the same wifi, a public link."""
+        scheme = getattr(app.state, "scheme", None) or request.url.scheme
+        port = getattr(app.state, "bind_port", None) or request.url.port or (443 if scheme == "https" else 80)
+        on_lan = reachable_from_lan(getattr(app.state, "bind_host", None))
+        public = (env("UNSTEP_PUBLIC_URL") or "").rstrip("/")
+        options = []
+        if not public or is_local_viewer(request):  # seen through the public link, local addresses mean nothing
+            options.append({"id": "this", "label": "This computer only", "url": f"{scheme}://localhost:{port}",
+                            "shareable": False, "note": "Only you can open this."})
+            for n, ip in enumerate(lan_addresses()):
+                options.append({"id": "lan", "label": "Same wifi" if n == 0 else f"Other network ({ip})",
+                                "url": f"{scheme}://{ip}:{port}", "shareable": on_lan,
+                                "note": None if on_lan else "Start the hub with --host 0.0.0.0 so phones can reach it."})
+        if public:
+            options.insert(0, {"id": "public", "label": "Public link (works on any network, https)", "url": public,
+                               "shareable": True, "note": None})
+        return {"current": f"{request.url.scheme}://{request.url.netloc}", "options": options, "has_public": bool(public)}
+
+    @app.get("/live/pi-join")
+    async def pi_join(request: Request):
+        """What the console's "Add Raspberry Pi" button shows: the address the Pi should use and the command
+        to run on it. The room code, when there is one, is named but never sent."""
+        base = request.query_params.get("base")
+        if base and not usable_link(base, request):
+            raise HTTPException(status_code=400, detail="That address is not one this hub can hand out")
+        hub = base
+        if not hub:
+            options = (await live_addresses(request))["options"]
+            best = next((o for o in options if o["shareable"] and o["id"] == "public"), None)                 or next((o for o in options if o["shareable"] and o["id"] == "lan"), None)
+            hub = best["url"] if best else str(request.base_url).rstrip("/")
+        needs_token = bool(gateway_token())
+        return {"hub": hub.rstrip("/"), "needs_token": needs_token,
+                "command": f"python scripts/pi_plane.py --hub {hub.rstrip('/')}" + (" --token <room code>" if needs_token else ""),
+                "shareable": not urlsplit(hub).hostname in {"localhost", "127.0.0.1", "::1"}}
 
     @app.get("/live/stations")
     async def live_stations():

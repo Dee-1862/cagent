@@ -7,6 +7,97 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 - Found while checking all eight agents live: the Compliance agent and the search cite 3-7-4 for hold short, and `merge` replaced the card's reviewed stored rule (3-7-2) with it as soon as the agents answered. Now a reviewed stored rule stays on the card and the agent's paragraph is noted as related in the confidence method; an unreviewed (candidate) rule may still be replaced. Test in `tests/test_late_citation.py`.
 - All eight deployed agents answered live (200, well-formed); the parallel workflow ran end to end in 9.4 s with Intercept skipped and Compliance citing 3-7-4 with its citation found in the FAA index.
 
+## README pictures and sponsor sections, ready to paste (README untouched)
+
+- `docs/29-readme-additions.md`: part A is a picture section and part B is a section for each sponsor (Cartesia, Moss, Elastic): who they are, what would impress them (from their own feedback in docs/21), what we use, the numbers with their grades and the limits we state, plus a "built in a day" table. The dates come from git: the first commit was 2026-10-23 21:00 PDT, the airport index script landed at hour 3.2, the Elastic deploy at 23.6, the FAA ingest (52 paragraphs) at 24.1 and the 500-call simulator at 26.3; by 33.6 hours there were 339 commits and 618 tests.
+- `docs/img/readme/`: seven real screenshots from our offline demo build (console idle, a stepped-on call with the agents' work, the team strip, the phone join and in-air views, and the Raspberry Pi microphone test as rendered terminal text from a real run).
+- Corrected before writing it down: only one of the 7 stored percolator rules is marked reviewed (paragraph 3-7-2); the others are candidates or need review.
+- `README.md` was not edited: it is Rishit's file. The doc says where each part goes.
+
+## A reliable public link for the QR, and a console that tells you how to get it
+
+- A wifi address is fragile: a venue network can isolate devices from each other, and both of this laptop's connections are set to the Public type. The reliable link is the public https tunnel, `python scripts/demo_public.py` (a free Cloudflare quick tunnel; it also gives phones the https they need for the microphone). Checked with a test tunnel: the health check, the pilot app and the QR image all answered through it, and `/live/pilot-link` returned the tunnel address.
+- Found by that test and fixed: seen through the tunnel, `/live/addresses` listed this laptop's wifi addresses with port 443. The hub now remembers its real port and scheme (`app.state.bind_port`, `scheme`), and seen through the public link it offers only the public link. The "Change link" popover lists the public link first and, when none exists, shows the command to get one and a reminder to set `UNSTEP_ATC_PASSWORD`, because anyone with the public link can reach the tower console.
+- The Pi's join command prefers the public address, so a Raspberry Pi joins the same way from any network.
+- Tests: the real port and scheme, only the public link when seen through it, and the console told when there is no public link.
+
+## The Pi client says where to run it when it is started on the wrong computer
+
+- Started on Windows, `scripts/pi_plane.py` printed only "arecord not found". It now says it is the Raspberry Pi client, that `arecord` exists on the Pi, how to run it there, and that `--wav assets/clips/real/clean_call.wav` works from the laptop without a microphone. On Linux the message is still "install alsa-utils".
+
+## The Pi client sets the microphone gain on every start
+
+- The Logitech's capture level goes back to 100% (+30 dB) every time the camera is unplugged and plugged in, and at 100% a voice close to it clips. Seen on the real Pi: a test at 40% was fine, then after a replug the gain was 100% again and the meter showed CLIPPING.
+- `scripts/pi_plane.py --gain 25` (the default) sets the `Mic` control on the chosen card each time it starts, via `amixer`, and says so. `--gain 0` leaves it alone. Checked on the Pi: starting from 100% it set 25% and the next test peaked at 13,314 of 32,767 with no clipping.
+- Test added: the amixer command for card 3, no change for a device with no card number or for 0, no failure without amixer.
+
+## The Pi client shows that its microphone is on, and says why when it is not
+
+- `scripts/pi_plane.py` keeps one `arecord` open for the whole session and draws a live line in the terminal: `Listening [#####-----]  -32 dB`, which becomes `ON AIR` while a call is being sent. It warns on clipping ("turn the gain down") and on a microphone that hears nothing at all.
+- `--test-mic` checks the microphone with no hub: it shows the bar for `--seconds` and says whether the mic is on and picking up sound. `--hub` is only needed to join.
+- When no audio arrives it now says so ("No audio from plughw:3,0. Is the Logitech plugged into the Pi?") and exits non-zero, instead of sending 0 frames and looking fine.
+- Found on the real Pi: the camera did not enumerate, `usb 1-1-port3: Cannot enable. Maybe the USB cable is bad?` and `unable to enumerate USB device`, with no under-voltage (`throttled=0x0`). A loose cable or port, not power.
+- The console's two buttons now say "restart the hub" when it was started before the update, instead of showing an empty box.
+- Tests: the meter on silence, speech and clipping; a fake microphone for the working, unplugged and missing-arecord cases; only the frames spoken while talking go into a call.
+
+## One way in, a team strip and two join buttons in the console
+
+- Rishit agreed in the mailbox (R65). `/live/` (the old "Pick your seat" page) now redirects to `/live/atc/`, keeping the query string; `web/live/index.html`, `live.js` and `live.css` are deleted. The three tests that read the old page now check the redirect. The hub opens the console, and its printed hint names the pilot link.
+- `web/live/atc/index.html`: the brand link goes to `/live/atc/`, the QR links go to `/pilot/`, "Choose another seat" is gone. Three new files, so Rishit's `atc.js` and `atc.css` are untouched: `team.js`, `join-extras.js` and `extras.css`.
+- The team strip (top of the Agents panel, collapsed by default): the controller, the orchestrator ("Elastic Workflow, fixed steps. Not an AI agent."), the Intercept, Compliance, Readback auditor, Audit and Coach agents (eight are configured in Elastic; three are fast variants), and beside them the policy agent and the cockpit agents. Its dots and counts show only what its own read-only observer socket has seen (`agents_cited`, `percolate`, the policy steps); the rest is structure.
+- The two small buttons under the QR: "Change link" lists this hub's addresses and re-draws the QR for the one chosen; "Raspberry Pi" shows the command from `/live/pi-join` with a copy button and waits for a plane to join.
+- With the hub open to the network (`--host 0.0.0.0`) and the console opened on localhost, `/live/pilot-link` now defaults to the wifi address, so the QR works for phones without a setting.
+- Checked in a real browser (screenshots): the strip opens, both popovers open, the QR follows the choice. The console's startup placeholder in `atc.js` now points at `/pilot/` (one line, after Rishit cleared edits in R66).
+
+## A link phones can use instead of localhost, and a Raspberry Pi plane
+
+- The console's QR pointed at `http://localhost:8765/pilot/`, which only works on the laptop. The hub now lists what people can use: `GET /live/addresses` returns "This computer only", "Same wifi" (this computer's private IPv4 addresses, link-local ones left out) and "Public link" (`UNSTEP_PUBLIC_URL`), each marked shareable or not. It says "start with `--host 0.0.0.0`" when the hub listens on this computer alone.
+- `GET /live/pilot-link?base=<address>` builds the pilot link for a chosen address, and `/live/qr.svg` accepts those addresses too. Anything else is still refused (400): the hub's own request host, its own LAN addresses, `UNSTEP_PUBLIC_URL` and the listed pilot app origins only.
+- Started with `--host 0.0.0.0`, the hub now trusts this computer's own LAN addresses as Host values, so the `UNSTEP_ALLOWED_HOSTS` step is no longer needed for phones (a name or an address you type yourself still needs the setting). Checked live: the console page opened through the LAN address.
+- `GET /live/pi-join` gives the "Add Raspberry Pi" button its hub address and command. The room code is named in the command (`--token <room code>`), never sent.
+- `scripts/pi_plane.py`: a Raspberry Pi joins as a pilot over the pilot app's own messages (`key`, `mic_frame`, `mic_end`), syncs its clock, prints what the hub says and plays the advisory with `aplay`. It needs only `websockets`. `--wav` talks from a recorded call; `--mic plughw:3,0` talks live (Enter starts and stops). Push to talk by covering the camera or a GPIO pin is not built.
+- Checked on the real Pi 4 over Ethernet to this laptop's hub: joined as Plane A, clock 78 ms off, sent a 4 s recorded call (40 frames) and heard the room. The live microphone path was not tested: the Logitech was no longer visible to the Pi.
+- Tests: `tests/test_live_addresses.py` (endpoints, QR and link rules, LAN filtering) and `tests/test_pi_plane.py` (a real offline hub; the call reaches the radio).
+- Not done: the two small buttons in the console (change link, add Raspberry Pi) are in Rishit's files; asked in the agent mailbox (D63) and waiting for his answer.
+
+## A private playbook lives in docs/ but not in git
+
+- `docs/28-larp-book.md` (demo roles, scene scripts, sponsor comparisons, the hardware plane) is listed in `.gitignore`, so it stays on the machine that wrote it and is never pushed. Checked with `git check-ignore`: ignored, and zero tracked files.
+- Asked in the agent mailbox (D62), nothing built yet in Rishit's files: one way in through the console's QR (redirect the old `/live/` seat picker) and a Team strip in the console showing the human, the orchestrator and the four agents.
+
+## `npm run dev` finds the local hub by itself
+
+- Opening `http://localhost:5173/` showed errors: with no `?hub=` the pilot app assumed the page was the hub, but port 5173 is only Vite's dev server. It answered `/live/stations` with its own HTML (200, `text/html`), which the app cannot read as a station list.
+- `hubFromLocation` now points a dev page on port 5173 at the hub on the same machine, port 8765 (`localhost` stays `localhost`, `127.0.0.1` stays `127.0.0.1`, so the hub's origin rules match). A `?hub=` link still wins, and a built copy on that port is left alone.
+- Tests: two cases added in `clock.test.ts` (33 app tests pass). The hub must still allow the page's origin: `UNSTEP_ALLOWED_ORIGINS=http://localhost:5173` in `.env` (the hub on this machine already sends that header).
+
+## Loading the airport index retries when Moss says it changed
+
+- Seen on startup of `python -m unstep.live`: "memory open failed at startup ... MossError: The index changed while the operation ran. Retry the operation." Moss raises it when the cloud index is written or loaded at the same moment; our code gave up on the first one and the plane flew on local memory.
+- `MossMemory.load_airport` now loads each airport index once at a time (planes share one client and start together, so the others wait for the first load) and retries that exact error, up to `UNSTEP_MOSS_LOAD_TRIES` times (default 4, `moss_load_tries()` in `unstep/config.py`) with a short wait. Any other error is raised at once.
+- Tests: three planes loading together make three attempts and one load; a different error is not retried; the retry limit is respected.
+- Not reproduced on demand: the error depends on another write to the cloud index at the same moment, so the proof is the tests that raise that exact message. A live start here showed no memory error.
+
+## The pilot app no longer blames the site when the hub is down
+
+- Seen on a Vercel preview: "The tower is up but refuses this page. Add the address to UNSTEP_ALLOWED_ORIGINS". The hub was not refusing anything: the sleeping Render service answered 502, and the old no-cors probe counted that 502 page as "up". A direct WebSocket test from that same Vercel address connected, and a stranger address (`example.com`) got 403, so the origin check itself was right.
+- `/health` now sends `Access-Control-Allow-Origin: *` (it only returns counts). The pilot app asks `/health` to tell "hub up but refusing this site" from "hub asleep or down"; a Render 502 has no CORS headers, so it now reads as down and the message says it may be waking up.
+- Test added: `/health` is readable from any origin and still passes with an internal Host header.
+- Still open: the Render hub returned 502 for minutes after waking and answering one WebSocket. That fits the 512 MB free plan running out of memory when the room starts, but the Render logs are needed to confirm it.
+
+## Vercel always builds master, so a new fork or project deploys
+
+- Found on a fork: Vercel cancelled the very first build with "Ignored Build Step returned exit code 0", because the latest commit (a merge of a Python and docs branch) did not touch `app/`. The skip rule assumes an earlier deployment exists; a new project has none, so nothing ever built.
+- `vercel.json` and `app/vercel.json`: the ignore command now exits 1 (build) whenever the branch is `master`. Other branches still skip when `app/` is untouched, which keeps preview builds and the deployment count down.
+- Checked: the rule gives exit 1 for `master` and exit 0 for a branch whose last commit did not touch `app/`; a clean checkout builds with the same commands Vercel runs (`npm ci --prefix app`, `npm run build --prefix app`).
+- A fork needs this commit on its own `master`: sync the fork, then redeploy.
+
+## Keep the free Render hub awake
+
+- `.github/workflows/keep-warm.yml`: pings the hub's `/health` every 10 minutes, so the free Render service no longer sleeps and the first visitor does not wait about a minute for it to wake. `/health` uses no Cartesia, Moss or Elastic calls.
+- The target is the repo variable `UNSTEP_PUBLIC_URL` if set, otherwise `https://unstep.onrender.com`. It also runs on demand from the Actions tab.
+- Scheduled workflows only run from the default branch, so this does nothing until it is merged to `master`.
+- Checked and left alone: the Render 502 seen today was the free plan waking up (it answered 200 after about 70 seconds), not a crash. The red Vercel previews all come from the `agent-mail` branch, which has no `app/` folder for the project's Root Directory; that is a Vercel project setting, not a code fix.
 
 ## "Where the plane was" no longer depends on the agents (R63)
 

@@ -1,223 +1,387 @@
 # Unstep
 
-**No ATC instruction lost or misheard.** Unstep catches radio calls that were stepped on or read back wrong, has a human controller approve the correction, and speaks it into the pilot's headset with Cartesia voice.
+**Agentic air traffic control. A second set of ears for every controller.**
 
-Pilots and controllers share one half-duplex VHF channel, so when two stations transmit at once the call turns into a squeal and is lost. An FAA CAMI study (DOT/FAA/AM-05/19, 2005) found blocked, stepped-on or clipped calls in 1.16% of transmissions sampled at the five busiest US TRACONs, and no alerting system for stepped-on or clipped calls ([source](https://rosap.ntl.bts.gov/view/dot/58248/dot_58248_DS1.pdf)). Today recovery depends on someone noticing and asking "say again", and a misheard readback is only caught if the controller happens to hear it.
+Unstep is a team of AI agents that works the radio *with* an air traffic controller. It listens to every transmission, catches calls that were stepped on, checks every readback, drafts the next clearance, speaks privately to the one pilot who needs it, and records every decision. **The controller approves everything; the agents never act alone.**
 
-![Unstep demo screen, full view, from a live run on Cartesia, Moss and Moss Inference](docs/img/demo-full-view.png)
+Built at Cal Hacks 13.0 with **Cartesia** (the ears and the voice), **Moss** (each aircraft's memory) and **Elastic** (the agent platform). Every number in this README was measured in our own runs. Where something is built but not yet measured live, we say so.
 
-*Full view after a live run: the tower words lost under the squeal are struck out, Moss found the cockpit's local hint in 2 ms with its source record, the controller approved by voice (a recorded clip, labeled on screen), the wrong readback ("23") was caught and corrected, and Moss Inference answered the free-form question with an exact quote of the approved clearance. Every number in the bottom strip was measured in that run.*
-
-## Presenter mode (the live demo)
-
-```bash
-python -m unstep.demo --live    # real Cartesia, Moss and Moss Inference; warms up for about 30 s
-python -m unstep.demo           # same pipeline offline, with labeled fakes
-python -m unstep.demo --live --mic   # the presenter speaks the controller and pilot lines live
-```
-
-Before presenting, `python scripts/preflight.py` checks keys, clips, Cartesia, Moss and Moss Inference and ends with READY. Opens `http://127.0.0.1:8765/demo/`. **Space** runs the next scene, **A** toggles audio mode and the full view, **?** shows the keys. Every scene runs the real pipeline on recorded clips in `assets/clips/real/`; nothing on screen is canned.
-
-With `--mic` (needs `--live`), scenes 2 to 4 wait for the presenter instead of the clips: the screen shows "HOLD V TO TALK · as CONTROLLER" or "as PILOT" with what to say. Hold **V**, speak, release. The browser streams the microphone (16 kHz PCM16, echo cancellation and noise suppression on) to `/demo/mic`, Cartesia ink-2 transcribes it on the manual endpoint and finalizes on release, and the real pipeline handles whatever was said: the approval still needs a strict "Approve" with repeat-back, a wrong readback is still caught, unclear speech gets "Say again". If nobody speaks within 30 s the recorded clip runs instead, labeled as a mic fallback. Live lines are tagged LIVE MIC on screen and are not played back (R replays them). Design and storyboard: [docs/11-demo-design.md](docs/11-demo-design.md). Pitch script: [docs/12-pitch.md](docs/12-pitch.md).
-
-| Audio mode (the first minute) | Close |
+| | |
 | --- | --- |
-| ![Audio mode caption](docs/img/demo-audio-mode.png) | ![Close card](docs/img/demo-close.png) |
+| Demo video | 2:58, linked from the Devpost submission; its source is in [`video/`](video/) (Remotion) |
+| Try it | Scan the QR code on the ATC console and your phone becomes a plane ([Setup](#setup)) |
+| Tracks | Cartesia · Moss · Elastic (Best use of the Elastic Agent Builder on a Serverless instance) |
 
-Full spec: [docs/01-prd.md](docs/01-prd.md). We logged API feedback for Cartesia: [docs/09-cartesia-feedback.md](docs/09-cartesia-feedback.md).
+---
 
-## Demo
+## Contents
 
-```bash
-python scripts/run_demo.py           # full flow, offline, no keys needed
-python scripts/run_demo.py --clean   # a clean call: proves no false alarm fires
+1. [The problem](#1-the-problem)
+2. [What Unstep does](#2-what-unstep-does)
+3. [One complete flow (the demo)](#3-one-complete-flow-the-demo)
+4. [How it works](#4-how-it-works)
+5. [**Cartesia**: the ears and the voice](#5-cartesia-the-ears-and-the-voice)
+6. [**Moss**: each aircraft's memory](#6-moss-each-aircrafts-memory)
+7. [**Elastic**: the agent platform](#7-elastic-the-agent-platform)
+8. [The two screens](#8-the-two-screens)
+9. [Measured results](#9-measured-results)
+10. [Impact and responsible use](#10-impact-and-responsible-use)
+11. [Setup](#setup)
+12. [Testing](#12-testing)
+13. [Known limitations](#13-known-limitations)
+14. [Repo layout](#14-repo-layout)
+15. [How we built it, and credits](#15-how-we-built-it-and-credits)
+
+---
+
+## 1. The problem
+
+Every flight is guided by a voice on the radio: an air traffic controller. The FAA handles about **45,000 flights a day**, and the people doing it are stretched thin:
+
+- **Short-staffed.** The FAA is about **3,500 controllers short** of its own goal, "with many already on mandatory overtime and six-day weeks" ([Washington Examiner, Oct 2025](https://www.youtube.com/watch?v=n0zGNlVS0J8)).
+- **At the busiest airports.** Washington Reagan National runs on **20 certified controllers where it should have 30** (NATCA via [FOX 5 DC](https://www.fox5dc.com/news/dca-air-traffic-controllers-working-six-day-weeks-due-staffing-gap)). The radar facility that guides Newark had **24 of 38** positions filled (FAA via [Fox Business](https://www.foxbusiness.com/politics/air-traffic-controllers-take-trauma-leave-after-close-calls-communication-failures-newark)).
+- **For years.** The union describes controllers working "six days a week, 10 hours a day, for years at a time" ([CNN, Mar 2025](https://edition.cnn.com/2025/03/08/us/air-traffic-controllers-us-shortage)).
+- **One person, two jobs.** At DCA on 29 January 2025, the tower had combined the helicopter and local positions. The NTSB found that raised workload ([NTSB](https://www.ntsb.gov/news/Testimony/Pages/Homendy-20260212.aspx)). Transportation Secretary Sean Duffy, on ABC: *"There is a level of risk that gets injected into the system when we have a controller that's doing two jobs instead of one."*
+
+Pilots and controllers share **one half-duplex radio channel**: only one voice gets through at a time. When two people transmit at once, everyone else hears a squeal, and **neither speaker knows**. An FAA study found blocked, stepped-on or clipped calls in **1.16%** of transmissions at the five busiest US approach facilities, and "no alerting system was detected" for them ([FAA CAMI, DOT/FAA/AM-05/19](https://rosap.ntl.bts.gov/view/dot/58248/dot_58248_DS1.pdf)). At the NTSB hearing on the 2025 DCA midair, the tower operations manager was asked whether a controller can tell that a call was stepped on. His answer: **"There's nothing."** ([AIN](https://backend.ainonline.com/aviation-news/air-transport/2025-08-04/ntsb-dc-midair-hearing-panel-3-covers-frequency-issues))
+
+An overloaded controller can't catch every missed word and every wrong readback alone. **Unstep is not a way to run a tower with fewer people.** It is the help the people already there don't have.
+
+## 2. What Unstep does
+
+| Job | What it does | Powered by |
+| --- | --- | --- |
+| **01 Listens** | Turns every transmission, tower and cockpit, into live text while people talk | **Cartesia** Ink-2 |
+| **02 Catches** | Detects a call that was stepped on and recovers the words that were lost | **Moss** + **Cartesia** + our overlap detector |
+| **03 Checks** | Compares every readback with the instruction; a wrong runway is flagged and **the aircraft does not move** until it's right | **Cartesia** Ink-2 + **Elastic** percolator rules |
+| **04 Drafts** | Proposes the next clearance from the flight plan, the aircraft's last call and live runway occupancy, even before anyone asks | **Elastic** Agent Builder + `geo_shape` + **Moss** |
+| **05 Speaks** | Speaks the recovered instruction privately to the one pilot who missed it, in the left ear, in their language | **Cartesia** Sonic |
+| **06 Records** | Logs every decision for audit, answers questions about the shift, writes the shift briefing and a nightly review | **Elastic** (ES\|QL, Workflows, Agent Builder) |
+
+**The controller approves everything.** Agents propose, cite and check. They never write an instruction and never grant permission. The only automatic action (re-sending the controller's own stop/wait words after a stepped-on call) has visible policy checks and an off switch, and is off in the demo.
+
+## 3. One complete flow (the demo)
+
+The laptop is the control tower on the projector. Phones are the planes: **scan the QR on the console and you're a pilot.** This is the flow in the demo video, recorded live on the real system (`scripts/capture_demo_footage.py`):
+
+1. **Plane A asks for taxi.** The **Clearance agent** proposes *"Cessna 1-2-3, taxi to runway 33 via Bravo, hold short of runway 33"*:
+   - the flight plan comes from **Elastic** (`unstep-flightplans`);
+   - the aircraft's last tower call comes from its **Moss** session in under 1 ms;
+   - "runway clear" comes from an **Elastic** `geo_shape` query.
+   The controller taps **Send**, and **Cartesia** Sonic speaks it on the frequency.
+2. **The pilot reads it back; only then does the aircraft move** (FAA JO 7110.65 ¶2-4-3, AIM 4-3). It taxis on the 3D airport and stops at the hold-short line.
+3. **The tower says "Cessna 1-2-3, hold short runway 33", and at the same moment the helicopter keys up.** The Cessna's receiver carries two voices.
+4. **Unstep catches it.**
+   - The overlap detector flags the squeal; **Cartesia** Ink-2 shows what the cockpit actually heard.
+   - **Moss** searches the Cessna's own memory with that garbled fragment and recovers "hold short runway 33".
+   - **Elastic** matches the instruction to its FAA rule: ¶3-7-2, hold short is restrictive and must be read back.
+   - A decision card appears: *"Plane A missed 'Cessna 1-2-3, hold short Runway 33'. Approve?"*
+5. **The controller approves with one tap.**
+6. **Only the Cessna hears it.** **Cartesia** Sonic speaks *"From Tower: Cessna one two three, hold short runway three three. Read back."* into the pilot's left ear, labelled "Only you · left ear" on the phone. The helicopter is told separately that its call was blocked.
+7. **The pilot reads back; Unstep checks it:** *"Read back correct."*
+8. **A new clearance, a wrong readback.** The pilot reads back "runway **13**". Unstep flags it, and the aircraft stays put. Corrected, it lines up.
+9. **The agent proposes the next step unasked.** Lined up, runway clear: *"Cessna 1-2-3, runway 33, cleared for takeoff."* Sent, read back, airborne.
+
+## 4. How it works
+
+```mermaid
+flowchart LR
+  subgraph Radio["Radio · 118.700 (one shared channel)"]
+    TWR[Tower mic]; A[Cessna radio]; H[Helicopter radio]
+  end
+  subgraph Cockpit["In each cockpit (on board)"]
+    OD[Overlap detector] --> INKC[Cartesia Ink-2<br/>what the cockpit heard]
+    INKC --> MOSS[(Moss session<br/>this aircraft's clearances)]
+    MOSS --> REC[Recovered instruction]
+  end
+  subgraph Ground["Ground · ATC hub"]
+    INKT[Cartesia Ink-2<br/>tower transcript, key terms] --> RULES[(Elastic percolator<br/>FAA JO 7110.65)]
+    RULES --> WF{{Elastic Workflow<br/>Intercept ‖ Compliance agents}}
+    REC --> WF
+    WF --> CTRL[Controller approves]
+    CTRL --> AUD[(Elastic audit · ES|QL · Kibana · MCP)]
+    CLR[Clearance agent<br/>flight plan · geo_shape · Moss] -.-> CTRL
+  end
+  subgraph Back["Back to the cockpit"]
+    SONIC[Cartesia Sonic<br/>private, left ear] --> RB[Pilot readback] --> CHK[Ink-2 + readback check] --> MOVE[Aircraft may move]
+  end
+  A --> OD; TWR --> INKT; H -.-> OD
+  CTRL --> SONIC
+  MOSS -. flight log on landing .-> MCLOUD[(Moss Cloud)]
 ```
 
-One command starts the gateway, mock ground agents, the controller voice approval loop and the real cockpit pipeline on `assets/clips/stepped_on_call.wav`, with fake STT and TTS. It prints what each party heard, with measured latencies:
+**There is no "boss" agent.** Fixed code decides what a sentence is (an ordinary call, a stepped-on call, a readback, a question), and only the agents that event needs are called. The same sentence always takes the same path. A sentence reaches zero to two agents. ([docs/20-agent-map.md](docs/20-agent-map.md))
 
-1. The overlap detector finds the squeal on the stepped-on call.
-2. Pilot hears a chime, then "Advisory. Transmission blocked. Likely hold short runway tree tree. Awaiting controller." The hint comes from local memory search, with its source record.
-3. The controller hears "Blocked call to N123AB: hold short Runway 33. Approve?", says "Approve" on the Unstep key, hears the repeat-back, and only then is the directive sent (`unstep/ground/voice_approval.py`).
-4. The directive plays in the left ear only, ending "Read back."
-5. Pilot reads back "runway two three". Unstep: "Readback incorrect", pilot corrects, confirmed.
-6. Pilot asks "Unstep, what was my last clearance?" and gets an answer from the flight session.
+**Measured end to end (live):** from the end of a stepped-on call to the pilot hearing the fix, **2.9 s**, with the controller's approval included.
 
-Audio is written to `data/cockpit_audio.wav`, events to `data/events.jsonl`.
+## 5. Cartesia: the ears and the voice
 
-**Live, with keys:** fill `.env` (below), then run the gateway and the real cockpit edge. With `CARTESIA_API_KEY` and `CARTESIA_VOICE_ID` set, the edge uses Cartesia STT and TTS; with `MOSS_*` set it uses Moss.
+On a radio, everything is voice. Cartesia hears the whole frequency in real time and speaks privately to exactly the right person, in their language. Code: [`unstep/cockpit/stt.py`](unstep/cockpit/stt.py), [`unstep/cockpit/tts.py`](unstep/cockpit/tts.py), [`unstep/ground/tower.py`](unstep/ground/tower.py), [`unstep/live/room.py`](unstep/live/room.py).
 
-```bash
-uvicorn unstep.gateway.server:app --port 8765               # gateway, dashboard at http://127.0.0.1:8765
-python -m unstep.ground.mock_agents                          # ground agents (Elastic replaces this, task B5)
-python -m unstep.cockpit.monitor --url ws://127.0.0.1:8765   # Frequency Monitor
-python -m unstep.cockpit.edge assets/clips/stepped_on_call.wav --play
-```
+### Every Cartesia feature we use
 
-Approve by voice with `python -m unstep.ground.voice_approval` (add `--live --answer-clip <wav>` for Cartesia), or click Approve or Reject on the dashboard. `python -m unstep.ground.auto_approver` approves everything instantly for load tests. `python -m unstep.cockpit.mock_cockpit --runs 10` is a lightweight stand-in for the edge.
+| Cartesia feature | How Unstep uses it | Where | Measured (live) |
+| --- | --- | --- | --- |
+| **Ink-2 streaming speech-to-text** | Every transmission is transcribed *while the key is held*, for the tower and for what each cockpit hears (each cockpit gets its own live mix of the frequency) | `CartesiaManualSTT`, `TowerStream` | Tower transcript final **155 ms** after release (was 2,702 ms before streaming); cockpit **172 ms** |
+| **Manual finalize** | The transcript is finalized the moment the transmitter is released | `CartesiaManualSTT.finalize` | 0 of 15 over 800 ms in a repro run |
+| **Key-term prompting** | **39 aviation terms per cockpit**, most important first, within Cartesia's limits (100 terms, 1,200 characters): the aircraft's callsigns, critical phrases ("hold short", "line up and wait", "cleared for takeoff", "go around"), runways, taxiways, ATC words ("niner", "tree", "fife", "squawk", "NOTAM") | `build_keyterms` | Heavy radio noise: callsign **62.5% → 95.5%**, runway **81.6% → 98.5%**, word error rate **0.191 → 0.009** |
+| **Streaming text during speech** | Live captions on the projector and on every phone, with key words marked (callsign, action, runway) and the lag shown | `on_text`, `settle_caption` | Captions arrive before release; final **97 ms** after; the phone shows "Cartesia live caption · ~100 ms behind speech" |
+| **ink-whisper word timestamps** | A second paced stream gives word times, so the console strikes out exactly the tower words lost in the overlap | `TowerTranscriber` | |
+| **Turns endpoint** (`turn.start` / `turn.end`) | Readbacks and pilot questions; `turn.start` interrupts the advisory | `CartesiaTurnSTT` | |
+| **Sonic-3.6 text-to-speech, streamed** | The private advisory, streamed to the phone from the first chunk; the tower's typed instructions spoken on the frequency; the controller's audio prompt ("Needs you… Approve?") | `CartesiaTTS` | First audio **85–201 ms** |
+| **Same voice, other languages** | The advisory repeated in **Spanish, Hindi or French** in the same voice, for pilots who choose a language | `unstep/cockpit/translate.py` | Checked live (es, hi, fr) |
+| **Pronunciation dictionary** | ATC words said the ATC way ("tree", "fife"), uploaded once ([`assets/pronunciation/atc.json`](assets/pronunciation/atc.json)) | `scripts/upload_pronunciation_dict.py` | Every entry passed a speech-to-text round trip (below) |
+| **Speed control** | "Readback incorrect" corrections are spoken slower | 0.85× | |
+| **Context cancel / interruption** | The advisory stops the moment the pilot keys the mic, and replays cleanly from the start | `CartesiaTTS.cancel` | |
+| **Word timestamps on TTS** (`add_timestamps`) | Collected per word, for word-by-word display | `CartesiaTTS.speak` | |
+| **Left-ear output** | Advisories play in the left ear only, so they never sound like the radio | `to_left_stereo` | |
 
-## Browser demo plumbing
+### How we tuned and tested it (we did not train Cartesia's models)
 
-Open `/demo/` on the gateway for a read-only message list. `/ws/observer` receives
-all routed contracts, including audits and gateway decisions, and replays the
-last 200 messages on reconnect. It uses the same token and origin checks as
-other roles and rejects all incoming messages. Part B replaces the placeholder
-page.
+- **A 200-transmission live benchmark** through a simulated VHF radio channel, three voices, several noise levels, with 95% confidence intervals (`scripts/eval_bench.py --live`). Results are in the table above and [docs/18-benchmark.md](docs/18-benchmark.md).
+  - Clean audio: callsign 100%, runway 100%.
+  - Heavy noise (radio-5): callsign 94.5%, runway 98.5%.
+  - Stepped-on detection: **100% caught, 0 false alarms** on clean audio, 380 ms.
+- **A TTS → STT closed loop over 40 ATC lines:** every line Sonic says goes back through Ink-2. **Live: callsign, action and runway 100%, every wrong readback caught, zero false alarms.**
+- **The loop caught our own mistake.** We had respelled "niner" as "NY-ner" in the pronunciation dictionary. Sonic then said something like "N-one-er", and Ink-2 heard "N1er" or "and liner". Runway accuracy was 85% with the entry and 100% without it. We removed it, and now **every dictionary entry must pass a round trip**. "fower", "juliett" and "NOTAM" were rejected the same way ([`assets/pronunciation/rejected.json`](assets/pronunciation/rejected.json)).
+- **Cartesia feedback:** what we found, what we worked around, and what we can truthfully report ([docs/09-cartesia-feedback.md](docs/09-cartesia-feedback.md), [docs/24-cartesia-findings.md](docs/24-cartesia-findings.md)).
 
-Add `--demo-audio-dir` to the edge, controller voice loop or `scripts/run_demo.py`
-to save WAV artifacts under `data/demo/audio/`. An explicit directory is also
-accepted; use the same directory in `create_app(demo_audio_dir=...)` when running
-a custom gateway. The one-command demo passes it through automatically. Audio
-export is off by default. The standalone gateway serves the default directory
-at `/demo/audio/`. Files remain until manually removed.
+## 6. Moss: each aircraft's memory
 
-Speech audits carry `party`, `spoken_text` or `heard_text`, available `words`
-with seconds relative to the WAV (including the chime), and optional `audio_url`.
-Controller utterances stream individually when demo audio is enabled; otherwise
-they are included in the final controller audit's `utterances` list. Text-only
-fake pilot/controller input has no recorded audio to export.
+The cockpit already heard half the call. Moss finds the rest in the aircraft's own memory, in under a millisecond, without leaving the plane. Each cockpit agent's loop is **Cartesia Ink hears → Moss searches the plane's memory → Cartesia Sonic speaks**. Moss sits in the middle of every voice turn and adds no audible delay. Code: [`unstep/cockpit/memory.py`](unstep/cockpit/memory.py), [`unstep/cockpit/hint.py`](unstep/cockpit/hint.py), [`unstep/cockpit/queries.py`](unstep/cockpit/queries.py), [`unstep/live/flightplans.py`](unstep/live/flightplans.py).
 
-```bash
-python -m unstep.ground.tower --clip assets/clips/real/clean_call.wav --live
-python scripts/run_demo.py --live --demo-audio-dir
-```
+| Moss feature | How Unstep uses it | Measured (live) |
+| --- | --- | --- |
+| **One local, in-process session per aircraft** (`flight-<callsign>`) | Every clearance, call heard and readback is indexed in that aircraft's own memory, on board, with no cloud index | 6 sessions; reads **0.2–0.4 ms** warm; search over 6 sessions 0–1 ms |
+| **Hybrid search** (`alpha`, meaning + exact words) | The garbled fragment the cockpit heard ("Cessna 123, short runway 30") finds the right clearance | Right clearance scores **1.0**, unrelated speech **0.0** (below our floor) |
+| **Metadata filters and sorting** | Only this aircraft, only tower calls, newest first: the Clearance agent's "last tower call", skipping calls to other aircraft | **0.29–0.56 ms** |
+| **Answers from memory in the voice loop** | A pilot asks "Unstep, what was my last clearance?" or "what did the tower tell me in the last minute?"; Moss answers and Sonic speaks it | Under **1 ms** |
+| **Save to disk and load on restart** (`save_to_disk`, `load_from_disk`) | An aircraft's memory survives a restart with no download | 4 docs restored in **21.1 ms**, no duplicates; correct answer after restart |
+| **Moss Cloud sync** (`flightlog-<frequency>`) | When a plane goes quiet it lands, and its flight log is pushed once to Moss Cloud; a fresh client reads it back | 2 docs back in about **1.2–1.5 s**; survives restarts |
+| **Persistent cloud index** (`airport-KUNS`) | Airport reference data, created once (`scripts/ingest_airport.py`) and loaded at start | |
+| **Moss Inference** | Translates the private advisory; a translation is used only if every digit survives, otherwise English only | ~165 ms to first token, warm |
 
-`TowerTranscriber.transcribe` accepts 16 kHz mono PCM16 bytes, PTT start/end epoch
-milliseconds, frequency and callsign. It uses keyed ink-2 text and a second
-ink-whisper stream for word timing. Both streams are paced and finalized at the
-end of the PTT duration, using Cartesia's [manual STT endpoint](https://docs.cartesia.ai/api-reference/stt/websocket).
-Without `--live`, the tower client uses the explicit scenario fake. Tower word
-offsets remain seconds from `ptt_start`; pass a shared `--ptt-start` when matching
-independently replayed tower and cockpit recordings. The demo runner supplies a
-shared epoch automatically. The runner retains its scripted controller approval;
-use the standalone voice approval client for recorded controller answers.
+**Safety rules on Moss hints:** a hint only ever says stop or wait (hold short, go around), never "cleared". An older clearance can never come back ahead of a newer one. No source record means no hint. The newest clearance gives the hint, and Moss's search result is shown as the evidence, with its score and time.
+
+Verify with `python scripts/moss_live_check.py` (prints `ok`). Deeper notes: [docs/23-moss-max.md](docs/23-moss-max.md).
+
+## 7. Elastic: the agent platform
+
+The rulebook, the flight plans, the airport map and every decision live in one place, and the agents act on them. Everything runs on an **Elastic Serverless** project, deployed from code with `python scripts/deploy_elastic.py`. Definitions: [`elastic/`](elastic/). Code: [`unstep/ground/`](unstep/ground/).
+
+### Agent Builder: 8 agents (configured over our own indexes, not trained)
+
+| Agent | Job | Tools it can call |
+| --- | --- | --- |
+| `unstep-intercept` | Confirms the tower really said the lost words | `unstep_recent_blocked_calls` |
+| `unstep-compliance` | Cites the FAA JO 7110.65 paragraph and says whether the instruction is restrictive | `unstep_faa_search` |
+| `unstep-intercept-lite`, `unstep-compliance-lite` | Fast variants that take the pre-fetched rule as input (no tool calls), used in the parallel workflow | none |
+| `unstep-ground` | One-call version of both jobs | none |
+| `unstep-readback-auditor` | Explains why a readback did not match, with the paragraph | `unstep_faa_search`, `unstep_readback_history` |
+| `unstep-audit` | Answers the controller's questions about the shift from the audit trail ("which aircraft had the most blocked calls?"), showing its ES\|QL | 5 audit tools |
+| `unstep-coach` | Reports how controllers decided on proposals over 30 days, and only claims a trend with enough data | `unstep_trend_decisions` |
+
+**Least privilege by tool.** Every tool is a stored ES\|QL query or index search with a fixed shape: an agent fills in parameters (a callsign, an event id) and cannot run a free-form query. Agents never write to the audit trail.
+
+### 9 tools
+
+`unstep_faa_search`, `unstep_recent_blocked_calls`, `unstep_readback_history`, `unstep_trend_decisions` (ES\|QL with `INLINESTATS`), `unstep_audit_blocked_by_callsign`, `unstep_audit_blocked_per_minute`, `unstep_audit_readback_outcomes`, `unstep_audit_auto_resends`, `unstep_audit_landed_flights`.
+
+### 7 Workflows (event-driven and scheduled)
+
+| Workflow | Trigger | What it does |
+| --- | --- | --- |
+| `unstep-blocked-call` | Every stepped-on call | Runs Intercept and Compliance agents in **parallel** (the default path), stores the result |
+| `unstep-blocked-intercept`, `unstep-blocked-compliance` | Parallel branches | One agent each, writing its own answer document |
+| `unstep-blocked-call-fast` | Alternative | One agent call, given the pre-fetched rule |
+| `unstep-readback-audit` | Every wrong readback | The Readback Auditor explains the mismatch; findings saved to `unstep-findings` |
+| `unstep-briefing` | **Scheduled every 8 h**, and on demand | Shift handoff briefing from the last hour of the audit trail, saved to `unstep-briefings` |
+| `unstep-nightly-review` | **Scheduled daily**, and on demand | The coach agent reviews 30 days of controller decisions, saved to `unstep-reviews` |
+
+The console's **Shift briefing** and **Nightly review** buttons show the newest report and can run one now.
+
+### Search, rules, geo, analytics
+
+| Elastic feature | How Unstep uses it | Measured (live) |
+| --- | --- | --- |
+| **Percolator** (`unstep-rules`) | Each rule is a stored query: an instruction or readback is matched to its rule in one call | Readback matched in **3.0 ms**; rule lookup flat at 1–2 ms up to 5,000 rules |
+| **Hybrid search + Jina reranker** (`unstep-faa`) | Finds the exact FAA JO 7110.65 paragraph to cite on every decision card, labelled as a search result | Reranked citation in about **1.1 s** |
+| **`geo_shape` + `geo_point`** (`unstep-airport`, `unstep-positions`) | The airport's runway, hold-short areas and taxiways are shapes; every aircraft's position is a point, posted once a second. One `_msearch` says which area each plane is in; the Clearance agent asks "is the runway clear?"; the console flags a **runway incursion** | Elastic `took` **0–1 ms**; runway check 4–5 ms round trip |
+| **Flight plans** (`unstep-flightplans`) | The Clearance agent reads each aircraft's plan (runway, route) | 0.23–2.0 s uncached |
+| **Kibana Maps** | A live map of the airport shapes and plane tracks, coloured by aircraft | Deployed via the saved-objects import API (works on Serverless) |
+| **ES\|QL** | Live safety analytics on the console (blocked calls, readback errors caught, auto-resent calls) and every audit tool | Panel answers in 1.1–1.5 s |
+| **MCP server** (`/api/agent_builder/mcp`) | Our tools are callable from any MCP client (`scripts/mcp_demo.py`) | Lists the tools; `unstep_trend_decisions` returned real rows (24 Oct: 43 approved, 2 rejected) |
+| **Every event stored** (`unstep-events`, `unstep-proposals`, `unstep-clearances`, `unstep-policy`, `unstep-flights`) | The audit trail of every call, proposal, decision and landed flight; simulated traffic goes to `unstep-sim-events`, labelled | |
+
+**The hold-short rule was reviewed by a person**, not just picked by search: FAA JO 7110.65 **¶3-7-2** holds the requirement Unstep enforces: *"Request a read back of runway hold short instructions when it is not received from the pilot."* ¶3-7-4 is recorded as related.
+
+**Agents stay off the pilot's critical path.** An Agent Builder call takes about 5 or 10 s whatever the answer length (measured over 13 calls), so the decision card goes out at once from the local check, and the agents' citation is added to the open card when it arrives (about 10–11.5 s). The instruction never changes, and confidence can only go down. Deeper notes: [docs/19-elastic-moss-plan.md](docs/19-elastic-moss-plan.md), [docs/25-latency-ideas.md](docs/25-latency-ideas.md).
+
+## 8. The two screens
+
+**ATC console** (`/live/atc/`, [`web/live/atc/`](web/live/atc/)), for the controller:
+- **A 3D digital twin of the airport** (three.js): runway 33/15, taxiways A and B, connectors A1–A4, B1, B2, hold-short lines, terminal and parked aircraft. Planes queue on taxiway B, taxi along real routes, line up at the runway end, and take off.
+- **Readback-first movement:** an instruction alone moves nothing; the aircraft moves only after a correct readback. "Hold position" acts at once.
+- **"Agents at work" feed:**
+  - green rows for what the agents did, amber for what needs a decision, red for what's wrong;
+  - each row names the agent and the sponsor technology behind it;
+  - **decision cards** for stepped-on calls and **Clearance agent cards**, each with what the agent checked and why.
+- **Radio panel** with live captions per station and "TALKED OVER" marks.
+- **Ask tab:** ask the audit agent about the last hour, or the coach about 30-day trends, with the ES\|QL shown. **Shift briefing** and **Nightly review** buttons.
+- **Safety tab:** ES\|QL analytics. **"Show how":** the step-by-step evidence for an event, with a timing waterfall.
+- **QR card** for walk-up pilots, a **Reset room** button, an auto-resend switch (off by default) and an optional tower password.
+
+**Pilot app** (`/pilot/`, [`app/`](app/), React), the pilot's EFB:
+- **Hold to talk** on the shared frequency.
+- A **"Read it back" guide** that says what to say and whether the readback was right.
+- **Live captions**, private advisories marked **"Only you · left ear"**, and a language choice.
+- **Rejoins the same aircraft** after the phone sleeps.
+
+## 9. Measured results
+
+All live, on our own services and laptop. Simulated traffic is always labelled as such.
+
+| What | Result |
+| --- | --- |
+| Call end → pilot hears the fix (controller approval included) | **2.9 s** |
+| Tower transcript final after release (Cartesia Ink-2, streaming) | **155 ms** (was 2,702 ms) |
+| Cockpit transcript final after release | **172 ms** |
+| Sonic first audio | **85–201 ms** |
+| Key terms in heavy radio noise | Callsign 62.5% → **95.5%**, runway 81.6% → **98.5%**, WER 0.191 → **0.009** |
+| Stepped-on detection (benchmark) | **100%** caught, **0** false alarms on clean audio |
+| TTS → STT loop, 40 ATC lines | **100%** callsign, action, runway; every wrong readback caught |
+| Moss: aircraft's last tower call | **0.29–0.56 ms** |
+| Moss: restart from disk | **21.1 ms** |
+| Elastic: percolator readback match | **3.0 ms** |
+| Elastic: `geo_shape` area lookup | **0–1 ms** (took) |
+| End-to-end taxi and readback suite (`scripts/e2e_taxi.py`) | **28/28** live checks |
+
+## 10. Impact and responsible use
+
+- **A person decides.** Every instruction that lets an aircraft move waits for the controller's approval. The only automatic re-send is the controller's own stop/wait words, with visible checks and an off switch.
+- **Hints only ever say stop or wait,** and only with a source record. Permissive instructions are never hinted.
+- **Agents never write an instruction.** The words come from the controller's own transmission. Agents cite, check and flag; they can only lower confidence.
+- **Never mistaken for ATC.** Every advisory starts with "Advisory", in a distinct synthetic voice, in the left ear. We don't clone controllers' voices.
+- **Only the Unstep key commands Unstep.** Speech on the frequency is transcribed but never obeyed.
+- **Privacy.** Each advisory goes only to the pilot who missed the call. Aircraft memories stay on board. Keys stay in `.env` (never committed); the hub supports a room token and a tower password.
+- **Accessibility.** Live captions on every screen; advisories in the pilot's language; a readback guide that shows what to say; readback checks help pilots under high workload.
+- **What we do not claim.** We haven't tested this in a real facility. We don't claim any effect on staffing, workload or incidents.
 
 ## Setup
+
+### Requirements
+
+Python 3.12, Node 22, and optionally FFmpeg. Keys for Cartesia, Moss and Elastic are needed for the live system; **everything also runs offline with labelled fakes**.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env                                # fill in keys, never commit .env
+cd app && npm install && npm run build && cd ..      # the pilot app the hub serves at /pilot/
+cp .env.example .env                                 # fill in keys; never commit .env
 ```
 
 | Key | Used for |
 | --- | --- |
-| `CARTESIA_API_KEY` | Cartesia TTS and STT |
-| `CARTESIA_VOICE_ID` | The advisory voice |
-| `CARTESIA_PRONUNCIATION_DICT_ID` | ATC pronunciation dictionary (from the upload script below) |
-| `MOSS_PROJECT_ID`, `MOSS_PROJECT_KEY` | Moss indexes (local fallback without them) |
-| `ELASTIC_CLOUD_URL`, `ELASTIC_API_KEY` | Elastic (planned, Dev B) |
-| `UNSTEP_GATEWAY_URL` | Gateway address, default `ws://127.0.0.1:8765` |
-| `UNSTEP_GATEWAY_TOKEN` | Optional shared secret; clients then connect with `?token=` |
+| `CARTESIA_API_KEY`, `CARTESIA_VOICE_ID` | Ink-2, ink-whisper and Sonic |
+| `CARTESIA_PRONUNCIATION_DICT_ID` | The ATC pronunciation dictionary (from `scripts/upload_pronunciation_dict.py`) |
+| `MOSS_PROJECT_ID`, `MOSS_PROJECT_KEY` | Moss sessions, Moss Cloud, Moss Inference (local fallback without them) |
+| `ELASTIC_CLOUD_URL`, `ELASTIC_API_KEY`, `KIBANA_URL` | Elastic Serverless project and its Kibana |
+| `UNSTEP_ELASTIC_AGENTS=1` | Call the Agent Builder agents (otherwise local stand-ins) |
+| `UNSTEP_ATC_PASSWORD` | Optional tower password |
 
-Then, once per account:
-
-```bash
-python scripts/upload_pronunciation_dict.py   # uploads assets/pronunciation/atc.json, prints the id
-python scripts/smoke_cartesia.py              # TTS first audio, STT round trip, turn events
-python scripts/smoke_moss.py                  # seeds and queries Moss, prints search time
-python scripts/make_real_clips.py             # optional: real-speech clips into assets/clips/real/
-```
-
-Every script prints `skipped: ...` and exits 0 when its keys are missing.
-
-## Cartesia features used
-
-| Feature | Where in code | Why |
-| --- | --- | --- |
-| Sonic TTS (`sonic-3.6`) over WebSocket, one context per message | `unstep/cockpit/tts.py` `CartesiaTTS` | Low-latency advisory voice. Measured **214 ms to first audio** on our laptop, including network (`smoke_cartesia.py`) |
-| Word timestamps (`add_timestamps`) | `CartesiaTTS.speak` | Collected per word, for highlighting words as spoken (on-screen highlight is planned) |
-| Pronunciation dictionary | `assets/pronunciation/atc.json` (tree, fife, Unstep, quebec), `scripts/upload_pronunciation_dict.py`, `pronunciation_dict_id` from `CARTESIA_PRONUNCIATION_DICT_ID` | Only the respellings that survived a speech-to-text round trip. `fower`, `juliett` and `NOTAM` were heard worse than no entry and are kept out (`assets/pronunciation/rejected.json`, docs/24). The hub sends the dictionary named in that variable and none when it is unset |
-| Calm advisory voice (`emotion: calm`, speed 1.1, volume 1.2) plus chime and "Advisory" prefix | `AdvisoryVoice`, `advisory()`, `chime()` | Never mistaken for a controller (FR-8, FR-16) |
-| Left-ear output | `to_left_stereo` | Directives stay off the radio ear (FR-7) |
-| Context cancel on interrupt | `CartesiaTTS.cancel`, `AdvisoryVoice.interrupt` on `turn.start` | Pilot speech cuts the voice off (FR-10) |
-| Ink-2 STT with key terms (callsigns, runways, "hold short", "niner") | `unstep/cockpit/stt.py` `build_keyterms`, `CartesiaManualSTT` | Correct ATC words. Verified live: "likely hold short runway tree tree" came back exactly |
-| Manual `finalize` on squelch close / PTT release | `CartesiaManualSTT.finalize`, used by `unstep/cockpit/edge.py` when a key is set | Transcript is final the moment the transmission ends |
-| Turns endpoint (`turn.start` / `turn.end`, tuned end threshold) | `CartesiaTurnSTT` | Readbacks and pilot queries. Client works live (`smoke_cartesia.py`); the edge uses a scripted fake by default. Also used for controller voice approval (`unstep/ground/voice_approval.py`, task B10) |
-| `ink-whisper` for word timestamps | `unstep/ground/tower.py` | Second paced stream for tower word times and blocked-word marking |
-
-## Moss and Elastic
-
-| Sponsor | Built | Planned |
-| --- | --- | --- |
-| Moss | `unstep/cockpit/memory.py`: `airport-<ICAO>` and `flight-<callsign>` indexes, one writer per index, filter translation to Moss format, local fallback with the same interface. Local hint (`hint.py`) and pilot queries (`queries.py`) with search time shown. Frequency Monitor (`monitor.py`) owns `freq-<frequency>`. **Verified on real Moss** (hint 0.6 ms, query 1.0 ms). `airport-KUNS` is a persistent cloud index created once by `scripts/ingest_airport.py` and loaded at startup; flight and frequency data are sessions. **Moss Inference** answers free-form pilot questions from records we retrieve, validated as exact quotes (`unstep/cockpit/inference.py`, about 165 ms to first token warm) | |
-| Elastic | Gateway writes every message to an event sink (`data/events.jsonl` today) | Elastic events index, Workflow with Agent Builder agents (Intercept, Compliance with FAA JO 7110.65 citation, Readback Auditor), ES\|QL audit (task B5) |
-
-## Why stretched-thin towers need a safety net (context, not a result)
-
-Unstep is not a way to run a tower with fewer controllers. It is a second set of ears for the controller who is already stretched thin. The figures below are from public sources; none are ours.
-
-- **Towers run short.** A 2025 National Academies report found the FAA hired about two thirds of the controllers it projected for 2013 to 2023, and that 19 of its largest facilities have 15% fewer people than they need ([National Academies](https://www.nationalacademies.org/news/actions-from-federal-government-needed-to-alleviate-air-traffic-controller-staffing-shortages-at-many-facilities-says-new-report)). Trade coverage puts the shortfall of certified controllers at roughly 3,000 to 3,500 ([Flying](https://www.flyingmag.com/faa-unveils-atc-staffing-blueprint)). The FAA's own target has since been revised, so treat the exact number as moving ([AVweb](https://avweb.com/aviation-news/faa-lowers-controller-staffing-target/)).
-- **New controllers take years.** A trainee at a large facility takes at least 4.8 years to certify, per the National Academies report as cited by [Aviation Safety News](https://www.globalair.com/articles/the-faas-real-atc-problem-how-certification-holds-the-key-to-hiring-woes/11696). Hires made now do not close the gap soon.
-- **Short staffing means combined positions and overtime.** The NTSB found that at DCA on 29 January 2025 the tower had combined the helicopter and local control positions during a busy period, which increased workload and reduced situational awareness ([NTSB](https://www.ntsb.gov/news/Testimony/Pages/Homendy-20260212.aspx)). The NTSB also found flawed airspace design and recommended a review of staffing at DCA; the combined positions were one contributing factor among several.
-- **Rest rules are tight.** In 2024 the FAA raised minimum rest between shifts from 9 to 10 hours and required 12 hours before an overnight shift ([NPR](https://www.npr.org/2024/04/22/1246349237/close-calls-faa-air-traffic-control-fatigue)). The controllers' union warned that this can open coverage gaps filled with overtime, which adds fatigue ([Safety+Health](https://safetyandhealthmagazine.com/articles/25826-after-a-delay-faa-finalizes-air-traffic-controller-rest-policy)).
-
-**What Unstep does about it.** It takes the routine checking load off a controller who is working short-staffed or combined positions: checking each readback against the clearance, finding the rule, drafting the fix. The controller decides every time, can see why, and can switch the agents off. The aim is that nothing slips through when someone is overloaded. It does not replace a position or reduce staffing.
-
-**What we have measured:** call end to the pilot hearing a fix, and how many calls a rule check handles without a person (see `docs/18-benchmark.md`; the benchmark traffic is simulated and labelled so).
-
-**What we have not measured:** whether this reduces missed calls or controller workload in a real facility. We have not tested it in one. Do not quote a safety or staffing effect from this project.
-
-## What we decided with the other side
-
-Two people, two agents. Deekshith's side builds the pilot app and the hub; Rishit's side builds the controller console. They agree changes by mail (`agent-mail` branch) and never overwrite each other's work. Decisions so far:
-
-- **The pitch is a safety net, not fewer controllers.** A staffing or roster model was proposed and dropped (R33): it read as "AI replaces controllers", and we cannot back it with data. Unstep takes routine checking off a controller who is short-staffed.
-- **The controller always decides.** Agents propose and cite; fixed rules route. There is no master agent. A spoken sentence is checked by fixed code, and only the agents that event needs are called ([docs/20-agent-map.md](docs/20-agent-map.md)).
-- **Elastic stays with Deekshith's side**, reviewed by Rishit's. Rishit ran the first live deploy (agents, tools, workflows, 52 FAA paragraphs), which worked after two fixes.
-- **Moss:** each plane has its own memory; the newest clearance gives the hint and Moss supplies the search evidence behind it. Flight logs are pushed once, never per plane. "Survives a restart" is not claimed until the live check passes (the test project hit a usage limit).
-- **Agents at work:** the console gets one live feed of what the agents did. The first four jobs are: no readback, stuck mic, conflicting clearances (flag only), and a shift handoff briefing. The rest (say-again counter, held too long, runway change, priority) come later.
-- **Not agreed, not built:** a triage ranker, and routing work between people on shift.
-- **Honesty rules:** simulated traffic is always labelled; nothing is quoted as measured unless it was run live; thresholds are our own early warnings, not FAA procedures.
-
-## Responsible use
-
-- **A human authored or approved every directive.** The policy agent may auto-resend a blocked call only when it repeats the controller's own transmitted words, is a stop/wait instruction, is fresh and high confidence; the gateway re-checks it. Every auto-resend appears on the ATC console with its checks, one switch turns auto-resend off, and everything else (anything that lets a plane move) waits for the controller's Approve.
-- **Restrictive-only hints, with sources.** Before approval the pilot only hears a "Likely" hint for instructions that make the aircraft stop or wait (hold short, go around). Permissive instructions (cleared for takeoff, cross runway) are never hinted. No source record, no hint.
-- **Only the Unstep key commands Unstep.** Speech on the radio frequency is transcribed but never obeyed.
-- **Never mistaken for ATC.** Every message starts with a chime and "Advisory", in a distinct synthetic voice. No voice cloning of controllers.
-- **Privacy.** Tower audio is transcribed only to recover blocked or misheard instructions. In the prototype all data stays local in `data/`. No keys in the repo: `.env` is ignored and the gateway accepts an optional token.
-- **Accessibility.** Readback checks help pilots under high workload or with hearing difficulty. Blocked words are highlighted on the dashboard; highlighting words as they are spoken uses Cartesia word timestamps (screen side planned).
-
-## Known limitations
-
-- **Overlap detection is narrow.** It finds the heterodyne beat tone, not a second voice, and is only proven on clips we mixed ourselves. A full overlap, where the stronger signal captures the receiver, can't be detected from audio at all ([research RA-4](docs/06-research.md#3-evidence-table)). The reliable signal is comparing tower and cockpit transcripts.
-- **Simulator, not avionics.** A laptop stands in for the audio panel. Nothing here is certified.
-- **Moss cloud push.** Proven live (Rishit, R52 and R54): a landed plane's flight log is pushed once to Moss Cloud and a fresh client reads it back (2 docs in about 1.2 to 1.5 s). The shared flight log is never saved to the plane's disk snapshot. The free plan allows three indexes per project, so old indexes have to be deleted.
-- **Sonic speaks slower than a controller.** About 3.5 syllables per second against a median 6.1 for controllers (Nitta, Okazaki and Klinger 2011): a 13-syllable clearance takes about 3.7 s instead of about 2.1 s. Its first audio is fast (about 140 ms), the phrase is long. Speed 1.5 trims it to about 3.2 s but one test phrase came back as "holds short". Details: docs/26.
-- **Cartesia workarounds.** `ink-2` returns no word timestamps and `ink-whisper` has no key terms (Cartesia feedback item 2), so tower word times need a second stream. The turns endpoint once returned empty transcripts when audio arrived faster than real time (Cartesia feedback item 1); a 15-run re-test did not reproduce it, so it is reported, not confirmed.
-- **Readback parser is regex-based.** It compares callsign, action and runway only; unusual phrasing can be misread.
-- Ground agents and Elastic are deployed and have run live (the compliance agent cited FAA 3-7-4 three times on real stepped-on calls, the percolator matched a readback live, and the audit question answered live). They add about 6 s unless the citation is allowed to arrive after the proposal (planned). Controller voice approval is built and tested with scripted speech.
-
-## Repo layout
-
-| Path | What | Owner |
-| --- | --- | --- |
-| `unstep/contracts.py` | Shared message contracts | Both |
-| `unstep/clock.py` | One clock, epoch ms (FR-17) | Both |
-| `unstep/scenario.py` | Demo scenario data | Both |
-| `unstep/cockpit/` | Cockpit edge: overlap detector, Cartesia STT/TTS, Moss memory, hint, readback, queries, Frequency Monitor | Dev A |
-| `unstep/gateway/` | WebSocket gateway and event sink | Dev B |
-| `unstep/ground/` | Controller voice approval (B10), mock agents, auto approver | Dev A built B10, Dev B owns the rest |
-| `web/dashboard.html` | Controller dashboard | Dev B |
-| `scripts/` | Demo, smoke tests, clip generation, pronunciation upload | Both |
-| `assets/` | Demo clips and pronunciation dictionary | Dev A |
-| `contracts/examples/` | One JSON example per contract (`python scripts/export_contract_examples.py`) | Both |
-| `docs/` | PRD, architecture, research, Cartesia feedback | Both |
-
-Every message is an envelope `{"type": "AnomalyEvent", "ts": 1792800000000, "data": {...}}` on `ws://<gateway>/ws/<role>`, role one of `cockpit`, `tower`, `agents`, `dashboard`, `controller_voice`, `monitor`, `observer`. Routing is in `unstep/gateway/server.py` (`ROUTES`).
-
-## Tests
+### Run it
 
 ```bash
-python -m pytest -q   # 129 passed, 1 skipped, offline
+python -m unstep.live --offline        # no keys: fake speech, local memory and rules
+python -m unstep.live                  # live: Cartesia, Moss and Elastic
 ```
 
-## Control Tower console
+- **Tower:** open `http://127.0.0.1:8765/live/atc/`.
+- **Plane:** open `http://127.0.0.1:8765/pilot/` in a phone-sized window.
+- **Phones over the internet, one scan:** run `python scripts/demo_public.py`. It starts a Cloudflare quick tunnel with a real HTTPS certificate, sets the hub's public address, and puts the QR code on the console. Phone microphones need HTTPS, which the tunnel provides.
 
-Run `python -m unstep.live` and open `/live/atc/` on the server (normally `http://127.0.0.1:8765/live/atc/`). Open `/live/` on the phones to pick Plane A or Plane B. Use the server's LAN or HTTPS tunnel address on phones. The projector-only link retains the existing read-only observer seat.
+### One-time setup per account
 
-**Laptop as the tower, phones as planes:** start with `python -m unstep.live --host 0.0.0.0`, add the laptop's LAN IP to `UNSTEP_ALLOWED_HOSTS` in `.env` (the gateway only answers local hosts otherwise), open `http://<LAN IP>:8765/live/atc/` on the laptop, and scan the QR code in its header with each phone. Phone microphones need HTTPS; without it, phones use the "say" buttons, which still go on the radio for real.
+```bash
+python scripts/upload_pronunciation_dict.py      # Cartesia: uploads assets/pronunciation/atc.json, prints the id
+python scripts/ingest_faa.py --source data/faa   # Elastic: FAA JO 7110.65 paragraphs into unstep-faa
+python scripts/deploy_elastic.py                 # Elastic: indexes, tools, agents, workflows (--replace to update)
+python scripts/deploy_elastic.py --only maps     # Elastic: the Kibana map
+python scripts/ingest_airport.py                 # Moss: the airport-KUNS cloud index
+```
 
-Set `UNSTEP_ATC_PASSWORD` in your shell or local `.env` before starting the room. Choose Control Tower in the seat picker and enter it. The server verifies the password before joining the tower socket; plane and observer seats do not need it. If unset, tower access is open and the console says **ATC password not set**. The existing gateway token and origin checks still apply. Passwords travel in the first WebSocket frame, not in URLs; use HTTPS when sharing across a network.
+### Check each sponsor live
 
-Click **Turn on sound** once to hear the radio and controller prompts. Type a tower instruction or use the two suggested transmissions. Approve or reject escalated proposals in the decision inbox; the auto-resend switch controls only verified stop/wait instructions. The map is illustrative, not live aircraft tracking. Status, lost words, policy reasons and readbacks come from received room messages. Unreported timings say **not measured**; offline speech and ground stand-ins are labeled. QR generation remains a TODO; the header displays the join address instead.
+```bash
+python scripts/cartesia_live_check.py    # caption cadence, turns pacing, TTS first audio, dictionary round trip, 429 handling
+python scripts/eval_bench.py --live      # the 200-transmission radio-noise benchmark
+python scripts/moss_live_check.py        # fragment search, flight log survives restart, restore from disk
+python scripts/mcp_demo.py               # Elastic Agent Builder tools over MCP
+python scripts/verify_wired.py           # the wired pieces, end to end
+```
+
+## 12. Testing
+
+```bash
+python -m pytest -q          # Python: hub, agents, rules, geo, Moss, Cartesia clients, console logic (offline, with fakes)
+cd app && npx vitest run     # pilot app
+python scripts/e2e_taxi.py   # live end-to-end: needs a hub on port 8796
+```
+
+Latest run: **596 Python tests** (1 skipped) and **31 pilot-app tests** passing. The live end-to-end suite passes **28/28**. It covers:
+- queueing;
+- both runway ends;
+- a wrong readback held;
+- taxi via Alpha;
+- hold position;
+- the Clearance agent with Elastic flight plans and the geo runway check;
+- the unasked takeoff proposal.
+
+## 13. Known limitations
+
+- **Overlap detection is narrow.** It finds the heterodyne squeal, not a second voice. A full overlap, where the stronger signal captures the receiver, can't be detected from audio alone. Comparing tower and cockpit transcripts is the reliable signal.
+- **Readback false alarms in noise.** In heavy noise, 25% of correct readbacks were flagged as wrong. That's the safe direction (an extra correction), but worse than the published HAAWAII lab figure of 11%.
+- **Sonic speaks slower than a controller:** about 3.5 syllables per second against a median 6.1 (Nitta, Okazaki and Klinger 2011). A 13-syllable clearance takes about 3.7 s instead of 2.1 s. First audio is fast; the phrase is long.
+- **Cartesia gaps we worked around:**
+  - Ink-2 has no word timestamps, so tower word times need a second ink-whisper stream.
+  - ink-whisper has no key terms.
+  - A slow finalize tail and some hung handshakes were seen once, late at night, and not reproduced at midday.
+  - About 2 in 25 turns runs ended with an empty `turn.end`; we retry once.
+  - Details: [docs/24-cartesia-findings.md](docs/24-cartesia-findings.md).
+- **Agent Builder latency.** The agents take about 10–11.5 s per call, so their citation arrives after the card. Nothing on the pilot's path waits for them, except one case: a restrictive, high-confidence proposal that policy might auto-relay waits so Intercept can veto it.
+- **One API key for all agents.** Separation is by tool, not by per-agent permission.
+- **The airport is a demo map, not a survey.** Positions are scene coordinates mapped onto real latitude and longitude.
+- **Readback parser is rule-based.** It compares callsign, action, runway and taxiway; unusual phrasing can be misread.
+- **Moss free plan:** three indexes per project, so old test indexes have to be deleted.
+- **Simulator, not avionics.** Phones and a laptop stand in for radios. Nothing here is certified, and it has not been tested in a real facility.
+
+## 14. Repo layout
+
+| Path | What |
+| --- | --- |
+| [`unstep/live/`](unstep/live/) | The live hub (FastAPI, WebSockets): the room, routing, geo, flight plans, QR join |
+| [`unstep/cockpit/`](unstep/cockpit/) | Cockpit agent: overlap detector, Cartesia STT/TTS, Moss memory, hints, readbacks, translation |
+| [`unstep/ground/`](unstep/ground/) | Ground agents: Elastic agents client, rules (percolator), FAA citation, reports, audit chat |
+| [`unstep/gateway/`](unstep/gateway/) | WebSocket gateway, routing, policy, event sink |
+| [`web/live/atc/`](web/live/atc/) | ATC console: 3D airport, taxi routing, instruction parser, Clearance agent rules, feed |
+| [`app/`](app/) | Pilot app (React) |
+| [`elastic/`](elastic/) | Agent Builder agents, tools, workflows, rules, Kibana map |
+| [`scripts/`](scripts/) | Deploys, live checks, benchmarks, end-to-end suite, demo capture |
+| [`video/`](video/) | The demo film (Remotion) |
+| [`docs/`](docs/) | PRD, architecture, research, benchmarks, sponsor notes, Cartesia feedback |
+| [`tests/`](tests/) | Python tests |
+
+## 15. How we built it, and credits
+
+Two people, Rishit and Deekshith, each working with a coding agent:
+- **Split:** one side built the controller console, the other the pilot app and the hub.
+- **Coordination:** the two agents agreed every change by Markdown "mail" on a Git branch (`agent-mail`), with a shell watcher, not a model, checking for replies.
+- **Rules:** neither side edits the other's files without asking. Nothing is quoted as measured unless it was run live.
+
+**Credits:**
+- **3D aircraft:** Poly Pizza (CC-BY), see [`web/live/atc/models/CREDITS.md`](web/live/atc/models/CREDITS.md).
+- **Typefaces in the film:** B612 (Airbus) and Archivo.
+- **Music in the film:** ArctSound, raspberrymusic and Pastichio_Piano_Music (Pixabay).
+- **News footage in the film:** ABC News, the Washington Examiner and local news reports.
+
+**Built with:** Cartesia (Ink-2, ink-whisper, Sonic-3.6), Moss (sessions, Moss Cloud, Moss Inference), Elastic (Agent Builder, Workflows, ES\|QL, percolator, Jina rerank, geo, Kibana Maps, MCP), Python, FastAPI, WebSockets, React, three.js, Playwright, Remotion.
