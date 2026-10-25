@@ -20,6 +20,13 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## Live demo-mic test fixed, rule catalog compiler, and live numbers
+
+- `tests/test_demo_mic.py`: two tests failed since the day they were added. The helper `speak()` polled `mic.waiting` for False, but with instant fakes the scene asks the next prompt in the same event-loop pass, so it never saw it drop and waited forever for a prompt it had already missed (it only passed where timers are slow, such as Windows). It now counts prompts. All six pass, with and without a Cartesia key.
+- New `scripts/compile_rule_catalog.py` (read-only): runs the hybrid search with a reranker for each instruction type and lists candidate FAA paragraphs for a person to review. Measured live: about 700 ms per search, so it stays out of the live path. `rules.json` now has three title-matching candidates (line up and wait 3-9-4, takeoff 3-9-10, landing 3-10-5), still unreviewed; hold-short stays on 3-7-2 with a note that the search prefers 3-7-4.
+- Pronunciation dictionary round trip run live with the existing `unstep-atc-v2`: `fower`, `juliett` and `NOTAM` were heard worse with it (docs/24).
+
 ## Planes start in parallel, and a snapshot race fixed
 
 - `LiveRoom.start` starts every plane at once instead of one after another. Opening a Moss session contacts Moss, and a real test here took 6.3 s for six sessions one after another against 3.2 s all at once (about 2 times, not 6 times; the cause of the gap is not known). The sessions stay open for the life of the hub, so a restore is the only per-plane cost afterwards.

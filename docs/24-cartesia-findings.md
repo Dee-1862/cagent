@@ -123,3 +123,8 @@ Not done by the command:
 - **Word split rate** (finding 2): the probe counts updates, not split words. Needs a longer capture.
 - **Sockets at failure in a long bench run:** `scripts/eval_bench.py --live` now records every 429 in `rate_limits` (attempt, status, body, sockets open then) and prints the first one. Rerun it only if check 5 finds no 429 and the question stays open.
 - **Re-read the docs.cartesia.ai pages cited here** before sending anything to Cartesia. Corrections for docs/09 are drafted in `docs/cartesia-docs09-corrections.patch.md`.
+
+
+## Pronunciation dictionary round trip, run live (2026-10-25, this sandbox)
+
+The `unstep-atc-v2` dictionary already exists in the account (id `pdict_1MCZi6ny3CXDE7vRmRU5B2`; the two older `unstep-atc` dictionaries also contain the `niner` entry that broke transcription). `scripts/cartesia_live_check.py --only dict` with it set: tree, fife, Unstep and quebec passed (2 of 2 with and without). `fower` (0 of 2, heard as "F O W"), `juliett` (0 of 2, "JOOLIET") and `NOTAM` (0 of 2, "and Otam") were heard worse with the dictionary than without (2 of 2, 2 of 2 and 1 of 2). The `niner` control with no entry was heard right 2 of 2. This is two runs on one voice, a screen not a proof, and it measures what Sonic's output sounds like to ink-2; it does not say how a pilot would hear it. It does say the three respellings should not be switched on without a listen. A dictionary containing only tree, fife, Unstep and quebec has not been created.

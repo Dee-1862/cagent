@@ -117,3 +117,25 @@ The caption result suggests `UNSTEP_CAPTION_SOURCE=turns` would look smoother (h
 What this means for "single-digit ms": restoring a plane's memory from disk is single digit milliseconds (about 1 ms here and 1.4 ms warm on Rishit's laptop). The 260 to 340 ms is opening the session with Moss, which should be done once at hub start, not per restore.
 
 Opening sessions: with a real Moss project from this sandbox, six sessions took 6.3 s one after another and 3.2 s opened at once. The hub now starts planes at once. The remaining time per session is Moss's own and is spent once at hub start.
+
+## 10. Why the rule is compiled ahead of time (the star-tracker idea)
+
+A star tracker identifies the stars in a camera image in milliseconds because the hard, fuzzy work was done once, on the ground: a catalog of known patterns is built ahead of time, and in flight it is a lookup. Unstep's rule lookup does the same. `scripts/compile_rule_catalog.py` runs the slow, fuzzy search (hybrid keyword and meaning search with a reranker over the FAA order in Elastic) for every instruction type, offline, and prints candidate paragraphs for a person to read. At run time the hub answers from the stored rule and never searches.
+
+MEASURED LIVE (this sandbox, 2026-10-25, `compile_rule_catalog.py`): the hybrid search with `.jina-reranker-v3` took about 700 ms wall (Elastic's own `took` about 650 ms, 475 to 708 ms across seven queries; the first call 1.1 s). So the search is a sub-second tool, not a millisecond one, which is the reason it stays out of the live path. The stored-rule lookup took 1 to 2 ms in Elastic (R47).
+
+What the search suggested (reranker scores rank candidates, they do not prove a paragraph governs; none of these has been read by a person):
+
+| Instruction | Top candidate | Note |
+| --- | --- | --- |
+| line up and wait | 3-9-4 Line Up And Wait (1.544) | the title names the instruction |
+| cleared for takeoff | 3-9-10 Takeoff Clearance (1.514) | the title names the instruction |
+| cleared to land | 3-10-5 Landing Clearance (1.625) | the title names the instruction |
+| stop | 3-7-1 Ground Traffic Movement (1.522) | weak |
+| hold short | 3-7-4 Runway Proximity (1.443), then 3-10-9 (1.393), then 3-7-2 (1.238) | Rishit's reading of the text says 3-7-2; the search and the live Compliance agent prefer 3-7-4: a person must decide |
+| hold position | 3-7-4 (1.231), 3-7-2 (1.17) | weak |
+| go around | 3-10-9 Runway Exiting (1.273) | weak, not a clear match |
+
+`rules.json` now carries the three title-matching ones as `candidate` (the card says "Candidate rule, not yet reviewed"), keeps hold-short on 3-7-2 with a note that the search disagrees, and leaves the weak ones without a paragraph. The new rules reach the stored copy in Elastic at the next `deploy_elastic.py`.
+
+The agents' part in this picture: they are the compilers' assistants and the second opinion, not the runtime. They can be asked, offline, to explain or challenge a candidate; the runtime lookup is deterministic and the same input gives the same rule.

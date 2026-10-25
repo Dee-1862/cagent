@@ -24,7 +24,8 @@ def test_local_rules_match_spoken_forms_and_return_microsecond_timings():
     hits = local.match("Cessna one two three, hold short runway three three")
     assert [h.rule_id for h in hits] == ["hold-short"] and hits[0].paragraph == "3-7-2"
     assert [h.rule_id for h in local.match("Tower says we are holding short")] == ["hold-short"]
-    assert local.match("N123AB cleared for takeoff")[0].paragraph is None  # a rule with no paragraph claims none
+    assert local.match("N123AB cleared for takeoff")[0].status == "candidate"  # found by search, not yet read
+    assert local.match("N123AB go around")[0].paragraph is None  # a rule with no paragraph claims none
     assert local.match("nothing to see here") == []
     assert hits[0].took_ms < 50
 

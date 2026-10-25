@@ -1,12 +1,80 @@
 {
   "_note": "Rules as data. Each rule is stored in Elastic as a percolator query (index unstep-rules) and also used in process. status 'reviewed' means a person read the FAA paragraph and agrees it governs this instruction; 'candidate' means it came from a search or an agent and has not been reviewed; 'needs_review' has no paragraph yet. Only the status changes how the card words the citation. Fill and review from data/faa with scripts/build_rule_table.py, never from memory.",
   "rules": [
-    {"id": "hold-short", "phrases": ["hold short", "holding short"], "paragraph": "3-7-2", "title": "Taxi and Ground Movement Operations", "status": "candidate", "evidence": "3-7-2 text read by Rishit's agent 2026-10-24 (needs Rishit to confirm): issue hold short instructions when an aircraft must hold short of a runway; phraseology HOLD SHORT OF (location). The agent first cited 3-7-4 Runway Proximity, a weaker fit."},
-    {"id": "hold-position", "phrases": ["hold position", "holding position"], "paragraph": null, "title": null, "status": "needs_review", "evidence": null},
-    {"id": "line-up-and-wait", "phrases": ["line up and wait", "position and hold"], "paragraph": null, "title": null, "status": "needs_review", "evidence": null},
-    {"id": "cleared-for-takeoff", "phrases": ["cleared for takeoff"], "paragraph": null, "title": null, "status": "needs_review", "evidence": null},
-    {"id": "cleared-to-land", "phrases": ["cleared to land"], "paragraph": null, "title": null, "status": "needs_review", "evidence": null},
-    {"id": "go-around", "phrases": ["go around", "going around"], "paragraph": null, "title": null, "status": "needs_review", "evidence": null},
-    {"id": "stop", "phrases": ["stop immediately", "stop stop"], "paragraph": null, "title": null, "status": "needs_review", "evidence": null}
+    {
+      "id": "hold-short",
+      "phrases": [
+        "hold short",
+        "holding short"
+      ],
+      "paragraph": "3-7-2",
+      "title": "Taxi and Ground Movement Operations",
+      "status": "candidate",
+      "evidence": "Rishit's agent read the FAA text: 3-7-2 governs hold-short instructions. The reranker's top hit is 3-7-4 (1.443) ahead of 3-7-2 (1.238), so a person must decide"
+    },
+    {
+      "id": "hold-position",
+      "phrases": [
+        "hold position",
+        "holding position"
+      ],
+      "paragraph": null,
+      "title": null,
+      "status": "needs_review",
+      "evidence": null
+    },
+    {
+      "id": "line-up-and-wait",
+      "phrases": [
+        "line up and wait",
+        "position and hold"
+      ],
+      "paragraph": "3-9-4",
+      "title": "Line Up And Wait (Luaw)",
+      "status": "candidate",
+      "evidence": "top hit of scripts/compile_rule_catalog.py (reranker score 1.544); the title names the instruction; not read by a person"
+    },
+    {
+      "id": "cleared-for-takeoff",
+      "phrases": [
+        "cleared for takeoff"
+      ],
+      "paragraph": "3-9-10",
+      "title": "Takeoff Clearance",
+      "status": "candidate",
+      "evidence": "top hit of scripts/compile_rule_catalog.py (reranker score 1.514); the title names the instruction; not read by a person"
+    },
+    {
+      "id": "cleared-to-land",
+      "phrases": [
+        "cleared to land"
+      ],
+      "paragraph": "3-10-5",
+      "title": "Landing Clearance",
+      "status": "candidate",
+      "evidence": "top hit of scripts/compile_rule_catalog.py (reranker score 1.625); the title names the instruction; not read by a person"
+    },
+    {
+      "id": "go-around",
+      "phrases": [
+        "go around",
+        "going around"
+      ],
+      "paragraph": null,
+      "title": null,
+      "status": "needs_review",
+      "evidence": null
+    },
+    {
+      "id": "stop",
+      "phrases": [
+        "stop immediately",
+        "stop stop"
+      ],
+      "paragraph": null,
+      "title": null,
+      "status": "needs_review",
+      "evidence": null
+    }
   ]
 }
