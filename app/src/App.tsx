@@ -57,6 +57,10 @@ function HubPrompt({ onHub }: { onHub: (h: Hub) => void }) {
   );
 }
 
+// The hub answers /health to any site with CORS open; a sleeping or crashed Render service answers 502
+// without those headers, which fetch() reports as a failure.
+const hubIsUp = (http: string) => fetch(`${http}/health`).then((r) => r.ok, () => false);
+
 function Join({ hub, onSeat }: { hub: Hub; onSeat: (s: Seat) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [full, setFull] = useState<string | null>(null);
@@ -73,8 +77,9 @@ function Join({ hub, onSeat }: { hub: Hub; onSeat: (s: Seat) => void }) {
       .then((d) => { if (!stop) { setRoom(d); setError(null); } })
       .catch(async () => {
         if (stop) return;
-        // A CORS refusal and a dead hub look the same to fetch(); an opaque no-cors probe tells them apart.
-        const up = await fetch(`${hub.http}/live/stations`, { mode: "no-cors" }).then(() => true, () => false);
+        // A CORS refusal and a dead hub look the same to fetch(), and so would a no-cors probe (Render's 502
+        // page counts as an answer). /health is readable from any site, so only a live hub passes.
+        const up = await hubIsUp(hub.http);
         if (stop) return;
         setError(up
           ? `The tower at ${hub.http} is up but refuses this page. Add ${location.origin} to UNSTEP_ALLOWED_ORIGINS on the hub.`
@@ -280,7 +285,7 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
           ? "The tower refused this plane: the room code is wrong, or this site isn't allowed on the hub (UNSTEP_ALLOWED_ORIGINS)."
           : "The tower is up; reconnecting the radio...");
       } else {
-        const up = await fetch(`${hub.http}/live/stations`, { mode: "no-cors" }).then(() => true, () => false);
+        const up = await hubIsUp(hub.http);
         setWhy(up
           ? `The tower at ${hub.http} refuses this page. Add ${location.origin} to UNSTEP_ALLOWED_ORIGINS on the hub.`
           : `Can't reach the tower at ${hub.http}: it may be waking up (free Render takes about a minute) or down. Retrying...`);

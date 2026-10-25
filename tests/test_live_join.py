@@ -281,3 +281,15 @@ def test_typed_lines_reuse_one_speech_connection_per_voice(monkeypatch):
         assert len(closed) == 2  # and they are closed with the hub
 
     asyncio.run(go())
+
+
+def test_health_is_readable_from_any_site_so_the_app_can_tell_down_from_refused():
+    from fastapi.testclient import TestClient
+    from unstep.gateway.server import create_app
+    from unstep.gateway.sink import MemorySink
+
+    r = TestClient(create_app(MemorySink())).get(
+        "/health", headers={"host": "127.0.0.1:8765", "origin": "https://anywhere.example"})
+    assert r.status_code == 200
+    assert r.headers["access-control-allow-origin"] == "*"
+    assert r.json()["ok"] is True

@@ -2,6 +2,13 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## The pilot app no longer blames the site when the hub is down
+
+- Seen on a Vercel preview: "The tower is up but refuses this page. Add the address to UNSTEP_ALLOWED_ORIGINS". The hub was not refusing anything: the sleeping Render service answered 502, and the old no-cors probe counted that 502 page as "up". A direct WebSocket test from that same Vercel address connected, and a stranger address (`example.com`) got 403, so the origin check itself was right.
+- `/health` now sends `Access-Control-Allow-Origin: *` (it only returns counts). The pilot app asks `/health` to tell "hub up but refusing this site" from "hub asleep or down"; a Render 502 has no CORS headers, so it now reads as down and the message says it may be waking up.
+- Test added: `/health` is readable from any origin and still passes with an internal Host header.
+- Still open: the Render hub returned 502 for minutes after waking and answering one WebSocket. That fits the 512 MB free plan running out of memory when the room starts, but the Render logs are needed to confirm it.
+
 ## Vercel always builds master, so a new fork or project deploys
 
 - Found on a fork: Vercel cancelled the very first build with "Ignored Build Step returned exit code 0", because the latest commit (a merge of a Python and docs branch) did not touch `app/`. The skip rule assumes an earlier deployment exists; a new project has none, so nothing ever built.
