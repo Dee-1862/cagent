@@ -2,6 +2,13 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## Keep the free Render hub awake
+
+- `.github/workflows/keep-warm.yml`: pings the hub's `/health` every 10 minutes, so the free Render service no longer sleeps and the first visitor does not wait about a minute for it to wake. `/health` uses no Cartesia, Moss or Elastic calls.
+- The target is the repo variable `UNSTEP_PUBLIC_URL` if set, otherwise `https://unstep.onrender.com`. It also runs on demand from the Actions tab.
+- Scheduled workflows only run from the default branch, so this does nothing until it is merged to `master`.
+- Checked and left alone: the Render 502 seen today was the free plan waking up (it answered 200 after about 70 seconds), not a crash. The red Vercel previews all come from the `agent-mail` branch, which has no `app/` folder for the project's Root Directory; that is a Vercel project setting, not a code fix.
+
 ## "Where the plane was" no longer depends on the agents (R63)
 
 - Rishit's live check found the step never appeared on a high-confidence hold-short call: it was only added in the late-agent path, which does not run then (and does not run at all without `UNSTEP_ELASTIC_AGENTS`). It is now added when the proposal is recorded, from the stored position under 15 s old, for every proposal. Test drives a proposal through the room.
