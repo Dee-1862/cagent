@@ -142,6 +142,19 @@ Every script prints `skipped: ...` and exits 0 when its keys are missing.
 | Moss | `unstep/cockpit/memory.py`: `airport-<ICAO>` and `flight-<callsign>` indexes, one writer per index, filter translation to Moss format, local fallback with the same interface. Local hint (`hint.py`) and pilot queries (`queries.py`) with search time shown. Frequency Monitor (`monitor.py`) owns `freq-<frequency>`. **Verified on real Moss** (hint 0.6 ms, query 1.0 ms). `airport-KUNS` is a persistent cloud index created once by `scripts/ingest_airport.py` and loaded at startup; flight and frequency data are sessions. **Moss Inference** answers free-form pilot questions from records we retrieve, validated as exact quotes (`unstep/cockpit/inference.py`, about 165 ms to first token warm) | |
 | Elastic | Gateway writes every message to an event sink (`data/events.jsonl` today) | Elastic events index, Workflow with Agent Builder agents (Intercept, Compliance with FAA JO 7110.65 citation, Readback Auditor), ES\|QL audit (task B5) |
 
+## Why fewer people can do this safely (context, not a result)
+
+Controller staffing and rest are the pressure behind this project. These figures are from public sources; none of them are ours.
+
+- **Rest rules.** In 2024 the FAA raised the minimum rest between controller shifts from 9 to 10 hours and required 12 hours before an overnight shift ([NPR, April 2024](https://www.npr.org/2024/04/22/1246349237/close-calls-faa-air-traffic-control-fatigue)). The controllers' union warned that the rules can open coverage gaps that are then filled with overtime, which adds fatigue ([Safety+Health](https://safetyandhealthmagazine.com/articles/25826-after-a-delay-faa-finalizes-air-traffic-controller-rest-policy)).
+- **Shortage.** A 2025 National Academies report found the FAA hired about two thirds of the controllers it projected for 2013 to 2023, and that 19 of its largest facilities have 15% fewer people than they need ([National Academies](https://www.nationalacademies.org/news/actions-from-federal-government-needed-to-alleviate-air-traffic-controller-staffing-shortages-at-many-facilities-says-new-report)).
+
+**What Unstep adds.** The routine part of a controller's work (checking a readback against the clearance, finding the rule, drafting the fix) is done by deterministic checks and cited agents. The controller approves or overrides, and can switch the agents off. The aim is that fewer people are needed to stay awake and listening to every call, so rosters can respect the rest rules without gaps.
+
+**What we have measured:** call end to the pilot hearing a fix, and how many calls a rule check handles without a person (see `docs/18-benchmark.md`; the benchmark traffic is simulated and labelled so).
+
+**What we have not measured:** any reduction in controller headcount. We have not tested this in a facility. A staffing model that turns our per-hour workload split into the lowest roster that meets the rest rules is planned (`docs/19-elastic-moss-plan.md`); when it exists, its output will be labelled as a model with its assumptions listed, not as a result. Please do not quote a headcount reduction from this project until then.
+
 ## Responsible use
 
 - **A human authored or approved every directive.** The policy agent may auto-resend a blocked call only when it repeats the controller's own transmitted words, is a stop/wait instruction, is fresh and high confidence; the gateway re-checks it. Every auto-resend appears on the ATC console with its checks, one switch turns auto-resend off, and everything else (anything that lets a plane move) waits for the controller's Approve.

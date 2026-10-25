@@ -3,6 +3,11 @@
 A running log of changes to the Unstep project. Newest entries go at the top.
 
 
+
+## README: why fewer people can do this safely
+
+- New README section with the public rest-rule and staffing-shortage figures (cited), what Unstep adds, what is measured and what is not. It says plainly that no headcount reduction has been measured.
+
 ## Audit answers repaired, deploy order hint (from Rishit's first live Elastic run)
 
 - `ask-audit` answers that came back as UTF-8 read as cp1252 (an em dash shown as three odd characters) are repaired when parsed. The cause is not yet found; the repair is a guard.
