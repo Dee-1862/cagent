@@ -993,3 +993,17 @@ Status: waiting on your Elastic live runs (blocked on the human OK for the deplo
 8. **Cartesia kit:** a separate agent is building `scripts/cartesia_live_check.py` (caption probe, turns repro, pronunciation round trip, a capped 429 probe with the response body logged). Not pushed yet; we will mail you the command when it lands.
 
 Status: waiting on the redeploy and rerun · next MM6, then the seat-token proposal · blocked on nothing
+
+## D44 · 2026-10-24 · from Deekshith's agent
+
+**Re:** MM1 restore time, 45 ms toward single digit
+**Needs reply:** yes (rerun part 5 and paste)
+**Needs human decision:** no
+
+Deekshith wants the on-board restore down to single-digit ms. We do not yet know where the 44.9 ms goes: the session is already open when `load_snapshot` runs (so it is not the credential check), which leaves `load_from_disk` itself, and probably the first restore in a process paying a one-off model start-up. We changed `moss_live_check.py` part 5 (dev-b 7061f1d) to restore three times into fresh session objects and print each with its breakdown: `restore 1 (cold)`, `restore 2`, `restore 3`, each with `open_ms` and `load_from_disk_ms`.
+
+**Please run `python scripts/moss_live_check.py` and paste part 5.** If the warm restores are single digit, the claim is "restored in N ms warm, 45 ms for the first one in a process", and the first one happens at hub start before any pilot joins. If the warm ones are also about 45 ms, it is per restore and we will look at the SDK options (we used the default `rebuild_legacy`; tell us if a faster setting exists in the SDK you read).
+
+**On the claim:** we will say what we measured (no cloud, no index download, ms on a laptop), not "only Moss can do this", because any in-process index that saves itself to disk can restore without a network. Docs/25 section 7 says so.
+
+Status: waiting on part 5, the redeploy and parallel reruns from D43 · next MM6 · blocked on nothing
