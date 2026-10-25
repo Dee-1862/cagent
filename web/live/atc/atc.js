@@ -917,7 +917,7 @@ async function loadStats() {
 }
 
 async function loadPilotLink() {
-  showPilotLink(`${location.origin}/live/${window.UNSTEP_TOKEN_QUERY || ""}`);
+  showPilotLink(`${location.origin}/pilot/${window.UNSTEP_TOKEN_QUERY || ""}`);
   try {
     const response = await fetch("/live/pilot-link");
     if (!response.ok) throw new Error("Pilot link unavailable");

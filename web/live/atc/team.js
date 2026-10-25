@@ -12,6 +12,7 @@ const TEAM = [
   { id: "compliance", level: 2, name: "Compliance agent", role: "Which FAA paragraph governs it?", saw: "agents_cited" },
   { id: "auditor", level: 2, name: "Readback auditor", role: "Why did a readback not match?", saw: "percolate" },
   { id: "audit", level: 2, name: "Audit agent", role: "Answers from the audit trail when asked.", saw: null },
+  { id: "coach", level: 2, name: "Coach agent", role: "How controllers decided over 30 days. No trend without enough data.", saw: null },
 ];
 const BESIDE = [
   { id: "policy", name: "Policy agent", role: "Resends the tower's own stop calls after 7 checks.", saw: ["auto_relay", "escalate"] },
@@ -76,7 +77,7 @@ function render() {
   head.type = "button";
   head.setAttribute("aria-expanded", String(open));
   head.append(el("span", "team-title", "The team"),
-    el("small", null, "1 person · 1 workflow · 4 agents"), el("span", "team-caret", open ? "⌃" : "⌄"));
+    el("small", null, "1 person · 1 workflow · 5 agents"), el("span", "team-caret", open ? "⌃" : "⌄"));
   head.addEventListener("click", () => {
     open = !open;
     try { localStorage.setItem("unstep.team", open ? "open" : "closed"); } catch { /* ignore */ }
@@ -89,8 +90,8 @@ function render() {
   body.append(el("div", "team-sep", "Beside them"));
   BESIDE.forEach((node) => body.append(line(node, 0)));
   body.append(el("p", "team-foot",
-    "A fixed workflow runs the agents and a person decides. Counts are what this page has seen since it opened; "
-    + "without UNSTEP_ELASTIC_AGENTS the agents run as local stand-ins."));
+    "A fixed workflow runs the agents and a person decides. Eight agents are configured: three are fast variants of Intercept and Compliance. "
+    + "Counts are what this page has seen since it opened; without UNSTEP_ELASTIC_AGENTS the agents run as local stand-ins."));
   root.append(body);
 }
 
