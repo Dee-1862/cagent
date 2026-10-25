@@ -1,10 +1,13 @@
 {
   "id": "unstep_trend_decisions",
   "type": "esql",
-  "description": "How the controller decided on Unstep's proposals, per day over the last 30 days: how many were approved, how many rejected, and the share rejected. Real traffic only. Use it to see whether a rule is being overridden more or less over time.",
-  "tags": ["unstep", "trend"],
+  "description": "How the controller decided on Unstep's proposals, per day over the last 30 days: approved, rejected and the share rejected, plus on every row the number of days with data (days), the total decisions (total) and the overall rejected share (overall_share). Real traffic only. Use it to see whether a rule is being overridden more or less over time.",
+  "tags": [
+    "unstep",
+    "trend"
+  ],
   "configuration": {
-    "query": "FROM unstep-events | WHERE decision IS NOT NULL AND @timestamp >= NOW() - 30 days | EVAL day = DATE_TRUNC(1 day, @timestamp) | STATS approved = SUM(CASE(decision == \"approve\", 1, 0)), rejected = SUM(CASE(decision == \"reject\", 1, 0)) BY day | EVAL rejected_share = ROUND(rejected * 1.0 / (approved + rejected), 3) | SORT day ASC",
+    "query": "FROM unstep-events | WHERE decision IS NOT NULL AND @timestamp >= NOW() - 30 days | EVAL day = DATE_TRUNC(1 day, @timestamp) | STATS approved = SUM(CASE(decision == \"approve\", 1, 0)), rejected = SUM(CASE(decision == \"reject\", 1, 0)) BY day | EVAL rejected_share = ROUND(rejected * 1.0 / (approved + rejected), 3) | INLINESTATS days = COUNT(*), total = SUM(approved + rejected), overall_share = ROUND(SUM(rejected) * 1.0 / SUM(approved + rejected), 3) | SORT day ASC",
     "params": {}
   }
 }

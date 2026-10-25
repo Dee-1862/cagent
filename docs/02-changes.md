@@ -2,6 +2,11 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## Trend tool uses ES|QL INLINESTATS (R59 go-ahead)
+
+- `unstep_trend_decisions` now adds `days`, `total` and `overall_share` to every row with `INLINESTATS`, so the coach reads the "under 5 days or 20 decisions" rule from the data instead of counting rows. Updated live (tool and coach agent only, two PUTs): the coach answered "2 days, 78 decisions, overall rejected share 2.6%, not enough data". A `FROM (subquery)` also ran live; not used.
+
+
 ## Agent Builder cost per call measured; scheduled runs checked
 
 - `converse` reports `model_usage`: Compliance used 3 model calls and about 47,000 input tokens; the tool-less lite agent still used 3 calls and about 28,000 tokens. A copy with `enable_elastic_capabilities: false` was no faster (temporary agent deleted). Agents are configured, not trained (docs/25 section 12).
