@@ -91,3 +91,14 @@ def test_lan_addresses_skip_loopback_and_link_local(monkeypatch):
     assert addresses.lan_addresses() == ["192.168.2.53", "192.168.137.1"]
     assert addresses.reachable_from_lan(None) and addresses.reachable_from_lan("0.0.0.0")
     assert not addresses.reachable_from_lan("127.0.0.1")
+
+
+def test_the_default_link_uses_the_wifi_address_when_the_console_is_open_on_localhost_and_the_hub_is_open_to_the_lan(hub):
+    client, app = hub
+    local = {"host": "localhost"}
+    app.state.bind_host = "127.0.0.1"  # this computer only: phones could not use a wifi address anyway
+    assert client.get("/live/pilot-link", headers=local).json()["url"].startswith("http://localhost")
+    app.state.bind_host = "0.0.0.0"
+    assert client.get("/live/pilot-link", headers=local).json()["url"] == "http://192.168.2.53:80/pilot/"
+    other = client.get("/live/pilot-link").json()["url"]  # opened by a name other than localhost: left alone
+    assert other.startswith("http://testserver")

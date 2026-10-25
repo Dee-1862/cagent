@@ -62,7 +62,7 @@ def main() -> None:
         tls = {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
         print(f"Self-signed certificate: {cert} (each phone accepts the warning once)")
     scheme = "https" if tls else "http"
-    url = f"{scheme}://127.0.0.1:{args.port}/live/"
+    url = f"{scheme}://127.0.0.1:{args.port}/live/atc/"
     mode = 'LIVE: Cartesia speech' if live else 'offline: fake speech'
     public = env("UNSTEP_PUBLIC_URL")
     if public:  # hosted (Render): the inside addresses below mean nothing to visitors
@@ -71,9 +71,9 @@ def main() -> None:
     else:
         print(f"Unstep live room ({mode}): {url}")
     if ip and not public:
-        print(f"Others on this network: {scheme}://{ip}:{args.port}/live/ (add {ip} to UNSTEP_ALLOWED_HOSTS"
-              + ("; set UNSTEP_PUBLIC_URL=https://%s:%d for the QR)" % (ip, args.port) if tls
-                 else "; microphones need https: add --https)"))
+        print(f"Others on this network: {scheme}://{ip}:{args.port}/pilot/ (the console's QR; "
+              + ("set UNSTEP_PUBLIC_URL=https://%s:%d for it)" % (ip, args.port) if tls
+                 else "microphones need https: add --https)"))
     if not args.no_browser:
         webbrowser.open(url)
     app = create_live_app(live=live, warm_start=True)

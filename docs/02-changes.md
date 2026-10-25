@@ -2,6 +2,15 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## One way in, a team strip and two join buttons in the console
+
+- Rishit agreed in the mailbox (R65). `/live/` (the old "Pick your seat" page) now redirects to `/live/atc/`, keeping the query string; `web/live/index.html`, `live.js` and `live.css` are deleted. The three tests that read the old page now check the redirect. The hub opens the console, and its printed hint names the pilot link.
+- `web/live/atc/index.html`: the brand link goes to `/live/atc/`, the QR links go to `/pilot/`, "Choose another seat" is gone. Three new files, so Rishit's `atc.js` and `atc.css` are untouched: `team.js`, `join-extras.js` and `extras.css`.
+- The team strip (top of the Agents panel, collapsed by default): the controller, the orchestrator ("Elastic Workflow, fixed steps. Not an AI agent."), the Intercept, Compliance, Readback auditor and Audit agents, and beside them the policy agent and the cockpit agents. Its dots and counts show only what its own read-only observer socket has seen (`agents_cited`, `percolate`, the policy steps); the rest is structure.
+- The two small buttons under the QR: "Change link" lists this hub's addresses and re-draws the QR for the one chosen; "Raspberry Pi" shows the command from `/live/pi-join` with a copy button and waits for a plane to join.
+- With the hub open to the network (`--host 0.0.0.0`) and the console opened on localhost, `/live/pilot-link` now defaults to the wifi address, so the QR works for phones without a setting.
+- Checked in a real browser (screenshots): the strip opens, both popovers open, the QR follows the choice. Still open: the console's own startup placeholder in `atc.js` still points at `/live/`; it is replaced a moment later by the real link, and the line is Rishit's to change once he has pushed.
+
 ## A link phones can use instead of localhost, and a Raspberry Pi plane
 
 - The console's QR pointed at `http://localhost:8765/pilot/`, which only works on the laptop. The hub now lists what people can use: `GET /live/addresses` returns "This computer only", "Same wifi" (this computer's private IPv4 addresses, link-local ones left out) and "Public link" (`UNSTEP_PUBLIC_URL`), each marked shareable or not. It says "start with `--host 0.0.0.0`" when the hub listens on this computer alone.

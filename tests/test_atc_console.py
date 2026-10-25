@@ -40,8 +40,10 @@ def test_atc_page_and_local_assets_are_served(console, monkeypatch):
     assert "__UNSTEP_TOKEN_QUERY__" not in response.text
     for asset in ("atc.js", "atc.css", "reasons.json"):
         assert client.get(f"/live/static/atc/{asset}").status_code == 200
-    assert "Plane A" in client.get("/live/static/live.js").text
-    assert 'id="projector-seat"' in client.get("/live/").text
+    old = client.get("/live/?token=abc", follow_redirects=False)  # the old seat picker is retired: one way in
+    assert old.status_code == 307 and old.headers["location"] == "/live/atc/?token=abc"
+    assert client.get("/live/static/live.js").status_code == 404
+    assert 'id="projector-seat"' in client.get("/live/atc/").text
 
 
 def test_join_qr_is_served(console):

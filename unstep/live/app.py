@@ -16,7 +16,7 @@ from qrcode.image.svg import SvgPathImage
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from unstep.clock import now_ms
@@ -32,6 +32,7 @@ from unstep.live.room import LiveRoom
 log = logging.getLogger("unstep.live")
 WEB = ROOT / "web" / "live"
 PILOT_APP = ROOT / "app" / "dist"
+LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]"}
 WARMING_NOTICE_S = 0.5  # a seat waiting longer than this for the room to start is told so
 STATS_CACHE_MS = 2000  # consoles poll /live/stats every 5 s; Elastic is asked at most this often
 
@@ -71,12 +72,10 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
 
     @app.get("/live")
     @app.get("/live/")
-    async def live_page():
-        # Served by this gateway, so it may carry the token like the dashboard (FR-13).
-        token = gateway_token()
-        query = f"?token={quote(token, safe='')}" if token else ""
-        html = (WEB / "index.html").read_text(encoding="utf-8")
-        return HTMLResponse(html.replace("__UNSTEP_TOKEN_QUERY__", query))
+    async def live_page(request: Request):
+        # The old "Pick your seat" page is gone: the console's QR is the one way in. Old links land on the console.
+        query = f"?{request.url.query}" if request.url.query else ""
+        return RedirectResponse(f"/live/atc/{query}", status_code=307)
 
     @app.get("/live/record/")
     @app.get("/live/record")
@@ -131,6 +130,11 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
         if base and not usable_link(base, request):
             raise HTTPException(status_code=400, detail="That address is not one this hub can hand out")
         hub = (base or env("UNSTEP_PUBLIC_URL") or str(request.base_url)).rstrip("/")
+        if (not base and not env("UNSTEP_PUBLIC_URL") and request.url.hostname in LOOPBACK_HOSTS
+                and reachable_from_lan(getattr(app.state, "bind_host", None)) and lan_addresses()):
+            # The console is open on this computer, but a QR for localhost only works here: use the wifi address.
+            port = request.url.port or (443 if request.url.scheme == "https" else 80)
+            hub = f"{request.url.scheme}://{lan_addresses()[0]}:{port}"
         token = gateway_token()
         app_url = env("UNSTEP_PILOT_APP_URL")
         if app_url:
