@@ -198,7 +198,7 @@ def test_console_uses_pilot_link_and_its_qr(console, monkeypatch, hosted):
     script = client.get("/live/static/atc/atc.js").text
     assert 'fetch("/live/pilot-link")' in script
     assert 'encodeURIComponent(url)' in script
-    assert 'location.origin}/live/' in script
+    assert 'location.origin}/pilot/' in script  # the startup placeholder is the pilot app, not the retired seat picker
 
 
 def test_console_receives_expanding_fleet(console, monkeypatch):
