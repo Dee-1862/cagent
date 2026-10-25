@@ -9,8 +9,8 @@
       ],
       "paragraph": "3-7-2",
       "title": "Taxi and Ground Movement Operations",
-      "status": "candidate",
-      "evidence": "Rishit's agent read the FAA text: 3-7-2 governs hold-short instructions. The reranker's top hit is 3-7-4 (1.443) ahead of 3-7-2 (1.238), so a person must decide"
+      "status": "reviewed",
+      "evidence": "Reviewed 2026-10-25 against the JO 7110.65 text in unstep-faa (Rishit decided). 3-7-2 is the rule because it holds the requirement Unstep enforces: 'Request a read back of runway hold short instructions when it is not received from the pilot/vehicle operator' (phraseology READ BACK HOLD INSTRUCTIONS), with the example 'hold short of Runway Two Three Left, traffic one mile final' after 'ready for departure'. Related: 3-7-4 Runway Proximity gives the general HOLD SHORT OF (runway), (traffic) phraseology, which is why the reranker ranks it first (1.443 vs 1.238)"
     },
     {
       "id": "hold-position",

@@ -16,7 +16,9 @@ def test_the_rule_file_is_honest_about_what_has_been_reviewed():
     assert {r["status"] for r in rules} <= {"reviewed", "candidate", "needs_review"}
     for r in rules:
         assert r["phrases"] and (r["paragraph"] or r["status"] == "needs_review")  # no paragraph, no claim
-    assert not any(r["status"] == "reviewed" for r in rules)  # nobody has read the paragraphs yet
+    # only hold short has been read against the FAA text and decided (3-7-2, readback of hold short instructions)
+    assert [r["id"] for r in rules if r["status"] == "reviewed"] == ["hold-short"]
+    assert next(r for r in rules if r["id"] == "hold-short")["paragraph"] == "3-7-2"
 
 
 def test_local_rules_match_spoken_forms_and_return_microsecond_timings():
