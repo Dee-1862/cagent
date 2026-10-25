@@ -95,6 +95,11 @@ pr = C.proposeClearance({callsign: call, request: "departure", plan, plane: {sta
 assert.equal(pr.text, "Cessna 1-2-3, hold short of runway 33, traffic on the runway"); assert.match(pr.reason, /Plane B/);
 pr = C.proposeClearance({callsign: call, request: "departure", plan, plane: {state: "holding"}, others: [{id: "H456", state: "queue"}]});
 assert.equal(pr.text, "Cessna 1-2-3, runway 33, cleared for takeoff");
+// with Elastic's geo answer, the runway area decides, not the planes' states
+pr = C.proposeClearance({callsign: call, request: "departure", plan, plane: {state: "holding"}, others: [], runwayTraffic: ["Plane B"]});
+assert.equal(pr.text, "Cessna 1-2-3, hold short of runway 33, traffic on the runway"); assert.match(pr.reason, /Elastic geo: Plane B/);
+pr = C.proposeClearance({callsign: call, request: "departure", plan, plane: {state: "holding"}, others: [{id: "H456", state: "lined_up"}], runwayTraffic: []});
+assert.equal(pr.text, "Cessna 1-2-3, runway 33, cleared for takeoff");
 // the proposals are instructions the console's own parser understands
 assert.equal(p("Cessna 1-2-3, runway 33, cleared for takeoff").action, "takeoff");
 assert.deepEqual(p("Cessna 1-2-3, taxi to runway 33 via Bravo, hold short of runway 33").via, ["B"]);

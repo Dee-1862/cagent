@@ -24,6 +24,7 @@ from unstep.config import ROOT, allowed_origins, env, gateway_token
 from unstep.gateway.server import create_app, origin_listed, origin_ok
 from unstep.cockpit.translate import LANGUAGES
 from unstep.live.flightplans import FlightPlans, last_tower_call
+from unstep.live.geo import AREAS, Geo, area_polygon
 from unstep.live.room import LiveRoom
 
 log = logging.getLogger("unstep.live")
@@ -186,7 +187,24 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
         order = [x.id for x in room.stations.values() if x.kind == "aircraft"].index(station)
         edge = room.edges.get(s.callsign)
         return {"station": station, "callsign": s.callsign, "flight_plan": await flight_plans.get(s.callsign, order),
-                "last_tower_call": await last_tower_call(edge, s.spoken or s.callsign) if edge else None}
+                "last_tower_call": await last_tower_call(edge, s.spoken or s.callsign) if edge else None,
+                "runway_traffic": await geo.runway_traffic(exclude=station)}
+
+    geo = Geo()
+
+    @app.post("/live/geo/positions")
+    async def geo_positions(request: Request):
+        """The console's plane positions, once a second: stored in Elastic as geo points, with the airport
+        areas (Elastic geo shapes) each plane is in."""
+        body = await request.json()
+        planes = [p for p in body.get("planes", []) if isinstance(p, dict) and {"id", "x", "z"} <= p.keys()][:20]
+        return await geo.locate(planes)
+
+    @app.get("/live/geo/airport")
+    async def geo_airport():
+        """The airport's areas as GeoJSON, for a map."""
+        return {"type": "FeatureCollection", "features": [
+            {"type": "Feature", "properties": {"name": n, "kind": k}, "geometry": area_polygon(b)} for n, k, b in AREAS]}
 
     @app.get("/live/flightlog")
     async def flightlog(q: str = "", callsign: str = "", since_ms: int = 0):
