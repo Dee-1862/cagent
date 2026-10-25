@@ -166,3 +166,7 @@ header button.quiet{height:28px;min-height:28px;background:#272a30;border:1px so
 footer{display:block;left:18px;right:auto;bottom:3px;max-width:80%;text-align:left;font-size:9px;color:#65717c}#notice{left:180px;bottom:2px;font-size:10px;max-width:45%}
 @media(max-width:900px){header .identity{display:none}.headline{left:18px;transform:none;width:calc(100vw - 380px)}.radio-panel{left:166px;right:356px;transform:none;width:auto}.toolbar{flex-wrap:wrap}.camera-tools{flex-wrap:wrap}.composer-tools{width:100%}.field-readout{display:none}.pilot-join{bottom:24px}}
 @media(max-width:700px){.decisions{right:8px;top:88px;width:min(300px,45vw)}.radio-panel{left:8px;right:8px;bottom:10px}.pilot-join{display:none}.legend-card{left:8px;top:88px}.headline{left:8px;top:57px;width:calc(100vw - 16px)}.toolbar .suggestions{display:flex}.toolbar{gap:3px}.field-readout{display:none}}
+
+/* Clearance agent card: the proposal stands out, the checked facts are small */
+#requests .clearance .proposal{font-size:17px;font-weight:600;margin:8px 0}
+#requests .clearance .reason span{display:inline;font-size:12px;color:var(--text-2)}

@@ -79,6 +79,25 @@ assert.ok(via.some((pt) => pt.z === T.TWYA_Z), "via Alpha runs along A");
 assert.deepEqual(last(via), {x: -33, z: T.HOLD_STOP_Z});
 // named runway connectors resolve to their hold shorts
 assert.equal(T.placeNode("B1"), "HOLD33"); assert.equal(T.placeNode("B2"), "HOLD15"); assert.equal(T.placeNode("C9"), null);
+
+// ---- the Clearance agent's rules
+const C = await import("%(atc)s/clearance.js");
+assert.equal(C.parseRequest("Tower, Cessna one two three, request taxi"), "taxi");
+assert.equal(C.parseRequest("Tower, Cessna 1-2-3, ready for departure runway 33"), "departure");
+assert.equal(C.parseRequest("cessna 123 requesting takeoff"), "departure");
+assert.equal(C.parseRequest("line up and wait runway 33, Cessna 123"), null);  // a readback is not a request
+const plan = {runway: "33", route: "Bravo"}, call = "Cessna 1-2-3";
+let pr = C.proposeClearance({callsign: call, request: "taxi", plan, plane: {state: "queue"}});
+assert.equal(pr.text, "Cessna 1-2-3, taxi to runway 33 via Bravo, hold short of runway 33");
+pr = C.proposeClearance({callsign: call, request: "departure", plan, plane: {state: "queue"}});
+assert.match(pr.text, /taxi to runway 33/); assert.match(pr.reason, /isn't at the runway/);
+pr = C.proposeClearance({callsign: call, request: "departure", plan, plane: {state: "holding"}, others: [{id: "H456", name: "Plane B", state: "lined_up"}]});
+assert.equal(pr.text, "Cessna 1-2-3, hold short of runway 33, traffic on the runway"); assert.match(pr.reason, /Plane B/);
+pr = C.proposeClearance({callsign: call, request: "departure", plan, plane: {state: "holding"}, others: [{id: "H456", state: "queue"}]});
+assert.equal(pr.text, "Cessna 1-2-3, runway 33, cleared for takeoff");
+// the proposals are instructions the console's own parser understands
+assert.equal(p("Cessna 1-2-3, runway 33, cleared for takeoff").action, "takeoff");
+assert.deepEqual(p("Cessna 1-2-3, taxi to runway 33 via Bravo, hold short of runway 33").via, ["B"]);
 console.log("ok");
 """
 

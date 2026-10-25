@@ -23,6 +23,7 @@ from unstep.clock import now_ms
 from unstep.config import ROOT, allowed_origins, env, gateway_token
 from unstep.gateway.server import create_app, origin_listed, origin_ok
 from unstep.cockpit.translate import LANGUAGES
+from unstep.live.flightplans import FlightPlans, last_tower_call
 from unstep.live.room import LiveRoom
 
 log = logging.getLogger("unstep.live")
@@ -172,6 +173,20 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
         except ValueError:
             question = ""
         return {"available": True, **(await chat.ask(question))}
+
+    flight_plans = FlightPlans()
+
+    @app.get("/live/clearance-context/{station}")
+    async def clearance_context(station: str):
+        """Facts for the console's Clearance agent: the plane's flight plan (Elastic) and the last tower
+        call it heard (its own Moss session). The console's fixed rules make the proposal."""
+        s = room.stations.get(station)
+        if s is None or s.kind != "aircraft":
+            return JSONResponse({"error": "unknown plane"}, status_code=404)
+        order = [x.id for x in room.stations.values() if x.kind == "aircraft"].index(station)
+        edge = room.edges.get(s.callsign)
+        return {"station": station, "callsign": s.callsign, "flight_plan": await flight_plans.get(s.callsign, order),
+                "last_tower_call": await last_tower_call(edge, s.spoken or s.callsign) if edge else None}
 
     @app.get("/live/flightlog")
     async def flightlog(q: str = "", callsign: str = "", since_ms: int = 0):

@@ -143,6 +143,48 @@ with sync_playwright() as p:
     atc.wait_for_timeout(2500); p2 = planes()["N123AB"]
     check("hold position stops the plane at once, without a readback", p1["state"] == "stopped" and p1["x"] == p2["x"] and p1["z"] == p2["z"], f"{p1} {p2}")
 
+    # 8. the Clearance agent: request -> proposal from the flight plan -> controller sends -> readback -> moves
+    def proposal(timeout=20):
+        for _ in range(timeout * 2):
+            cards = atc.locator("#requests .clearance .proposal")
+            if cards.count():
+                return cards.first.inner_text(), atc.locator("#requests .clearance").first.inner_text()
+            atc.wait_for_timeout(500)
+        return "", ""
+
+    def send_proposal():
+        atc.locator("#requests .clearance button.approve").first.click()
+
+    pilot_says("N123AB", "Tower, Cessna one two three, request taxi")
+    text, card = proposal()
+    check("request taxi -> the agent proposes a taxi clearance to its runway", "taxi to runway 33 via Bravo, hold short of runway 33" in text, text)
+    check("...using the flight plan from Elastic", "Elastic" in card, card[:200])
+    send_proposal()
+    atc.wait_for_timeout(6000)
+    pilot_says("N123AB", "taxi to runway 33 via bravo, hold short of runway 33, Cessna 123")
+    ps = wait_for(lambda ps: ps["N123AB"]["state"] == "holding", 60)
+    check("sent clearance + readback -> holding short of runway 33", ps["N123AB"]["state"] == "holding" and ps["N123AB"]["x"] == -33, str(ps["N123AB"]))
+
+    tower_then_readback("H456", "Helicopter 456 line up and wait runway 15", "line up and wait runway 15, helicopter 456")
+    wait_for(lambda ps: ps["H456"]["state"] == "lined_up", 60)
+    pilot_says("N123AB", "Tower, Cessna one two three, ready for departure runway 33")
+    atc.wait_for_timeout(1500)
+    text, card = proposal()
+    check("ready for departure with traffic on the runway -> hold short", "hold short of runway 33, traffic on the runway" in text, text)
+    atc.locator("#requests .clearance button.reject").first.click()
+
+    tower_then_readback("H456", "Helicopter 456 cleared for takeoff runway 15", "cleared for takeoff runway 15, helicopter 456")
+    wait_for(lambda ps: ps["H456"]["alt"] > 1, 40)
+    pilot_says("N123AB", "Tower, Cessna one two three, ready for departure")
+    atc.wait_for_timeout(1500)
+    text, card = proposal()
+    check("ready for departure with the runway clear -> cleared for takeoff", "runway 33, cleared for takeoff" in text, text)
+    send_proposal()
+    atc.wait_for_timeout(6000)
+    pilot_says("N123AB", "runway 33 cleared for takeoff, Cessna 123")
+    ps = wait_for(lambda ps: ps["N123AB"]["alt"] > 1, 50)
+    check("sent takeoff clearance + readback -> Plane A departs", ps["N123AB"]["alt"] > 1, str(ps["N123AB"]))
+
     OUT.mkdir(exist_ok=True)
     atc.screenshot(path=str(OUT / "e2e-taxi-end.png"))
     b.close()
