@@ -143,7 +143,7 @@ flowchart LR
     RULES --> WF{{Elastic Workflow<br/>Intercept ‖ Compliance agents}}
     REC --> WF
     WF --> CTRL[Controller approves]
-    CTRL --> AUD[(Elastic audit · ES|QL · Kibana · MCP)]
+    CTRL --> AUD[("Elastic audit · ES|QL · Kibana · MCP")]
     CLR[Clearance agent<br/>flight plan · geo_shape · Moss] -.-> CTRL
   end
   subgraph Back["Back to the cockpit"]
