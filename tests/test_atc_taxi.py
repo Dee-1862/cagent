@@ -100,6 +100,16 @@ pr = C.proposeClearance({callsign: call, request: "departure", plan, plane: {sta
 assert.equal(pr.text, "Cessna 1-2-3, hold short of runway 33, traffic on the runway"); assert.match(pr.reason, /Elastic geo: Plane B/);
 pr = C.proposeClearance({callsign: call, request: "departure", plan, plane: {state: "holding"}, others: [{id: "H456", state: "lined_up"}], runwayTraffic: []});
 assert.equal(pr.text, "Cessna 1-2-3, runway 33, cleared for takeoff");
+// unasked next steps
+let ns = C.nextStep({callsign: call, plan, plane: {state: "lined_up", runway: "15"}, runwayTraffic: []});
+assert.equal(ns.text, "Cessna 1-2-3, runway 15, cleared for takeoff"); assert.match(ns.situation, /lined up on runway 15/);
+assert.equal(C.nextStep({callsign: call, plan, plane: {state: "lined_up", runway: "33"}, runwayTraffic: ["Plane B"]}), null);  // wait for traffic
+ns = C.nextStep({callsign: call, plan, plane: {state: "holding", runway: "33"}, others: [{id: "H456", state: "queue"}]});
+assert.equal(ns.text, "Cessna 1-2-3, runway 33, cleared for takeoff");
+assert.equal(C.nextStep({callsign: call, plan, plane: {state: "holding", runway: "33"}, others: [{id: "H456", state: "takeoff"}]}), null);
+assert.equal(C.nextStep({callsign: call, plan, plane: {state: "stopped"}}).text, "Cessna 1-2-3, taxi to runway 33 via Bravo, hold short of runway 33");
+assert.equal(C.nextStep({callsign: call, plan, plane: {state: "queue"}}), null);
+assert.equal(C.nextStep({callsign: call, plan, plane: {state: "taxi"}}), null);
 // the proposals are instructions the console's own parser understands
 assert.equal(p("Cessna 1-2-3, runway 33, cleared for takeoff").action, "takeoff");
 assert.deepEqual(p("Cessna 1-2-3, taxi to runway 33 via Bravo, hold short of runway 33").via, ["B"]);
