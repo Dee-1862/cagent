@@ -7,15 +7,15 @@
 @font-face { font-family: "Plex Cond"; font-weight: 500; font-display: swap; src: url("./fonts/ibm-plex-sans-condensed-latin-500-normal.woff2") format("woff2"); }
 @font-face { font-family: "Plex Cond"; font-weight: 600; font-display: swap; src: url("./fonts/ibm-plex-sans-condensed-latin-600-normal.woff2") format("woff2"); }
 
-body:has(.joinx) { background: #0c0d0a; }
+body:has(.joinx) { background: #000; }
 
 .joinx {
-  --jx-bg: #0c0d0a;
-  --jx-ink: #ece7d8;
-  --jx-mute: #8d8a78;
-  --jx-line: rgba(236, 231, 216, 0.16);
-  --jx-amber: #ffb000;
-  --jx-green: #7bd88f;
+  --jx-bg: var(--bg, #000);
+  --jx-ink: var(--text, #fff);
+  --jx-mute: var(--muted, rgba(235, 235, 245, 0.6));
+  --jx-line: rgba(84, 84, 88, 0.6);
+  --jx-amber: var(--amber, #ff9f0a); /* the phone app's own accent, so the join screen matches the screens after it */
+  --jx-green: var(--green, #30d158);
   --mono: "Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --cond: "Plex Cond", "Arial Narrow", system-ui, sans-serif;
 
@@ -67,7 +67,7 @@ body:has(.joinx) { background: #0c0d0a; }
 .jx-label { font: 500 11px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--jx-mute); }
 .jx-field input { appearance: none; width: 100%; min-height: 48px; padding: 8px 0; border: 0; border-bottom: 1px solid var(--jx-line); border-radius: 0;
   background: transparent; color: var(--jx-ink); font: 500 20px/1.2 var(--mono); }
-.jx-field input::placeholder { color: rgba(141, 138, 120, 0.7); }
+.jx-field input::placeholder { color: rgba(235, 235, 245, 0.3); }
 .jx-field input:focus { outline: 0; border-bottom-color: var(--jx-amber); }
 
 .jx-seg { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -79,19 +79,19 @@ body:has(.joinx) { background: #0c0d0a; }
   color: var(--jx-ink); text-align: left; font: 500 16px/1.25 var(--cond); }
 .jx-track { flex: none; position: relative; width: 44px; height: 24px; border: 1px solid var(--jx-line); border-radius: 12px; background: transparent; transition: background 0.15s; }
 .jx-track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--jx-mute); transition: transform 0.15s, background 0.15s; }
-.jx-switch[aria-checked="true"] .jx-track { background: rgba(255, 176, 0, 0.16); border-color: var(--jx-amber); }
+.jx-switch[aria-checked="true"] .jx-track { background: color-mix(in srgb, var(--jx-amber) 18%, transparent); border-color: var(--jx-amber); }
 .jx-switch[aria-checked="true"] .jx-track::after { transform: translateX(20px); background: var(--jx-amber); }
 
 /* the action */
 .jx-go { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 58px; padding: 0 20px; border: 0; border-radius: 4px;
-  background: var(--jx-amber); color: #15120a; font: 600 15px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; }
+  background: var(--jx-amber); color: #000; font: 600 15px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; }
 .jx-go:active:not(:disabled) { transform: translateY(1px); }
 .jx-go:disabled { opacity: 0.45; cursor: default; }
 .jx-go span { font-size: 20px; letter-spacing: 0; }
 
 .jx-spacer { flex: 1; min-height: 4px; }
 .jx-foot { margin: 0; font: 500 12px/1.4 var(--mono); letter-spacing: 0.04em; color: var(--jx-mute); }
-.jx-error { margin: 0; font: 500 14px/1.35 var(--mono); color: #ff7a66; }
+.jx-error { margin: 0; font: 500 14px/1.35 var(--mono); color: var(--red, #ff453a); }
 .jx-note { margin: 0; font-size: 16px; color: var(--jx-ink); }
 .jx-warn { margin: 0; font-size: 14px; color: var(--jx-amber); }
 
