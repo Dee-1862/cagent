@@ -19,7 +19,7 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 ## Watchers connected to the live room (off by default)
 
 - `UNSTEP_WATCHERS=1` starts the four watchers in the room: every gateway message goes to `team.feed`, key down and up to `team.note`, and their rows go to the console's feed (atc and observer). Off by default, so nothing changes until it is switched on; an unmet expectation (a demo pilot who never reads back) would otherwise show amber rows.
-- Three small additions to `room.py`, proposed to Rishit's side as D39; not pushed until he answers.
+- Three small additions to `room.py`; agreed by Rishit's side (R46). The readback wait is `UNSTEP_READBACK_WAIT_S` (default 20; the QR demo uses 45).
 
 ## Four watchers side by side (module only)
 

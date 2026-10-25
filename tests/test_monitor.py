@@ -175,3 +175,14 @@ def test_the_room_has_no_watchers_by_default(monkeypatch):
         await r.stop()
 
     asyncio.run(go())
+
+
+def test_the_readback_wait_is_configurable_for_slow_demo_pilots(monkeypatch):
+    from unstep.monitor.team import readback_wait_s
+
+    monkeypatch.delenv("UNSTEP_READBACK_WAIT_S", raising=False)
+    assert readback_wait_s() == 20 and default_team(lambda r: None, lambda: T0).watchers[0].wait_ms == 20_000
+    monkeypatch.setenv("UNSTEP_READBACK_WAIT_S", "45")
+    assert default_team(lambda r: None, lambda: T0).watchers[0].wait_ms == 45_000
+    monkeypatch.setenv("UNSTEP_READBACK_WAIT_S", "soon")
+    assert readback_wait_s() == 20
