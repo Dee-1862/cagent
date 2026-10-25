@@ -12,6 +12,11 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 - `docs/29`: the simulated 500-call figure is now described as a regression check on our own simulator, not a field accuracy.
 - Not done: deleting the older pages (`/demo/`, the dashboard, the recording page). They are now behind the passcode on a hosted hub; removing them also removes the presenter mode and tests that use them.
 
+## A reviewed stored rule is no longer replaced by the agent's paragraph
+
+- Found while checking all eight agents live: the Compliance agent and the search cite 3-7-4 for hold short, and `merge` replaced the card's reviewed stored rule (3-7-2) with it as soon as the agents answered. Now a reviewed stored rule stays on the card and the agent's paragraph is noted as related in the confidence method; an unreviewed (candidate) rule may still be replaced. Test in `tests/test_late_citation.py`.
+- All eight deployed agents answered live (200, well-formed); the parallel workflow ran end to end in 9.4 s with Intercept skipped and Compliance citing 3-7-4 with its citation found in the FAA index.
+
 ## README pictures and sponsor sections, ready to paste (README untouched)
 
 - `docs/29-readme-additions.md`: part A is a picture section and part B is a section for each sponsor (Cartesia, Moss, Elastic): who they are, what would impress them (from their own feedback in docs/21), what we use, the numbers with their grades and the limits we state, plus a "built in a day" table. The dates come from git: the first commit was 2026-10-23 21:00 PDT, the airport index script landed at hour 3.2, the Elastic deploy at 23.6, the FAA ingest (52 paragraphs) at 24.1 and the 500-call simulator at 26.3; by 33.6 hours there were 339 commits and 618 tests.

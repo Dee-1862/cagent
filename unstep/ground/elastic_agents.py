@@ -94,7 +94,13 @@ def merge(proposal: ProposedDirective, result: AgentsResult | None) -> ProposedD
         lower = True
         result.notes.append("Compliance agent says not restrictive")
     paragraph = str((result.compliance or {}).get("paragraph") or "")
-    if _PARAGRAPH.match(paragraph) and result.citation_checked:
+    current = proposal.rule_citation or ""
+    reviewed = "by a stored rule" in current and "Candidate rule" not in current  # a person signed this paragraph off
+    if _PARAGRAPH.match(paragraph) and result.citation_checked and reviewed and f"paragraph {paragraph}" not in current:
+        # The reviewed stored rule stays on the card; the agent's paragraph is recorded as related (R56: hold short is
+        # 3-7-2, the agent and the search prefer 3-7-4).
+        result.notes.append(f"Compliance agent also cited {paragraph}, kept as related")
+    elif _PARAGRAPH.match(paragraph) and result.citation_checked:
         title = (result.compliance or {}).get("title")
         update["rule_citation"] = f"FAA JO 7110.65, paragraph {paragraph}" + (f" ({title})" if title else "")
     elif paragraph:
