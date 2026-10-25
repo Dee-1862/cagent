@@ -17,7 +17,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "docs" / "img" / "devpost" / "src"
+SRC = ROOT / "docs" / "img" / "src"
 OUT = ROOT / "docs" / "img" / "devpost"
 FONTS = (ROOT / "app" / "src" / "fonts").as_uri()
 EVIDENCE = ROOT / "docs" / "evidence"
@@ -233,7 +233,7 @@ def build() -> dict[str, str]:
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     pages = build()
-    tmp = OUT / "src" / "_page.html"
+    tmp = SRC / "_page.html"
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": 1800, "height": 1200})

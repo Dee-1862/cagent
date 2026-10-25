@@ -110,7 +110,7 @@ One person, one fixed workflow, five agents. The orchestrator is an Elastic Work
 
 | Join | In the air |
 | --- | --- |
-| ![The pilot app join screen](docs/img/readme/pilot-join.png) | ![The pilot app with the hold to talk button](docs/img/readme/pilot-flying.png) |
+| ![The pilot app join screen](docs/img/readme/pilot-join.png) | ![The pilot app after two people talked at once: a private message in the left ear](docs/img/readme/pilot-flying.png) |
 
 Scan the QR, tap once, hold the big button to talk. The card says what to say, so a judge who has never heard a radio call can do it.
 
