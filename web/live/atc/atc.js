@@ -534,14 +534,49 @@ async function clearanceRequest(stationId, text) {
   const station = state.stations.get(stationId);
   const plan = context?.flight_plan?.runway ? context.flight_plan : {runway: "33", route: "Bravo", source: "console"};
   const planes = window.unstepAirport?.inspect?.() || [];
+  const traffic = context?.runway_traffic;
   const proposal = Clearance.proposeClearance({callsign: station?.spoken || station?.callsign || stationId, request, plan,
-    plane: planes.find((p) => p.id === stationId), others: planes.filter((p) => p.id !== stationId).map((p) => ({...p, name: shortName(p.id)}))});
-  requests.set(stationId, {stationId, text, plan, last: context?.last_tower_call, proposal});
+    plane: planes.find((p) => p.id === stationId), others: planes.filter((p) => p.id !== stationId).map((p) => ({...p, name: shortName(p.id)})),
+    runwayTraffic: Array.isArray(traffic?.planes) ? traffic.planes.map(shortName) : null});
+  requests.set(stationId, {stationId, text, plan, last: context?.last_tower_call, traffic, proposal});
   const id = `clearance-${stationId}`;
   state.actions.set(id, {id, ts: now(), agent: "Clearance agent", kind: "rule", status: "needs_you", station: stationId,
     text: `${shortName(stationId)} asked “${text}”. Proposed: “${proposal.text}”`, sponsor: plan.source === "elastic" ? "Elastic" : null});
   renderRequests(); renderFeed();
 }
+// Geo: once a second the planes' positions go to the hub, which stores them in Elastic as geo points and asks
+// which airport areas (Elastic geo shapes) each one is in. A change of area is posted to the feed; a plane that
+// enters the runway without a line-up or take-off clearance is flagged as a runway incursion.
+const geoAreas = new Map();
+let geoBusy = false;
+const ON_RUNWAY_OK = ["lined_up", "takeoff", "departed"];
+async function trackGeo() {
+  const planes = globalThis.window?.unstepAirport?.inspect?.() || [];
+  if (geoBusy || !planes.length || globalThis.document?.hidden) return;
+  geoBusy = true;
+  try {
+    const res = await (await fetch("/live/geo/positions", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({planes: planes.map(({id, x, z, alt, state: s}) => ({id, x, z, alt, state: s}))})})).json();
+    const how = res.backend === "elastic" ? `Elastic geo_shape query, ${res.took_ms} ms` : "local copy of the areas";
+    for (const [id, g] of Object.entries(res.planes || {})) {
+      const areas = g.areas.join(", "), before = geoAreas.get(id);
+      geoAreas.set(id, areas);
+      if (before === areas) continue;  // first sighting or a new area: post it
+      const where = areas || (g.alt_m > 20 ? "airborne" : "no marked area");
+      state.actions.set(`geo-${id}`, {id: `geo-${id}`, ts: now(), agent: "Geo", kind: "agent", status: "done", station: id,
+        text: `${shortName(id)} now in ${where} at ${g.lat.toFixed(5)}, ${g.lon.toFixed(5)} (${how})`, sponsor: res.backend === "elastic" ? "Elastic" : null});
+      if (areas.includes("Runway") && !(before || "").includes("Runway") && !ON_RUNWAY_OK.includes(g.state)) {
+        state.actions.set(`incursion-${id}`, {id: `incursion-${id}`, ts: now(), agent: "Geo", kind: "agent", status: "flag", station: id,
+          text: `Runway incursion: ${shortName(id)} entered Runway 33/15 without a line-up or take-off clearance (${how})`, sponsor: "Elastic"});
+        notice(`Runway incursion: ${shortName(id)} is on the runway without a clearance.`);
+      }
+      renderFeed();
+    }
+  } catch (error) { console.warn("Geo", error); }
+  finally { geoBusy = false; }
+}
+if (globalThis.window) setInterval(trackGeo, 1000);
+
 function sendClearance(stationId) {
   const r = requests.get(stationId);
   if (!r || !send({type: "say", text: r.proposal.text})) return;
@@ -561,6 +596,7 @@ function renderRequests() {
     facts.append(el("small", "What the agent checked"));
     facts.append(el("span", `Flight plan: ${r.plan.summary || `runway ${r.plan.runway} via ${r.plan.route}`} (${r.plan.source === "elastic" ? `Elastic · ${r.plan.ms} ms` : "console default"})`));
     if (r.last?.text) facts.append(el("span", ` · Last tower call: “${r.last.text}” (${r.last.backend === "moss" ? "Moss" : "plane memory"} · ${r.last.ms} ms)`));
+    if (Array.isArray(r.traffic?.planes)) facts.append(el("span", ` · Runway: ${r.traffic.planes.length ? r.traffic.planes.map(shortName).join(", ") + " on it" : "clear"} (Elastic geo · ${r.traffic.took_ms} ms)`));
     facts.append(el("span", ` · Why: ${r.proposal.reason}`));
     card.append(facts, el("p", `“${r.proposal.text}”`, "proposal"));
     const actions = el("div", undefined, "actions");

@@ -15,13 +15,19 @@ export function parseRequest(text) {
  * `plan` {runway, route}; `plane` the asking plane's scene state; `others` the other planes' states.
  * Returns {text, reason}. The runway counts as busy while another plane is lined up or taking off.
  */
-export function proposeClearance({callsign, request, plan, plane, others = []}) {
+// runwayTraffic: names of planes Elastic's geo query found on the runway, or null to judge from the planes' states.
+export function proposeClearance({callsign, request, plan, plane, others = [], runwayTraffic = null}) {
   const rw = plan.runway, route = plan.route || "Bravo";
   const taxi = {text: `${callsign}, taxi to runway ${rw} via ${route}, hold short of runway ${rw}`,
     reason: `flight plan: departure runway ${rw} via ${route}`};
   if (request === "taxi" || !plane) return taxi;
   const atRunway = ["holding", "lined_up"].includes(plane.state);
   if (!atRunway) return {...taxi, reason: `${taxi.reason}; the plane isn't at the runway yet`};
+  if (runwayTraffic) {
+    if (runwayTraffic.length) return {text: `${callsign}, hold short of runway ${rw}, traffic on the runway`,
+      reason: `Elastic geo: ${runwayTraffic.join(", ")} inside the runway area`};
+    return {text: `${callsign}, runway ${rw}, cleared for takeoff`, reason: "Elastic geo: runway area clear, and the plane is at the runway"};
+  }
   const busy = others.find((o) => ["lined_up", "takeoff"].includes(o.state));
   if (busy) return {text: `${callsign}, hold short of runway ${rw}, traffic on the runway`, reason: `runway occupied by ${busy.name || busy.id}`};
   return {text: `${callsign}, runway ${rw}, cleared for takeoff`, reason: "runway clear and the plane is at the runway"};

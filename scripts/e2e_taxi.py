@@ -82,6 +82,9 @@ with sync_playwright() as p:
     a, h = ps.get("N123AB", {}), ps.get("H456", {})
     check("queue is on taxiway B, Plane A ahead (west) of Plane B", a.get("z") == 14 and h.get("z") == 14 and a.get("x", 0) < h.get("x", 0), f"A {a} B {h}")
 
+    geo = any(feed_has("in Taxiway B at 37.") or atc.wait_for_timeout(500) for _ in range(20))
+    check("geo: the queue is located on Taxiway B with real coordinates (Elastic geo_shape)", geo and feed_has("Elastic geo_shape"))
+
     # 1. no movement before the readback
     tower("Cessna 1, 2, 3, clear for departure, line up and wait runway 33")
     atc.wait_for_timeout(7000)
@@ -171,6 +174,7 @@ with sync_playwright() as p:
     atc.wait_for_timeout(1500)
     text, card = proposal()
     check("ready for departure with traffic on the runway -> hold short", "hold short of runway 33, traffic on the runway" in text, text)
+    check("...because Elastic's geo query found Plane B inside the runway area", "Elastic geo: Plane B" in card, card[:400])
     atc.locator("#requests .clearance button.reject").first.click()
 
     tower_then_readback("H456", "Helicopter 456 cleared for takeoff runway 15", "cleared for takeoff runway 15, helicopter 456")
@@ -179,6 +183,7 @@ with sync_playwright() as p:
     atc.wait_for_timeout(1500)
     text, card = proposal()
     check("ready for departure with the runway clear -> cleared for takeoff", "runway 33, cleared for takeoff" in text, text)
+    check("...with the runway area clear by Elastic geo", "Runway: clear (Elastic geo" in card, card[:400])
     send_proposal()
     atc.wait_for_timeout(6000)
     pilot_says("N123AB", "runway 33 cleared for takeoff, Cessna 123")
