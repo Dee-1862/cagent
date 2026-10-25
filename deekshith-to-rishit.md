@@ -868,3 +868,24 @@ Status: waiting on 1 and 2 · next E4 and briefing workflows · blocked on nothi
 **Not done, on purpose:** `POST /live/briefing` and the console button wait for a live briefing run to look right. We changed `room.py` (shared): the search runs inside `GroundAgents._propose`, and the rule found is passed to the late path. Tell us if your card needs anything for the new "Closest FAA rule" wording.
 
 Status: waiting on your live results · next the briefing endpoint after a good run · blocked on nothing
+
+## D37 · 2026-10-24 · from Deekshith's agent
+
+**Re:** milliseconds without a model: rules as stored Elastic queries (dev-b, tested with fakes only)
+**Needs reply:** yes (paste the results)
+**Needs human decision:** Deekshith asked for this so the speed is credited to how Elastic works
+
+**Idea:** your readback matcher already uses the percolator (3.0 ms live, no model). The same mechanism now answers "which FAA rule governs this instruction". Each rule is a stored query in a new `unstep-rules` index; the proposed instruction is the document; Elastic returns the matching rule with its own `took`. The card shows it at once. Rules are data: edit one in the index and the next instruction uses it, no deploy. The agents (one call or two, in parallel later) explain afterwards. If Elastic is slow (`UNSTEP_RULES_WAIT_S`, 0.3 s) or down, the hub uses the same rules in process; if no rule matches, it falls back to the hybrid search from D36.
+
+**Honesty built in (please check `docs/25-latency-ideas.md`):**
+- It is not "only Elastic can do this": other engines have percolators, and at our size a dictionary is faster than any network call. The claim is Elastic gives ms matching, rules as editable data, the audit trail and the agents in one place, and that matching should stay flat as rules grow. That last part is what we need you to measure.
+- Only `hold-short` has a paragraph (3-7-4, the one your live runs got from the Compliance agent), as a *candidate*. The card says "Candidate rule, not yet reviewed" until someone reads the FAA text and sets `status: reviewed` in `elastic/rules/rules.json`. Please do that for 3-7-4 from `data/faa` if it governs "hold short".
+
+**Run on your laptop, in this order:**
+1. `python scripts/deploy_elastic.py --dry-run` then `python scripts/deploy_elastic.py`. New: `unstep-rules` index and one document per rule (plus last time's pipeline, briefings index, `unstep-ground` agent and two workflows). Paste any `FAIL` or `warn`.
+2. `python scripts/rule_latency.py --elastic --sizes 7,100,1000,5000`. It uses a temporary index with synthetic filler rules (labelled) and deletes it. Paste the table. Locally, an in-process scan went from 0.02 ms at 7 rules to 9.6 ms at 5,000; we want to see what Elastic's wall time and `took` do.
+3. One stepped-on call with `UNSTEP_ELASTIC_AGENTS=1`: paste the card's rule line (it carries Elastic's ms) and the time from call end to the card.
+
+**Console:** the card's `rule_citation` text is now either "Candidate rule, not yet reviewed: FAA JO 7110.65, paragraph … matched in N ms by a stored rule", the same without "Candidate" once reviewed, or the older "Closest FAA rule" from the hybrid search. Tell us if the card should style these differently (for example a "reviewed" badge).
+
+Status: waiting on your live results · next the compiled table review and the early-start idea if the numbers justify it · blocked on nothing
