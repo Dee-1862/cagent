@@ -493,15 +493,21 @@ function actionFor(text) {
   if (/\bline up\b|\blineup\b/.test(t)) return "line_up";
   if (/hold short/.test(t)) return "hold_short";
   if (/hold position|\bstop\b/.test(t)) return "stop";
-  if (/\btaxi\b/.test(t)) return "hold_short";
+  if (/\btaxi\b/.test(t)) return "taxi";
   return null;
+}
+function viaFor(text) {
+  // "taxi via alpha", "via bravo", "via a and b": which taxiways the route must use
+  const m = normalizeCall(text).match(/\bvia\b(.*)/);
+  if (!m) return [];
+  return [...m[1].matchAll(/\b(alpha|bravo|a|b)\b/g)].map((x) => x[1][0].toUpperCase());
 }
 function obey(key, stationId, text) {
   if (obeyed.has(key)) return;
   const action = actionFor(text);
   if (!stationId || !action) return;
   obeyed.add(key);
-  sceneCall("command", stationId, action);
+  sceneCall("command", stationId, action, {via: viaFor(text)});
 }
 function obeyIfHeard(tx) {
   // Give the cockpit a moment to report a blocked call; a plane that missed the words doesn't move.
