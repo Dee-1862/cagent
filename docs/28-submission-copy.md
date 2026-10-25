@@ -48,19 +48,19 @@ When a call is stepped on, Unstep notices, recovers the lost words, and puts a p
 Try it: the laptop is the tower on the projector and your phone is the plane. Scan the QR code, hold to talk, step on someone, and watch.
 
 ### Cartesia: the voice of everyone in the loop
-- Live captions while people talk, with callsigns and runways as key terms. On our simulated noisy radio, callsign accuracy went from 62.5% to 95.5% with the key terms on (Rishit's laptop, 200-line benchmark).
-- Sonic speaks the private advisory, first audio in about 130 to 140 ms, cancels the moment the pilot speaks, and repeats it in the pilot's language in the same voice.
+- Live captions while people talk, with callsigns and runways as key terms. On our simulated noisy radio, callsign accuracy went from 61.5% to 93.5%, and runway accuracy from 78.7% to 99.3%, with the key terms on (200 synthetic lines through a simulated noisy radio, re-run on 2026-10-25).
+- Sonic speaks the private advisory, first audio a median 93 ms after the request (30 requests), cancels the moment the pilot speaks, and repeats it in the pilot's language in the same voice.
 - Every line we generate is played back through speech to text in a test. That loop caught our own pronunciation dictionary breaking "niner".
 
 ### Moss: every plane remembers
 - Each plane has its own on-board memory. A garbled call is searched against what that plane actually heard, at 0 to 1 ms, with no cloud round trip.
-- That memory is saved to the plane's disk and restored after a restart; the Moss SDK's restore took about 1.5 ms (21 ms for the whole restart, Rishit's live run).
+- That memory is saved to the plane's disk and restored after a restart; the restore itself took 9.9 ms, and a whole restart to the first answer takes 1.8 s because opening a session contacts Moss.
 - When a plane lands, its flight log goes to Moss Cloud and survives a restart. The Clearance agent reads the plane's last tower call in 0.3 to 0.6 ms.
 
 ### Elastic: it watches the whole airport
-- A percolator holds every instruction as a stored query, so a readback is matched in about 3 ms. Rules sit in Elastic and a person reviews each one.
+- A percolator holds every instruction as a stored query, so a readback is matched to its rule in 1 ms on Elastic (about 88 ms round trip from our laptop). Rules sit in Elastic and a person reviews each one.
 - Eight Agent Builder agents and seven workflows run the explaining: which FAA paragraph governs a call, why a readback did not match, a coach that reads how controllers decided, a shift briefing every 8 hours. They are configured over our data, not trained.
-- Geo queries put every plane on the airport map, check runway occupancy in 4 to 5 ms and flag an incursion. Our tools are also open over MCP.
+- Geo queries put every plane on the airport map, check runway occupancy in 0 to 1 ms on Elastic (about 85 ms round trip from our laptop) and flag an incursion. Our tools are also open over MCP.
 
 ### How a person stays in charge
 No model ever writes an instruction. The words come from the controller's own transmission, hints only say stop or wait, translations must keep every number, and anything unsure becomes "say again". The controller sees why in one sentence at every step.

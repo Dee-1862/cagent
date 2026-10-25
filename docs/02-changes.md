@@ -2,6 +2,11 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## The submission copy now quotes the measured numbers
+
+- `docs/28-submission-copy.md` (the Devpost and YouTube text) still had earlier figures. Corrected to the values in `docs/evidence/`: callsigns 61.5% to 93.5% and runways 78.7% to 99.3% (was 62.5% to 95.5%), Sonic first audio a median 93 ms (was 130 to 140 ms), memory restore 9.9 ms with 1.8 s to the first answer after a restart (was 1.5 ms and 21 ms), percolator 1 ms on Elastic or about 88 ms round trip (was 3 ms), geo 0 to 1 ms or about 85 ms round trip (was 4 to 5 ms).
+- Not changed, and still to check before submitting: "91.7%" and "100% caught with no false alarm on clean audio" (two different checks, the first on our own simulator), and "about 3 s from the end of a stepped-on call to the pilot hearing the fix" (one live run).
+
 ## The join screen redesigned: a radio panel instead of stacked boxes
 
 - The old phone join screen (a paragraph, a system dropdown, a native checkbox, a blue button) read as generated. New direction: industrial, night-cockpit. The 118.700 frequency is the hero in a bundled IBM Plex Mono (open licence, `app/src/fonts/`, so it looks the same offline on a phone), the explanation is three numbered lines with "stepped on" underlined in amber, the language choice is a segmented control, the checkbox is a switch, the name field is an underline, and the one action is an amber button, "Join the frequency". The status dot is green for live voice and amber for offline voice.
