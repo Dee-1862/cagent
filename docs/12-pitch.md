@@ -43,9 +43,9 @@ At the NTSB hearing on the 2025 Washington DC midair collision, the DCA tower op
 | 1:00 | Space | Pilot questions | "And the pilot can just ask. Hands stay on the yoke." |
 | 1:12 | A | Full view | "Here's what happened underneath. The words that were blocked, the hint and its source, the wrong readback, and every latency, measured live in this run." |
 | 1:35 | Space | Analytics card | "**Elastic** keeps every event, so a safety office can see which frequencies keep losing calls." |
-| 1:50 | Space | Close card | "In a busy US approach facility, about one in a hundred transmissions is blocked or clipped, and nothing alerts anyone. Unstep makes sure no instruction is lost or misheard, and humans stay in charge." |
+| 1:50 | Space | Close card | "In a busy US approach facility, about one in a hundred transmissions is blocked, stepped on or clipped, and for stepped-on and clipped calls there is no alert. Unstep makes sure no instruction is lost or misheard, and humans stay in charge." |
 
-The 1.16% figure is from the FAA CAMI study DOT/FAA/AM-05/19 (research RB-1). Say "about one in a hundred", not a rounder number.
+The 1.16% figure is from the FAA CAMI study DOT/FAA/AM-05/19 (research RB-1). Say "about one in a hundred", not a rounder number. Do not say nothing alerts anyone: a completely blocked call usually raises an audible alarm and the controller repeats it (CAMI 2005); the gap is stepped-on and clipped calls.
 
 ## 3. Thirty-second versions
 

@@ -25,6 +25,12 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## Human baselines checked against the full sources; two overclaims corrected
+
+- Read in full: the NASA 2022 readback paper (average 0.639 s), the FAA CAMI 2005 report (1.16%, the alerting sentence, an average transmission of 2568 ms of voice) and the AIN 2025 hearing article ("There's nothing," Clark Allen). `assets/human_baselines.json` now records the full reference and how far each was checked; the 5.85 s say-again time and 250 ms per word say plainly they have no citation; a hearback claim supported only by search snippets was dropped.
+- Corrected: "nothing alerts anyone" (docs/12) and "nothing tells the pilot or the controller" (docs/18) overstated CAMI, which found that a completely blocked call usually raises an audible alarm and the controller repeats it (94.74%); the gap is stepped-on and clipped calls.
+
 ## Agents against human ATC, job by job
 
 - New `docs/26-agents-vs-humans.md`, `assets/human_baselines.json` (each human figure marked SOURCED, MODELLED or NOT MEASURED, with its source) and `scripts/task_latency_report.py` (offline measurements plus `--live` for Cartesia speech). It compares six jobs separately and claims a win only where there is a human figure to compare against. Faster: noticing a stepped-on call, checking a readback, recovering a lost instruction (mostly the human approving). No human figure: the rule lookup. Not a win: speaking a clearance (3.9 s for 10 words against a modelled 2.5 s; speed 1.5 trims about 8% and mishears a word) and the model-written explanation (5 to 12 s).

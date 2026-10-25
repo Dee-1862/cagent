@@ -9,9 +9,9 @@ How Unstep compares with today's radio and with published work. Simulated traffi
 
 ## Status quo: no automatic detection
 
-Today nothing tells the pilot or the controller that a call was stepped on. FAA CAMI found blocked, stepped-on or clipped calls in 1.16% of sampled transmissions at the five busiest US TRACONs, and "no alerting system was detected for stepped-on or clipped transmissions through waveform analysis" ([DOT/FAA/AM-05/19, 2005](https://rosap.ntl.bts.gov/view/dot/58248/dot_58248_DS1.pdf)). SKYbrary describes blocked transmissions as going unnoticed by the people talking ([SKYbrary](https://skybrary.aero/articles/blocked-transmissions-undetected-simultaneous-transmissions-usit)). At the NTSB hearing on the 2025 DCA midair, asked whether a controller can tell a call was stepped on, the tower operations manager said: "There's nothing." ([AIN, 2025-08-04](https://backend.ainonline.com/aviation-news/air-transport/2025-08-04/ntsb-dc-midair-hearing-panel-3-covers-frequency-issues)).
+Nothing alerts anyone that a call was stepped on. FAA CAMI found blocked, stepped-on or clipped calls in 1.16% of sampled transmissions at the five busiest US TRACONs, and "no alerting system was detected for stepped-on or clipped transmissions through waveform analysis" (a completely blocked call, by contrast, usually raised an audible alarm and the controller repeated it) ([DOT/FAA/AM-05/19, 2005](https://rosap.ntl.bts.gov/view/dot/58248/dot_58248_DS1.pdf)). SKYbrary describes blocked transmissions as going unnoticed by the people talking ([SKYbrary](https://skybrary.aero/articles/blocked-transmissions-undetected-simultaneous-transmissions-usit)). At the NTSB hearing on the 2025 DCA midair, asked whether a controller can tell a call was stepped on, the tower operations manager said: "There's nothing." ([AIN, 2025-08-04](https://backend.ainonline.com/aviation-news/air-transport/2025-08-04/ntsb-dc-midair-hearing-panel-3-covers-frequency-issues)).
 
-So the baseline for automatic detection is 0%: a lost instruction is recovered only if someone notices the garble and asks.
+So the baseline for automatic detection of stepped-on calls is 0%: a lost instruction is recovered only if someone notices the garble and asks.
 
 ## Simulated traffic (n=500 calls, 157 stepped on)
 

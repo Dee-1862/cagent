@@ -34,3 +34,11 @@ def test_the_table_lists_six_jobs_and_does_not_claim_a_win_where_the_human_side_
 def test_the_offline_measurements_run_without_any_service():
     m = rep.measure_offline()
     assert 0 < m["rule_lookup_ms"] < 5 and 0 <= m["readback_check_ms"] < 5
+
+
+def test_a_sourced_baseline_says_what_was_read_and_a_modelled_one_admits_it_has_no_citation():
+    items = {i["id"]: i for i in json.loads((ROOT / "assets" / "human_baselines.json").read_text())["items"]}
+    assert items["pilot_readback_latency"]["verified"].startswith("full text read")
+    assert "NTRS 20220007116" in items["pilot_readback_latency"]["source"] and items["pilot_readback_latency"]["seconds"] == 0.639
+    assert items["say_again_cycle"]["source"].startswith("none") and items["spoken_clearance"]["source"].startswith("none")
+    assert items["hearback_catch"]["verified"] == "not verified" and items["hearback_catch"].get("seconds") is None

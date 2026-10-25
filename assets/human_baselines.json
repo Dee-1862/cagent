@@ -1,22 +1,59 @@
 {
-  "_note": "Human air traffic control timings used in docs/26 and scripts/task_latency_report.py. kind SOURCED = a published figure; MODELLED = our own arithmetic from stated assumptions; NOT_MEASURED = no figure found, so no comparison is made. Nothing here is a measurement of Unstep's users.",
+  "_note": "Human air traffic control timings used in docs/26 and scripts/task_latency_report.py. kind SOURCED = a published figure whose full text was read; MODELLED = our own arithmetic from stated assumptions, with no citation; NOT_MEASURED = no figure found, so no comparison is made. Nothing here is a measurement of Unstep's users.",
   "items": [
-    {"id": "pilot_readback_latency", "task": "Pilot starts the readback after the instruction ends", "seconds": 0.6,
-     "kind": "SOURCED", "source": "NASA NTRS 20220007116, Lutz et al. 2022: average pilot readback latency about 0.6 s on recorded controller-pilot voice exchanges",
-     "note": "Pilot side, not the controller's"},
-    {"id": "blocked_call_detection", "task": "Notice that a call was stepped on", "seconds": null, "kind": "NOT_MEASURED",
-     "source": "FAA CAMI DOT/FAA/AM-05/19 (2005): blocked calls in 1.16 percent of sampled transmissions at the five busiest US TRACONs and no alerting system for stepped-on or clipped transmissions; NTSB hearing 2025 (AIN): tower operations manager asked whether a controller can tell, said \"There's nothing.\"",
-     "note": "Noticed through consequences, not automatically; no study measures how long that takes"},
-    {"id": "say_again_cycle", "task": "Recover a lost instruction by saying again", "seconds": 5.85, "kind": "MODELLED",
-     "source": "docs/18-benchmark.md: pilot reaction 1.5 s (assumption), the request to say again and the full retransmission at 250 ms per word (assumption), plus 300 ms gaps; median over 157 simulated stepped-on calls",
-     "note": "Only if someone noticed the garble"},
-    {"id": "spoken_clearance", "task": "Speak a clearance on the radio", "seconds_per_word": 0.25, "kind": "MODELLED",
-     "source": "docs/18-benchmark.md assumption of 250 ms per word; the airtime of a spoken instruction is the same for a person and for synthetic speech",
-     "note": "Parity expected: speaking takes as long as the words take to say"},
-    {"id": "rule_lookup", "task": "Find the FAA paragraph that governs an instruction", "seconds": null, "kind": "NOT_MEASURED",
-     "source": "no figure found", "note": "Controllers work from memory and training; there is nothing to compare against"},
-    {"id": "hearback_catch", "task": "Controller catches a wrong readback", "seconds": null, "kind": "NOT_MEASURED",
-     "source": "EUROCONTROL and FAA material: readback and hearback errors are the most common communication problem and hearback often misses them; no timing found",
-     "note": "A rate problem, not a speed problem"}
+    {
+      "id": "pilot_readback_latency",
+      "task": "Pilot starts the readback after the instruction ends",
+      "seconds": 0.639,
+      "kind": "SOURCED",
+      "source": "Lutz, M., Chatterji, G. and Idris, H. (2022), 'Characterization of Response Times based on Voice Communication and Traffic Surveillance Data', NASA Ames Research Center / Crown Consulting, AIAA Aviation 2022 (NASA NTRS 20220007116, https://ntrs.nasa.gov/citations/20220007116). Readback delay = end of the controller's transmission to the start of the pilot's readback; average 0.639 s over clearances on KLAX approach, center and tower frequencies",
+      "note": "One day of recordings (2022-03-01) in the Los Angeles area, a few hundred clearances; the pilot's side, not the controller's",
+      "verified": "full text read 2026-10-25"
+    },
+    {
+      "id": "blocked_call_detection",
+      "task": "Notice that a call was stepped on",
+      "seconds": null,
+      "kind": "NOT_MEASURED",
+      "source": "Prinzo, O. V. and McClellan, M. (2005), 'Terminal Radar Approach Control: Measures of Voice Communications System Performance', FAA Civil Aerospace Medical Institute, DOT/FAA/AM-05/19 (https://rosap.ntl.bts.gov/view/dot/58248): blocked, stepped-on or clipped transmissions in 1.16% of sampled transmissions at five of the busiest TRACONs; 'No alerting system was detected for stepped-on or clipped transmissions through waveform analysis'. For completely blocked transmissions an audible alarm (the spoken word 'blocked' or heterodyning) typically alerted the controller, and in 94.74% of those instances the controller repeated the transmission or asked for a repeat. Separately, AIN (2025-08-04, https://www.ainonline.com/aviation-news/air-transport/2025-08-04/ntsb-dc-midair-hearing-panel-3-covers-frequency-issues): at the NTSB hearing on the 2025 DCA midair, Clark Allen, then operations manager at the KDCA tower, answered 'There's nothing' when asked to confirm that a controller has no way to know a transmission was stepped on",
+      "note": "So a fully blocked call usually raises an alarm and gets repeated; a stepped-on call has no alert. Time to notice: not measured by either source",
+      "verified": "full text of the CAMI report and the AIN article read 2026-10-25"
+    },
+    {
+      "id": "say_again_cycle",
+      "task": "Recover a lost instruction by saying again",
+      "seconds": 5.85,
+      "kind": "MODELLED",
+      "source": "none. Our own arithmetic in docs/18-benchmark.md: pilot reaction 1.5 s and 250 ms per word are assumptions with no citation, plus 300 ms gaps; median over 157 simulated stepped-on calls",
+      "note": "Only if someone noticed the garble",
+      "verified": "not a cited figure"
+    },
+    {
+      "id": "spoken_clearance",
+      "task": "Speak a clearance on the radio",
+      "seconds_per_word": 0.25,
+      "kind": "MODELLED",
+      "source": "none for the 250 ms per word (our assumption). Context that is cited: Prinzo and McClellan (2005) found an average transmission on the five busiest TRACONs lasted 2568 ms of voice streaming (2849 ms with setup, pause and propagation), over all messages, so it is not like for like with one clearance",
+      "note": "Parity expected: speaking takes as long as the words take to say",
+      "verified": "the 2568 ms figure read in the full text 2026-10-25; the per-word figure is not cited"
+    },
+    {
+      "id": "rule_lookup",
+      "task": "Find the FAA paragraph that governs an instruction",
+      "seconds": null,
+      "kind": "NOT_MEASURED",
+      "source": "no figure found",
+      "note": "Controllers work from memory and training; there is nothing to compare against",
+      "verified": "not applicable"
+    },
+    {
+      "id": "hearback_catch",
+      "task": "Controller catches a wrong readback",
+      "seconds": null,
+      "kind": "NOT_MEASURED",
+      "source": "none verified. Only search snippets mentioned EUROCONTROL and FAA material on readback and hearback errors; nothing was read in full, so no claim is made",
+      "note": "A rate problem, not a speed problem",
+      "verified": "not verified"
+    }
   ]
 }
