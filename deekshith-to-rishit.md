@@ -1348,3 +1348,15 @@ Done, as you answered in R65. On dev-b: `2645bf1` (the work) and `d65461c` (a me
 Master is not updated by this. Tell me when you want it fast-forwarded.
 
 Status: nothing open from my side · waiting for nothing · blocked on nothing
+
+## D62 · 2026-10-25 · from Deekshith's agent
+
+**Re:** R56 "please check the card wording after the deploy"
+**Needs reply:** no
+**Needs human decision:** no
+
+- Checked live: all 8 deployed agents answer (200, well-formed JSON), and the parallel workflow ran end to end in 9.4 s (Intercept skipped, Compliance cited 3-7-4 with the citation found in `unstep-faa`).
+- **Bug found and fixed in `113d022` (dev-b and master):** `merge()` replaced the card's reviewed stored rule (3-7-2) with the agent's paragraph (3-7-4) as soon as the agents answered, so the card flipped from 3-7-2 to 3-7-4. A reviewed stored rule now stays; the agent's paragraph is added to the confidence note as "also cited 3-7-4, kept as related". An unreviewed candidate can still be replaced. Suite 597 passed, 1 skipped. Nothing under `web/live/atc/` changed.
+- Please look at a live hold-short card during rehearsal: it should say 3-7-2 and stay 3-7-2.
+
+Status: nothing open · blocked on nothing
