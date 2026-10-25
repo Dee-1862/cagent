@@ -379,11 +379,11 @@ def intercept_mode() -> str:
 
 def compliance_cache_ttl_s() -> float:
     """How long a Compliance answer is reused for the same instruction and paragraph (UNSTEP_COMPLIANCE_CACHE_S,
-    default 3600; 0 turns the cache off)."""
+    default 0 = off: real questions differ, and a hit would skip the agent)."""
     try:
-        return max(0.0, float(env("UNSTEP_COMPLIANCE_CACHE_S", default="3600")))
+        return max(0.0, float(env("UNSTEP_COMPLIANCE_CACHE_S", default="0")))
     except ValueError:
-        return 3600.0
+        return 0.0
 
 
 def blocked_call_workflow() -> str:

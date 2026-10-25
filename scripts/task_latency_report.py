@@ -104,10 +104,10 @@ def table(offline: dict, speech: dict | None, human: dict) -> list[tuple]:
         ("Check a readback",
          "pilot readback starts about 0.6 s after the instruction (NASA 2022); the controller's catch is unmeasured and often missed",
          f"3.0 ms in Elastic (live); {offline['readback_check_ms']} ms in process (measured here)",
-         "Unstep faster at the check; people stay the decision"),
+         "No human figure, so no comparison (the 0.6 s is the pilot's wait before reading back, not a controller's checking time); people stay the decision"),
         ("Find the governing FAA paragraph",
          "from memory, not measured",
-         f"{offline['rule_lookup_ms']} ms from the hub's stored rules (measured here); about 700 ms by hybrid search when no rule is stored",
+         f"{offline['rule_lookup_ms']} ms from the hub's stored rules (measured here); 0.7 to 1.1 s by hybrid search plus rerank when no rule is stored",
          "no human figure, so no comparison"),
         ("Speak a clearance",
          f"about {spoken_s} s for a {syllables}-syllable clearance at the median controller rate of 6.1 syllables per second (Nitta, Okazaki and Klinger 2011)",
@@ -116,8 +116,8 @@ def table(offline: dict, speech: dict | None, human: dict) -> list[tuple]:
          "Unstep starts within about 140 ms but its phrase takes about 3.7 s of speech (3.5 syllables per second) against about 2.1 s at the median controller rate. Sonic's top speed setting (1.5) reaches about 4.1 syllables per second and mishears a word; slower speech is also easier for non-native listeners (21.2% of words missed at 6 syllables per second)"),
         ("Explain why, or write a handoff briefing",
          "not measured for controllers; a bracket from other fields: a 60-word note takes about 70 s to type (51.56 wpm) or about 18 s to say (196 wpm)",
-         "5 to 12 s through an Elastic agent (live), 0 to 6 s for the cached or skipped cases",
-         "Unstep slower; this runs after the card is on screen, off the path a pilot waits on"),
+         "about 10 to 11.5 s through Elastic agents (live); skipping Intercept did not help; under 0.1 s only on a cache hit (cache off by default)",
+         "Likely faster than typing, slower than saying it; this runs after the card is on screen, off the path a pilot waits on"),
     ]
     return rows
 

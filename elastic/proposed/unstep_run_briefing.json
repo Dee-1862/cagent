@@ -1,0 +1,7 @@
+{
+  "_status": "PROPOSED, NOT DEPLOYED. A tool that lets the audit agent start the briefing workflow. The Elastic docs say workflow tools are created from a workflow in the Kibana UI (Agents > More > View all tools > New tool > Workflow); the API body below is our guess and has not been checked against a cluster. deploy_elastic.py does not read this folder.",
+  "id": "unstep_run_briefing",
+  "type": "workflow",
+  "description": "Start the shift handoff briefing workflow and save the result to the unstep-briefings index.",
+  "configuration": {"workflow_id": "unstep-briefing"}
+}

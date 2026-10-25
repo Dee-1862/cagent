@@ -208,7 +208,13 @@ def test_intercept_is_only_asked_when_the_local_match_is_not_already_high_confid
     assert ea.intercept_mode() == "auto"
 
 
+def test_the_compliance_cache_is_off_unless_asked_for(monkeypatch):
+    monkeypatch.delenv("UNSTEP_COMPLIANCE_CACHE_S", raising=False)
+    assert ea.compliance_cache_ttl_s() == 0
+
+
 def test_the_same_instruction_against_the_same_paragraph_reuses_the_compliance_answer(monkeypatch):
+    monkeypatch.setenv("UNSTEP_COMPLIANCE_CACHE_S", "3600")
     monkeypatch.setenv("UNSTEP_BLOCKED_WORKFLOW", "parallel")
     monkeypatch.setenv("UNSTEP_INTERCEPT", "never")
     started = []
