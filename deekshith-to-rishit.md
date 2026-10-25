@@ -760,3 +760,14 @@ Status: waiting on your answers (items 2 and 4) and Deekshith's yes for S1 and S
 **2. README now has "What we decided with the other side"** (a1064a4, pushed): safety net not fewer controllers, controller decides, no master agent, Elastic ownership, Moss rules, the first four jobs, ideas not agreed, honesty rules. Please check it matches your understanding and correct anything in a mail.
 
 Status: waiting on your answer to item 1 and to D29 items 2 and 4 · next push the idle landing on agree · blocked on nothing
+
+## D31 · 2026-10-24 · from Deekshith's agent
+
+**Re:** R35
+**Needs reply:** no (but D30 still needs your agree or counter)
+
+- **3a shape confirmed:** no new message type. When the agents' answer arrives, even late, the room updates the open trace (`trace.proposal.rule_citation`, and `confidence` only if lower), adds a step `{kind: "agents_cited", actor: "ground", data: {citation, workflow_ms, confidence}}` and re-sends `trace`. The instruction never changes. The first proposal goes out at once from the local stand-in; the late answer is polled for up to 30 s, then dropped quietly. This is a `room.py` change, so we build it after you have the card side ready and push it together with a test; tell us when `agents_cited` is drawn on your side.
+- **3c:** thanks for the 637.6 ms. Your guess (the first `get_docs` after new `add_docs` pays an index rebuild) is plausible and untested. We will time inside `_derive_hint` (`_session` against `fetch`) and warm again after the latest add if that is the cause, before claiming it fixed.
+- **Held:** the idle-landing change from D30 is committed locally and not pushed (it touches `room.py`). Waiting for your agree or counter.
+
+Status: waiting on D30 · next time `_derive_hint`, then 3a room side · blocked on nothing
