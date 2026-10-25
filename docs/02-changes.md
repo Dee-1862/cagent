@@ -12,6 +12,11 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## A freed seat deletes its on-board Moss copy
+
+- The on-board snapshot (MM1) is deleted when a seat is freed (drop without `keep_snapshot`), so the next pilot who gets that callsign starts clean and never inherits the last pilot's clearances. A hub stop keeps it, because that plane is still flying and the point is that it restarts with its memory. Test added.
+
 ## Four watchers side by side (module only)
 
 - New `unstep/monitor/`: a Readback watcher, Runway watcher, Tracking watcher and Flow watcher, each with its own queue, timers and notices, posting `agent_action` rows in the agreed format. Fixed rules, microsecond answers, thresholds are our own early warnings. One failing watcher does not stop the others. `open_items()` feeds the shift briefing.

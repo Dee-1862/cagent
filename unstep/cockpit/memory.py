@@ -149,6 +149,20 @@ class _DiskSnapshots:
                         exc_info=True)
             return False
 
+    def forget_snapshot(self, index: str) -> None:
+        """The flight is over and its seat goes to someone else: delete the on-board copy, so the next pilot who
+        gets this callsign starts clean and never sees a previous pilot's clearances."""
+        if getattr(self, "disk_dir", None) is None or index.startswith("airport-"):
+            return
+        task = self._save_tasks.pop(index, None)
+        if task is not None and not task.done():
+            task.cancel()
+        self._dirty.discard(index)
+        try:
+            self._snapshot_remove(index)
+        except OSError:
+            log.warning("could not delete the memory snapshot of %s", index, exc_info=True)
+
     async def flush_saves(self) -> None:
         """Save anything still waiting, now (used when the plane stops)."""
         if getattr(self, "disk_dir", None) is None:
@@ -293,6 +307,9 @@ class LocalMemory(_OwnedIndexes, _DiskSnapshots):
     def _snapshot_exists(self, index: str) -> bool:
         return self._snapshot_path(index).is_file()
 
+    def _snapshot_remove(self, index: str) -> None:
+        self._snapshot_path(index).unlink(missing_ok=True)
+
     async def _write_snapshot(self, index: str) -> None:
         docs = [{"id": d.id, "text": d.text, "metadata": d.metadata} for d in self.indexes.get(index, {}).values()]
         path = self._snapshot_path(index)
@@ -320,9 +337,11 @@ class LocalMemory(_OwnedIndexes, _DiskSnapshots):
         self.pushed = [*getattr(self, "pushed", []), index]
         return {"job": f"local-{len(self.pushed)}", "index": index}
 
-    def drop(self, index: str) -> None:
+    def drop(self, index: str, keep_snapshot: bool = False) -> None:
         self.indexes.pop(index, None)
         self.owners.pop(index, None)
+        if not keep_snapshot:
+            self.forget_snapshot(index)
 
     async def has_doc(self, index: str, doc_id: str) -> bool:
         return doc_id in self.indexes.get(index, {})
@@ -438,6 +457,11 @@ class MossMemory(_OwnedIndexes, _DiskSnapshots):
 
     def _snapshot_exists(self, index: str) -> bool:
         return (self.disk_dir / index).is_dir()
+
+    def _snapshot_remove(self, index: str) -> None:
+        import shutil
+
+        shutil.rmtree(self.disk_dir / index, ignore_errors=True)
 
     async def _write_snapshot(self, index: str) -> None:
         # SessionIndex.save_to_disk(cache_path) writes <cache_path>/<session name>/ and, per the SDK, a failed
@@ -559,10 +583,14 @@ class MossMemory(_OwnedIndexes, _DiskSnapshots):
         self._check_writer(index, writer)
         return await (await self._session(index)).push_index()
 
-    def drop(self, index: str) -> None:
-        """Forget a session in this client (its memory is freed); the owner can register it again later."""
+    def drop(self, index: str, keep_snapshot: bool = False) -> None:
+        """Forget a session in this client (its memory is freed); the owner can register it again later. The
+        on-board snapshot goes too unless the hub is only stopping (`keep_snapshot`): a seat given to a new pilot
+        must not inherit the last pilot's clearances."""
         self.sessions.pop(index, None)
         self.owners.pop(index, None)
+        if not keep_snapshot:
+            self.forget_snapshot(index)
 
 
 def create_memory() -> Memory:

@@ -227,3 +227,24 @@ def test_the_live_check_dry_run_restarts_from_disk():
     text = "\n".join(lines)
     assert "after a restart from disk: 4 docs loaded" in text and "duplicates: 0" in text
     assert "hold short runway 33" in text.split("what was my last clearance?")[1].lower()
+
+
+def test_a_freed_seat_deletes_the_on_board_copy_but_a_hub_stop_keeps_it(tmp_path):
+    import asyncio
+
+    from unstep.cockpit.memory import Doc, LocalMemory
+    from unstep.live.flightlog import FlightLog
+
+    async def go(reason):
+        mem = LocalMemory(disk_dir=str(tmp_path / reason.replace(" ", "")))
+        mem.save_interval_s = 0
+        log = FlightLog(mem, "118.700")
+        mem.register_index("flight-A", "cockpit")
+        await mem.add_docs("flight-A", [Doc("x", "hold short 33", {"type": "clearance"})], "cockpit")
+        await mem.flush_saves()
+        assert mem.has_snapshot("flight-A")
+        await log.archive("A", mem, "flight-A", reason)
+        return mem.has_snapshot("flight-A")
+
+    assert asyncio.run(go("hub stopped")) is True  # the plane is still flying: it restarts with its memory
+    assert asyncio.run(go("phone gone for 20 s")) is False  # the next pilot starts clean
