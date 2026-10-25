@@ -300,6 +300,10 @@ function renderInbox() {
     const card = el("article", undefined, "decision");
     card.append(el("h3", names[trace.callsign] || trace.callsign), el("small", trace.callsign, "registration"), el("small", "MISSED · the tower’s words; highlighted words were talked over"), towerWords(trace));
     const why = el("p", undefined, "reason"); why.append(el("small", "Why you’re seeing this"), document.createTextNode(reason(trace))); card.append(why);
+    // Elastic's Compliance agent cites the FAA rule; the hub keeps it only if that paragraph exists in unstep-faa.
+    if (trace.proposal.rule_citation) {
+      const rule = el("p", undefined, "citation"); rule.append(el("small", "The rule · cited by Elastic agents"), document.createTextNode(trace.proposal.rule_citation)); card.append(rule);
+    }
     const failed = (trace.policy?.checks || []).filter((c) => !c.ok);
     if (failed.length > 1) {
       const more = el("details"); more.append(el("summary", `All ${failed.length} reasons`));
@@ -411,7 +415,11 @@ function steps(trace) {
       case "detected": sentence = `Heard a blocked radio call in ${shortName(trace.callsign)}’s cockpit.`; agent = "Cockpit agent"; break;
       case "hint": sentence = `The plane’s memory suggests “${hint?.text || "a stop instruction"}”; this is a hint, not permission.`; agent = "Cockpit agent"; sponsor = step.data?.backend === "moss" ? "Moss" : "Local memory"; break;
       case "moss_search": agent = "Cockpit agent"; sponsor = step.data?.backend === "moss" ? "Moss" : "Local memory"; break;
-      case "proposed": sentence = `Recovered “${instruction}”${trace.tower ? " from the tower’s own words" : " without a tower transcript"}.`; agent = "Ground agents"; sponsor = "Stand-in · Elastic pending"; break;
+      case "proposed": {
+        const cited = step.data?.citation;
+        sentence = `Recovered “${instruction}”${trace.tower ? " from the tower’s own words" : " without a tower transcript"}.${cited ? ` Elastic’s Compliance agent cited ${cited}.` : ""}`;
+        agent = "Ground agents"; sponsor = cited ? "Elastic agents" : "Local stand-in"; break;
+      }
       case "auto_relay": sentence = "Every policy check passed, so the tower’s own stop/wait instruction can be re-sent."; agent = "Policy agent"; sponsor = "policy"; break;
       case "escalate": sentence = reason(trace); agent = "Policy agent"; sponsor = "policy"; break;
       case "approved": sentence = step.actor === "policy" ? "The policy approved a resend of the tower’s own instruction." : "The controller approved sending the recovered instruction."; agent = step.actor === "policy" ? "Policy agent" : "Controller"; sponsor = step.actor === "policy" ? "policy" : "Human"; break;
