@@ -133,17 +133,20 @@ class ElasticAgents:
         return r.status_code == 200 and bool(r.json().get("found"))
 
     async def blocked_call(self, event: AnomalyEvent, transcript: TowerTranscript,
-                           proposal: ProposedDirective) -> AgentsResult | None:
+                           proposal: ProposedDirective, wait_s: float | None = None) -> AgentsResult | None:
+        """Run the workflow and read the agents' answer back. `wait_s` overrides how long to wait (the late path
+        waits longer because nothing is blocked on it)."""
         started = time.perf_counter()
+        wait_s = self.wait_s if wait_s is None else wait_s
         try:
             execution_id = await self._run(BLOCKED_CALL_WORKFLOW, {
                 "event_id": event.event_id, "callsign": event.callsign, "heard_text": event.heard_text,
                 "tower_text": transcript.text, "lost_words": " ".join(proposal.blocked_words),
                 "instruction": proposal.instruction_text})
-            doc = await self._wait_doc(PROPOSALS_INDEX, event.event_id, started + self.wait_s)
+            doc = await self._wait_doc(PROPOSALS_INDEX, event.event_id, started + wait_s)
             if doc is None:
                 log.warning("Elastic workflow for %s took over %.1f s; using the local proposal",
-                            event.event_id, self.wait_s)
+                            event.event_id, wait_s)
                 return None
             result = AgentsResult(intercept=parse_agent_json(doc.get("intercept")),
                                   compliance=parse_agent_json(doc.get("compliance")),
@@ -166,6 +169,14 @@ class ElasticAgents:
         except (httpx.HTTPError, ValueError) as exc:
             log.warning("readback audit for %s not started (%s)", event_id, type(exc).__name__)
             return None
+
+
+def late_wait_s() -> float:
+    """How long the late path waits for the agents after the card is already shown (UNSTEP_AGENTS_LATE_S)."""
+    try:
+        return max(1.0, float(env("UNSTEP_AGENTS_LATE_S", default="30")))
+    except ValueError:
+        return 30.0
 
 
 def elastic_agents_from_env() -> ElasticAgents | None:

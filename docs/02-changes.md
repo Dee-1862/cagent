@@ -6,6 +6,13 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## The Elastic agents' citation no longer blocks the card (3a)
+
+- The stepped-on call's proposal card goes out at once from the local check; the Elastic agents' FAA citation is added to the open card when the workflow answers (up to 30 s, `UNSTEP_AGENTS_LATE_S`). The instruction never changes; confidence can only go lower; the trace gets an `agents_cited` step.
+- The one case that still waits for the agents is a proposal the policy might auto-relay (restrictive, high confidence), because Intercept can veto it. Without this, an auto-relay could happen before the veto.
+- `docs/20-agent-map.md` section 6 maps Agent Builder's capabilities (workflows both ways, MCP and A2A, permissions, model selection, skills) to what we use, and says why the agents should not chat with each other on the critical path.
+
 ## Idle pilots land: stale planes free themselves
 
 - A walk-up pilot who is still connected but has sent nothing for `UNSTEP_IDLE_LAND_S` (default 600 s; 0 turns it off) is treated as landed: the seat is freed the same way a gone phone is (flight archived to the flight log, pushed once, cockpit agent and open events closed). Pings do not count, so a forgotten open tab lands too. Team planes are never freed.
