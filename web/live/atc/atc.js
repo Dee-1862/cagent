@@ -199,6 +199,7 @@ function receive(message) {
         obey(`evt-${message.trace.event_id}`, message.trace.callsign, message.trace.decision?.instruction_text || message.trace.proposal?.instruction_text);
       }
       if (["confirmed", "readback_wrong"].includes(message.trace.status)) sceneCall("readback", message.trace.callsign, message.trace.status === "confirmed");
+      if (message.trace.status === "confirmed") readbackConfirmed(message.trace.callsign);
       if (message.trace.status !== "needs_you") state.pending.delete(message.trace.event_id);
       renderTraces(); renderRadio(); break;
     case "autonomy":
@@ -487,8 +488,25 @@ function obey(key, stationId, text) {
   const instruction = Words.parseInstruction(text);
   if (!instruction.action) return;
   obeyed.add(key);
+  // As on a real frequency (JO 7110.65 2-4-3, AIM 4-3): a stop acts at once; anything that moves the plane
+  // waits for the pilot's readback, and only a correct one lets it go.
+  if (instruction.action === "stop") { execute(stationId, instruction); return; }
+  awaitingReadback.set(stationId, {instruction, text, at: now()});
+  const id = `awaiting-${stationId}`;
+  state.actions.set(id, {id, ts: now(), agent: "Readback check", kind: "rule", status: "needs_you", station: stationId,
+    text: `${shortName(stationId)} was told “${text}”. Waiting for the readback before it moves.`});
+  renderFeed();
+}
+function execute(stationId, instruction) {
   sceneCall("command", stationId, instruction.action, {via: instruction.via, runway: instruction.runway, dest: instruction.dest});
-  if (instruction.action !== "stop") awaitingReadback.set(stationId, {instruction, text, at: now()});
+}
+function readbackConfirmed(stationId) {
+  // The cockpit's own readback check passed (an Unstep-delivered instruction): the plane may go.
+  const pending = awaitingReadback.get(stationId);
+  if (!pending) return;
+  awaitingReadback.delete(stationId); state.actions.delete(`awaiting-${stationId}`);
+  execute(stationId, pending.instruction);
+  renderFeed();
 }
 function obeyIfHeard(tx) {
   // Give the cockpit a moment to report a blocked call; a plane that missed the words doesn't move.
@@ -506,20 +524,24 @@ function pilotSpoke(key, stationId, text) {
   if (!Words || !text || checked.has(key)) return;
   const pending = awaitingReadback.get(stationId);
   if (!pending || now() - pending.at > READBACK_WINDOW_MS) return;
-  checked.add(key); awaitingReadback.delete(stationId);
+  checked.add(key);
   const who = shortName(stationId), result = Words.checkReadback(pending.instruction, text);
   const id = `readback-${key}`;
+  state.actions.delete(`awaiting-${stationId}`);
   if (result.ok) {
+    awaitingReadback.delete(stationId);
     sceneCall("readback", stationId, true);
+    execute(stationId, pending.instruction);  // read back correctly: now the plane complies
     state.actions.set(id, {id, ts: now(), agent: "Readback check", kind: "rule", status: "done", station: stationId,
-      text: `${who} read it back correctly`, sponsor: "Cartesia"});
+      text: `${who} read it back correctly and is moving.`, sponsor: "Cartesia"});
   } else {
+    // Still waiting: a corrected readback inside the window lets the plane go.
+    pending.at = now();
     const what = result.problems.map((x) => `said ${x.said}, the tower said ${x.expected}`).join("; ");
     sceneCall("readback", stationId, false);
-    sceneCall("command", stationId, "stop");  // a plane with a wrong readback doesn't go anywhere
     state.actions.set(id, {id, ts: now(), agent: "Readback check", kind: "rule", status: "flag", station: stationId,
-      text: `Wrong readback from ${who}: ${what}. ${who} is held until it's corrected.`, sponsor: "Cartesia"});
-    $("happened").textContent = `${who} read back wrong: ${what}. Unstep stopped ${who} until the readback is right.`;
+      text: `Wrong readback from ${who}: ${what}. ${who} stays put until the readback is right.`, sponsor: "Cartesia"});
+    $("happened").textContent = `${who} read back wrong: ${what}. ${who} isn't moving until the readback is right.`;
     notice(`Wrong readback from ${who}. Say the instruction again.`);
   }
   renderFeed();
