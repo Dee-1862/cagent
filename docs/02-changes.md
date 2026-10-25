@@ -2,6 +2,12 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## The Pi client sets the microphone gain on every start
+
+- The Logitech's capture level goes back to 100% (+30 dB) every time the camera is unplugged and plugged in, and at 100% a voice close to it clips. Seen on the real Pi: a test at 40% was fine, then after a replug the gain was 100% again and the meter showed CLIPPING.
+- `scripts/pi_plane.py --gain 25` (the default) sets the `Mic` control on the chosen card each time it starts, via `amixer`, and says so. `--gain 0` leaves it alone. Checked on the Pi: starting from 100% it set 25% and the next test peaked at 13,314 of 32,767 with no clipping.
+- Test added: the amixer command for card 3, no change for a device with no card number or for 0, no failure without amixer.
+
 ## The Pi client shows that its microphone is on, and says why when it is not
 
 - `scripts/pi_plane.py` keeps one `arecord` open for the whole session and draws a live line in the terminal: `Listening [#####-----]  -32 dB`, which becomes `ON AIR` while a call is being sent. It warns on clipping ("turn the gain down") and on a microphone that hears nothing at all.

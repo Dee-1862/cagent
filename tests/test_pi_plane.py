@@ -157,3 +157,20 @@ def test_a_call_gets_only_the_frames_spoken_while_talking(monkeypatch):
 
     mic, taken = asyncio.run(go())
     assert mic.frames == 6 and 0 < len(taken) < 6  # only what was spoken after the key went down
+
+
+def test_the_gain_is_set_on_every_start_because_a_replug_resets_it(monkeypatch):
+    calls = []
+
+    class Done:
+        returncode = 0
+
+    monkeypatch.setattr(pi_plane.shutil, "which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(pi_plane.subprocess, "run", lambda cmd, **kw: calls.append(cmd) or Done())
+    assert "25%" in pi_plane.set_gain("plughw:3,0", 25)
+    assert calls == [["amixer", "-c", "3", "sset", "Mic", "25%"]]
+    assert pi_plane.set_gain("default", 25) is None  # no card number to set
+    assert pi_plane.set_gain("plughw:3,0", 0) is None  # 0 leaves the level alone
+    assert len(calls) == 1
+    monkeypatch.setattr(pi_plane.shutil, "which", lambda name: None)  # no amixer: no failure, just no change
+    assert pi_plane.set_gain("plughw:3,0", 25) is None

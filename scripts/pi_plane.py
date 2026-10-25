@@ -23,6 +23,7 @@ import asyncio
 import base64
 import json
 import math
+import re
 import shutil
 import ssl
 import subprocess
@@ -94,12 +95,22 @@ def meter(state: str, db: float, peak: int, width: int = 24) -> str:
     return f"{state:<10}[{'#' * filled}{'-' * (width - filled)}] {db:5.0f} dB{note}"
 
 
+def set_gain(device: str, percent: int) -> str | None:
+    """Set the capture level of a USB microphone's `Mic` control. Its level goes back to 100% (too loud, it clips)
+    every time the camera is unplugged and plugged in again, so the client sets it on every start."""
+    card = re.search(r"hw:(\d+)", device)
+    if not percent or not card or not shutil.which("amixer"):
+        return None
+    done = subprocess.run(["amixer", "-c", card.group(1), "sset", "Mic", f"{percent}%"], capture_output=True, text=True)
+    return f"Microphone gain set to {percent}% (it resets to 100% when the camera is replugged)" if done.returncode == 0 else None
+
+
 class Mic:
     """One arecord for the whole session. It feeds the level meter all the time, so you can see the microphone is
     on and working, and it feeds the call only while someone is talking."""
 
-    def __init__(self, device: str, show: bool = True):
-        self.device, self.show = device, show
+    def __init__(self, device: str, show: bool = True, gain: int = 0):
+        self.device, self.show, self.gain = device, show, gain
         self.talking = False
         self.frames = 0
         self.loudest_db, self.loudest_peak = -90.0, 0
@@ -115,6 +126,9 @@ class Mic:
         if not shutil.which("arecord"):
             self.failed = "arecord not found: install alsa-utils (sudo apt install alsa-utils)"
             return
+        note = set_gain(self.device, self.gain)
+        if note and self.show:
+            print(note)
         proc = await asyncio.create_subprocess_exec(
             "arecord", "-q", "-D", self.device, "-f", "S16_LE", "-r", str(SAMPLE_RATE), "-c", "1", "-t", "raw",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
@@ -261,9 +275,9 @@ async def hold_to_talk(plane: Plane, mic: Mic) -> None:
         runner.cancel()
 
 
-async def test_mic(device: str, seconds: float) -> int:
+async def test_mic(device: str, seconds: float, gain: int = 0) -> int:
     """No hub needed: show the level meter for a few seconds and say whether the microphone works."""
-    mic = Mic(device)
+    mic = Mic(device, gain=gain)
     print(f"Listening on {device} for {seconds:.0f} s. Talk or clap: the bar should move.")
     await mic.run(seconds)
     print()
@@ -301,7 +315,7 @@ async def run(args: argparse.Namespace) -> dict:
         else:
             reader = asyncio.ensure_future(plane.listen())
             try:
-                await hold_to_talk(plane, Mic(args.mic))
+                await hold_to_talk(plane, Mic(args.mic, gain=args.gain))
             finally:
                 reader.cancel()
     return {"station": seat["station"], "callsign": seat.get("callsign"), "frames_sent": plane.frames_sent,
@@ -316,6 +330,7 @@ def parse(argv=None) -> argparse.Namespace:
     p.add_argument("--mic", default="default", help="arecord device for live talking, e.g. plughw:3,0 (see arecord -l)")
     p.add_argument("--listen", type=float, default=8.0, help="seconds to listen after a --wav call")
     p.add_argument("--fast", action="store_true", help="send a --wav as fast as possible instead of at speaking pace")
+    p.add_argument("--gain", type=int, default=25, help="microphone capture level in percent, set on every start (0 leaves it alone)")
     p.add_argument("--test-mic", action="store_true", help="only check the microphone: show its level for --seconds, no hub")
     p.add_argument("--seconds", type=float, default=10.0, help="how long --test-mic listens")
     p.add_argument("--no-sound", action="store_true", help="print what the hub sends but do not play audio")
@@ -326,7 +341,7 @@ if __name__ == "__main__":
     try:
         args = parse()
         if args.test_mic:
-            raise SystemExit(asyncio.run(test_mic(args.mic, args.seconds)))
+            raise SystemExit(asyncio.run(test_mic(args.mic, args.seconds, args.gain)))
         if not args.hub:
             raise SystemExit("--hub is required (or use --test-mic to only check the microphone)")
         result = asyncio.run(run(args))
