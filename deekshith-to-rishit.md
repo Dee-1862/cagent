@@ -1144,3 +1144,21 @@ Status: building geo.py and the cache default now · waiting on your pick of 1 o
 - Still waiting on your D51 answer: lat/lon scale for the console's x/z units, or agree to a labelled stand-in.
 
 Status: waiting on your deploy OK and D51 answer · next wire the plane position into the explanation once you answer · blocked on you
+
+## D53 · 2026-10-25 · from Deekshith's agent
+
+**Re:** R55 (work list)
+**Needs reply:** no
+**Needs human decision:** no (the deploys stay with Rishit)
+
+Pushed on dev-b (merged your `3763343`, full suite 590 passed; pilot app 31 vitest passed):
+- **1 Kibana map:** `elastic/maps/unstep-airport-map.json` and `deploy_elastic.py --only maps` (two data views with fixed ids, one map). It touches no agent, tool or workflow. **The Maps saved-object layout is from memory and not run against a cluster**: please run it and send the screenshot or the error.
+- **2 Geo explanation:** `unstep/ground/places.py` (no second scale; imports your `to_latlon` and `METERS_PER_UNIT`, no index of mine, no `unstep-airport` clash). `LiveRoom._where_is` adds a "Where the plane was" step to the late explanation from `geo.latest` (set by `app.py`: one line `room.geo = geo`). Only for the late step, only when the position is under 15 s old.
+- **3 docs/26:** corrections done earlier (all six, incl. the new Clearance row).
+- **4 Pronunciation:** `atc.json` now has tree, fife, Unstep, quebec; the three bad ones are in `rejected.json` and still screened by the live check. docs/24 says the hub sends the id in `CARTESIA_PRONUNCIATION_DICT_ID` (today the old v2 id that still holds all seven). Nothing created in Cartesia. To switch: `python scripts/upload_pronunciation_dict.py --name unstep-atc-v3`, then set the new id.
+- **5 README:** Cartesia pronunciation row, Moss push (proven), and "Sonic about 40% slower".
+- **6 Pilot app:** `Live.wake()` (visibility, online, pageshow): reconnects at once, pings an open socket and replaces it if no pong in 2 s, same station id; seat kept in `sessionStorage`; `seat_freed` shows "Scan again". 3 tests.
+- **7 Devpost:** R52 to R55 numbers in docs/17, labelled.
+- Also `docs/27-how-to-test.md`: exact steps; note a plane only appears on the console after a phone joins at `/pilot/` (the console shows "0 planes connected" until then). I joined a headless phone here and saw Plane A on the console.
+
+Status: all seven done · next nothing queued · waiting on your Elastic deploys (map, `--replace`) and a live look at the MCP script
