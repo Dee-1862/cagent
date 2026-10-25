@@ -13,16 +13,14 @@
     <div class="identity"><strong>Control Tower</strong><small>KUNS · Radio <span id="frequency">118.700</span></small></div>
     <span id="projector-seat" class="sr-only">Control Tower projector seat</span>
     <div class="presence"><b id="planes">0 planes connected</b><small id="password-state">Checking tower access…</small></div>
-    <div class="pilot-join"><a id="join-qr" href="/live/"><img id="qr" width="160" height="160" alt="Scan to join as a plane"></a>
-    <div class="join"><small>Scan to fly</small><a id="join-url" href="/live/"></a><small id="phone-hint" hidden>Phones: start with --host 0.0.0.0 and open this page via the laptop's LAN IP</small></div>
-    </div>
     <span id="connection" class="connection">OFFLINE</span>
     <button id="sound" class="quiet">Turn on sound</button>
     <button id="reset" class="quiet" disabled title="Frees every walk-up plane and clears the board. The two team planes stay.">Reset room</button>
   </header>
   <main>
+    <div class="pilot-join"><a id="join-qr" href="/live/"><img id="qr" width="120" height="120" alt="Scan to join as a plane"></a><div class="join"><small>Scan to fly</small><a id="join-url" href="/live/"></a><small id="phone-hint" hidden>Phones: start with --host 0.0.0.0 and open this page via the laptop's LAN IP</small></div></div>
     <section class="headline" aria-live="polite">
-      <h1>What just happened</h1>
+      <h1 class="sr-only">What just happened</h1>
       <p id="happened">Waiting for the first radio call.</p>
     </section>
     <div class="hero">
@@ -48,11 +46,17 @@
         </svg>
         <div class="legend"><span>○ Listening</span><span class="bad">◉ Missed a call</span><span class="amber">● Instruction delivered</span><span class="good">✓ Read back correctly</span></div>
       </section>
-      <section class="decisions panel">
+      <section class="decisions panel" id="side-panel">
+        <nav class="side-tabs" aria-label="Console views"><button type="button" data-tab="agents" aria-selected="true">Agents</button><button type="button" data-tab="safety" aria-selected="false">Safety</button><button type="button" data-tab="ask" aria-selected="false">Ask</button></nav>
+        <div class="tab-pane" data-pane="agents">
         <div class="section-title"><h2>Agents at work</h2><small><span id="decision-count">0</span> need you</small></div>
         <div id="inbox"></div>
         <ol id="feed" class="feed" aria-live="polite"></ol>
         <label class="switch"><input id="autonomy" type="checkbox" disabled><span>Auto-resend the tower’s own stop/wait instructions</span></label>
+        <button id="show-evidence" type="button" aria-controls="evidence-sheet" aria-expanded="false">Show how Unstep handled it</button>
+        </div>
+        <div class="tab-pane" data-pane="safety" hidden><section class="panel analytics"><div class="section-title"><h2>Safety analytics <small id="stats-source">Elastic</small> <small id="stats-simulated" class="sim-badge" hidden></small></h2><small id="stats-note">Counts since this console opened</small></div><div class="stat-tiles"><div><b id="stat-blocked">–</b><span>Blocked calls</span></div><div><b id="stat-readback">–</b><span>Readback errors caught</span></div><div><b id="stat-auto">–</b><span>Auto-resent stop/wait calls</span></div></div><details class="esql"><summary>Show the ES|QL query</summary><pre id="stat-esql"></pre></details></section></div>
+        <div class="tab-pane" data-pane="ask" hidden></div>
       </section>
     </div>
     <section class="panel radio-panel">
@@ -61,8 +65,6 @@
       <form id="say-form"><label class="sr-only" for="say">Tower radio message</label><input id="say" maxlength="300" placeholder="Say something on the tower radio…" required><button id="transmit" type="submit" disabled>Transmit</button></form>
       <div class="suggestions"><button data-say="Cessna one two three, hold short runway three three.">Tell Plane A to stop</button><button data-say="Cessna one two three, cleared for takeoff runway three three.">Clear Plane A for takeoff</button></div>
     </section>
-    <section class="panel analytics"><div class="section-title"><h2>Safety analytics <small id="stats-source">Elastic</small> <small id="stats-simulated" class="sim-badge" hidden></small></h2><small id="stats-note">Counts since this console opened</small></div><div class="stat-tiles"><div><b id="stat-blocked">–</b><span>Blocked calls</span></div><div><b id="stat-readback">–</b><span>Readback errors caught</span></div><div><b id="stat-auto">–</b><span>Auto-resent stop/wait calls</span></div></div><details class="esql"><summary>Show the ES|QL query</summary><pre id="stat-esql"></pre></details></section>
-    <button id="show-evidence" type="button" aria-controls="evidence-sheet" aria-expanded="false">Show how Unstep handled it</button>
     <section id="evidence-sheet" class="panel explanation"><div class="section-title"><h2>How Unstep handled it</h2><button id="close-evidence" type="button" aria-label="Close explanation">Close</button><small id="event-label">Evidence appears as it arrives</small></div><div id="steps"></div><div id="history"></div></section>
     <aside id="notice" role="status"></aside>
     <footer><span id="mode">Connecting to the room…</span> · Illustration: positions are not live tracking · 3D models: Vojtěch Balák, Poly by Google, Miha Lunar · CC-BY 3.0</footer>
