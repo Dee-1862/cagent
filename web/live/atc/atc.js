@@ -274,6 +274,7 @@ function feedRows() {
         case "detected": add(s.ts, "Cockpit agent", `Noticed ${who} missed part of a call`, "done", "Cartesia"); break;
         case "moss_search": if (s.data?.top_hit_text) add(s.ts, "Cockpit agent", `Found “${s.data.top_hit_text}” in ${who}’s memory`, "done", s.data?.backend === "moss" ? "Moss" : null); break;
         case "proposed": add(s.ts, "Ground agents", `Drafted the fix “${instruction}”${s.data?.citation ? ` · ${s.data.citation}` : ""}`, "done", s.data?.citation ? "Elastic" : null); break;
+        case "agents_cited": add(s.ts, "Ground agents", `Cited ${s.data?.citation || "the FAA rule"} for ${who}’s fix`, "done", "Elastic"); break;
         case "auto_relay": add(s.ts, "Policy agent", `Re-sent the tower’s own words to ${who} automatically`, "done", null); break;
         case "escalate": add(s.ts, "Policy agent", `Asked you to decide for ${who}`, t.status === "needs_you" ? "needs_you" : "done", null); break;
         case "approved": if (s.actor !== "policy") add(s.ts, "You", `Approved the fix for ${who}`, "done", null); break;
@@ -466,6 +467,7 @@ function steps(trace) {
         sentence = `Recovered “${instruction}”${trace.tower ? " from the tower’s own words" : " without a tower transcript"}.${cited ? ` Elastic’s Compliance agent cited ${cited}.` : ""}`;
         agent = "Ground agents"; sponsor = cited ? "Elastic agents" : "Local stand-in"; break;
       }
+      case "agents_cited": sentence = `Elastic’s agents checked the fix and cited ${step.data?.citation || "the governing FAA rule"}${step.data?.workflow_ms ? ` (${(step.data.workflow_ms / 1000).toFixed(1)} s, after the card was shown)` : ""}.`; agent = "Ground agents"; sponsor = "Elastic agents"; break;
       case "auto_relay": sentence = "Every policy check passed, so the tower’s own stop/wait instruction can be re-sent."; agent = "Policy agent"; sponsor = "policy"; break;
       case "escalate": sentence = reason(trace); agent = "Policy agent"; sponsor = "policy"; break;
       case "approved": sentence = step.actor === "policy" ? "The policy approved a resend of the tower’s own instruction." : "The controller approved sending the recovered instruction."; agent = step.actor === "policy" ? "Policy agent" : "Controller"; sponsor = step.actor === "policy" ? "policy" : "Human"; break;
@@ -502,6 +504,7 @@ const STAGES = {
   tower_stt_final: ["Cartesia finished the tower transcript", "cartesia"],
   tower_transcript: ["Cartesia transcribed the tower", "cartesia"],
   proposed: ["Ground agents proposed a resend", ""],
+  agents_cited: ["Elastic agents cited the rule", "elastic"],
   policy: ["Policy agent checked it", ""],
   approved: ["Approved", "human"],
   rejected: ["Rejected", "human"],
