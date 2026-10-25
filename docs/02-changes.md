@@ -2,6 +2,22 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## The README now shows the system and the three sponsors
+
+- Applied `docs/29-readme-additions.md` to `README.md` at the owner's request (asked twice): a "What it looks like" part in section 3 with six real screenshots (console, a stepped-on call, the team strip, the phone join and in-air views, the Raspberry Pi microphone test), and a "For the sponsors" section before section 5 with Cartesia, Moss and Elastic: who they are, what would impress them (from their own feedback), the numbers with their grades and limits, and a built-in-a-day table from git timestamps. Additive only: no existing line was changed. The contents list gets one extra line.
+- The images were already on master under `docs/img/readme/`; the README simply did not link them until now.
+- Open: the README's "100% caught, 0 false alarms on clean audio, 380 ms" (a small scripted check, size not stated) sits beside docs/18's simulated 91.7% of 157 with a confidence interval. They measure different things, but a reader will compare them; one of them should state its size or be dropped.
+
+## A passcode gate for a hosted hub
+
+- Found by auditing a public deploy: with a room code set, the console page (`/live/atc/`), the recording page, the gateway dashboard and `/live/pilot-link` all put the room code in what they returned, and `/live/ask-audit`, `/live/reports/run` and `/live/geo/positions` would run for a stranger. The room code alone did not protect the site.
+- `unstep/live/passcode.py`: when `UNSTEP_ATC_PASSWORD` is set, those pages and endpoints (`/`, `/live/atc*`, `/live/record*`, `/demo*`, `/live/pilot-link`, `/live/addresses`, `/live/pi-join`, `/live/qr.svg`, `/live/stats`, `/live/ask-audit`, `/live/reports*`, `/live/flightlog`, `/live/clearance-context/*`, `/live/geo/*`) answer 401 with a Basic challenge until the passcode is given (any user name; the passcode may hold colons). Open on purpose: `/health`, `/pilot/`, `/live/static/*`, `/live/stations`, joining (room code) and the sockets. Preflight requests pass. With no password nothing is gated.
+- The hub warns at start-up when it is open to a network without a tower passcode, and `scripts/demo_public.py` refuses to publish without one (`--open` to override).
+- `docs/30-host-with-a-passcode.md`: the two codes, the Render and Vercel settings, what is protected, a no-secrets curl check and the known limits (two prompts, no room-code box on the join screen, no lockout). `render.yaml`: comments only.
+- Tests: `tests/test_passcode.py` (25): every tower path asks, a wrong passcode fails, the room code never reaches a stranger, the open paths stay open, joining still needs only the room code, no password means no gate, and the tunnel refuses to start without one. Full suite: 642 passed.
+- `docs/29`: the simulated 500-call figure is now described as a regression check on our own simulator, not a field accuracy.
+- Not done: deleting the older pages (`/demo/`, the dashboard, the recording page). They are now behind the passcode on a hosted hub; removing them also removes the presenter mode and tests that use them.
+
 ## A reviewed stored rule is no longer replaced by the agent's paragraph
 
 - Found while checking all eight agents live: the Compliance agent and the search cite 3-7-4 for hold short, and `merge` replaced the card's reviewed stored rule (3-7-2) with it as soon as the agents answered. Now a reviewed stored rule stays on the card and the agent's paragraph is noted as related in the confidence method; an unreviewed (candidate) rule may still be replaced. Test in `tests/test_late_citation.py`.

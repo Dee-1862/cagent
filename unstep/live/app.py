@@ -24,6 +24,7 @@ from unstep.config import ROOT, allowed_origins, env, gateway_token
 from unstep.gateway.server import create_app, origin_listed, origin_ok
 from unstep.cockpit.translate import LANGUAGES
 from unstep.live.addresses import lan_addresses, own_hostnames, reachable_from_lan
+from unstep.live.passcode import PasscodeGate
 from unstep.live.flightplans import FlightPlans, last_tower_call
 from unstep.ground.reports import reports_from_env
 from unstep.live.geo import AREAS, Geo, area_polygon
@@ -307,6 +308,8 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
                                 status_code=409)
         return {"station": seat.id, "callsign": seat.callsign, "spoken": seat.spoken, "name": seat.name,
                 "frequency": room.frequency, "live": room.live, "language": room.languages.get(seat.id)}
+
+    app.add_middleware(PasscodeGate)  # with UNSTEP_ATC_PASSWORD set, the tower's pages and endpoints ask for it
 
     app.mount("/live/static", StaticFiles(directory=WEB), name="live-static")
     if PILOT_APP.is_dir():  # `npm run build` in app/: the pilot app, served here for LAN or offline runs
