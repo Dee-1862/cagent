@@ -212,6 +212,8 @@ def test_pronunciation_dict_entries():
     entries = load_pronunciation_dict()
     texts = {e["text"] for e in entries}
     assert {"tree", "fife"} <= texts
+    assert texts == {"tree", "fife", "Unstep", "quebec"}  # only the entries heard right; fower, juliett, NOTAM were heard worse
+    assert not texts & {"fower", "juliett", "NOTAM"}
     assert "niner" not in texts  # Sonic says niner right; the respelling made ink-2 hear "N1er"
     assert all(set(e) == {"text", "pronunciation"} for e in entries)
 

@@ -1,9 +1,6 @@
 [
   {"text": "tree", "pronunciation": "TREE"},
   {"text": "fife", "pronunciation": "FIFE"},
-  {"text": "fower", "pronunciation": "FOW-er"},
   {"text": "Unstep", "pronunciation": "un-STEP"},
-  {"text": "juliett", "pronunciation": "JOO-lee-ett"},
-  {"text": "quebec", "pronunciation": "keh-BECK"},
-  {"text": "NOTAM", "pronunciation": "NO-tam"}
+  {"text": "quebec", "pronunciation": "keh-BECK"}
 ]

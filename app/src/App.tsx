@@ -23,17 +23,24 @@ const mic = new Mic();
 export default function App() {
   const [hub, setHub] = useState<Hub | null>(() => hubFromLocation());
   // Hash routes (#/fly/N789PA) work on Vercel and under /pilot/ on the hub alike.
+  // A phone that slept and came back to the bare address reclaims its seat from sessionStorage; a freed seat clears it.
   const seatInHash = () => window.location.hash.match(/^#\/fly\/([A-Za-z0-9]+)/)?.[1] ?? null;
-  const [station, setStation] = useState<string | null>(seatInHash);
+  const rememberedSeat = () => { try { return sessionStorage.getItem("unstep.seat"); } catch { return null; } };
+  const [station, setStation] = useState<string | null>(() => seatInHash() ?? rememberedSeat());
   useEffect(() => {
-    const on = () => setStation(seatInHash());
+    const remember = () => {
+      const seat = seatInHash();
+      if (seat) try { sessionStorage.setItem("unstep.seat", seat); } catch { /* private mode */ }
+    };
+    remember();
+    const on = () => { remember(); setStation(seatInHash()); };
     addEventListener("hashchange", on);
     return () => removeEventListener("hashchange", on);
   }, []);
 
   if (!hub) return <HubPrompt onHub={setHub} />;
   if (!station) return <Join hub={hub} onSeat={(s) => { location.hash = `/fly/${s.station}`; }} />;
-  return <Fly hub={hub} station={station} onLeave={() => { location.hash = ""; }} />;
+  return <Fly hub={hub} station={station} onLeave={() => { try { sessionStorage.removeItem("unstep.seat"); } catch { /* private mode */ } location.hash = ""; }} />;
 }
 
 // ------------------------------------------------------------ hub and join
@@ -190,9 +197,10 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
           return;
         case "stations": return setStations(m.stations);
         case "seat_freed": // the presenter reset the room, or this phone was away too long
+          try { sessionStorage.removeItem("unstep.seat"); } catch { /* private mode */ }
           say(typeof m.reason === "string" && m.reason.startsWith("landed")
-            ? "Your flight has landed after a quiet spell. Join again to fly."
-            : "Your plane was handed back. Join again to fly.");
+            ? "Your flight has landed after a quiet spell. Scan again to fly."
+            : "Your plane was handed back. Scan again to fly.");
           l.close(); // stop auto-reconnect now, or the phone rejoins the freed plane before it leaves (reset didn't stick)
           return void setTimeout(onLeave, 2500);
         case "room_reset":
@@ -282,7 +290,16 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
     setSpeaker((phrase) => l.send({ type: "cue", name: phrase })); // spoken cue lines, in Unstep's voice
     l.open();
     const t = setInterval(() => tick((n) => n + 1), 500);
-    return () => { setSpeaker(null); l.close(); clearInterval(t); };
+    const wake = () => { if (document.visibilityState !== "hidden") l.wake(); };
+    document.addEventListener("visibilitychange", wake);
+    addEventListener("online", wake);
+    addEventListener("pageshow", wake);
+    return () => {
+      document.removeEventListener("visibilitychange", wake);
+      removeEventListener("online", wake);
+      removeEventListener("pageshow", wake);
+      setSpeaker(null); l.close(); clearInterval(t);
+    };
   }, [hub, station]);
 
   // Eyes-free: say when the radio link drops and comes back.

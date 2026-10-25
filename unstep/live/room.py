@@ -511,6 +511,7 @@ class LiveRoom:
         self.claims: dict[str, float] = {}  # station -> hub time join() handed it out
         self._join_lock = asyncio.Lock()
         self._moss_used = 0
+        self.geo = None  # unstep.live.geo.Geo, set by the app: where each plane is, for the late explanation
         self.watchers = None  # unstep.monitor.Team when UNSTEP_WATCHERS=1: four rule watchers feeding the console
         self.last_active: dict[str, float] = {}  # station -> time.monotonic() of its last input
         self._shared_moss = None
@@ -1927,7 +1928,24 @@ class LiveRoom:
                    f"Elastic's agents checked the fix and cited {citation or 'no paragraph'} "
                    f"({seconds} s, after the card was shown{after})",
                    citation=citation, workflow_ms=agents.took_ms, confidence=proposal.get("confidence"))
+        where = self._where_is(trace, proposal)
+        if where:
+            self._step(trace, "ground", "where_is", f"Where the plane was: {where}", position=where)
         self.send_to(None, {"type": "trace", "trace": trace})
+
+    def _where_is(self, trace: dict, proposal: dict) -> str | None:
+        """Where the plane is, from the newest stored position (Elastic geo, kept by the console feed). Only for the
+        late explanation, never on the pilot's path; None when no fresh position exists."""
+        import time as _time
+
+        from unstep.ground.places import describe_position
+
+        station = next((s.id for s in self.stations.values() if s.callsign == trace.get("callsign")), None)
+        position = (getattr(self.geo, "latest", None) or {}).get(station)
+        if not position or _time.monotonic() - position.get("at", 0) > 15:
+            return None
+        runway = ((proposal.get("slots") or {}).get("runway"))
+        return describe_position(position, runway)
 
     async def _prompt_controller(self, trace: dict) -> None:
         p = trace.get("proposal") or {}

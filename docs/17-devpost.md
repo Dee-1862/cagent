@@ -65,6 +65,9 @@ The demo: the laptop is the control tower on the projector, and phones are the p
   - The garbled fragment the cockpit heard ("Cessna 123, short runway 30") is run as a hybrid search over the plane's own memory, and the result, with its source record and search time, is shown on the console beside the hint. **The newest clearance gives the hint ("hold short Runway 33"); Moss's search is the evidence.**
   - **Safety rule:** a hint only ever says stop or wait, and an older clearance can never come back ahead of a newer one.
 - **Measured live (2026-10-24):** the garbled fragment scores 1.0 against the right clearance and unrelated speech scores 0.0, below our floor; the pilot's "what did the tower tell me in the last minute?" is answered from the plane's memory in under 1 ms.
+- **Restart from the plane's own disk (MEASURED LIVE, Rishit, R54):** a plane's session is saved with `save_to_disk` and restored with `load_from_disk`: 4 docs in 21.1 ms with no duplicates, and the answer to "what was my last clearance?" was correct. The Moss SDK's own `load_from_disk` took about 1.5 ms; opening the session object (which contacts Moss to check credentials) takes about 300 ms.
+- **Flight log survives a restart (MEASURED LIVE, R52 and R54):** a plane that goes quiet lands, its flight is pushed once to Moss Cloud, and a fresh client reads it back (2 docs in about 1.2 to 1.5 s once the build job has finished).
+- **Clearance agent reads the plane's last tower call from its Moss session in 0.29 to 0.6 ms (MEASURED LIVE, R53 and R55).**
 - **Moss Inference** translates the private advisory, about 165 ms to first token warm. A translation is used only if every digit survives; otherwise the pilot gets English only.
 
 **Elastic: checks and remembers**
@@ -76,7 +79,11 @@ The demo: the laptop is the control tower on the projector, and phones are the p
   - **Readback Auditor** explains a mismatch.
   - Agents never write the instruction; they cite and can only lower confidence, and a citation is kept only if that paragraph exists in our FAA index.
 - **Measured live (2026-10-24), on our Elastic Cloud project:** 52 FAA JO 7110.65 paragraphs indexed; 4 agents, 7 tools and 2 workflows deployed; on real stepped-on calls the Compliance agent cited **¶3-7-4 "Runway Proximity"** with an exact quote; the percolator matched a readback in 3.0 ms; the ES|QL safety panel answers in 1.1–1.5 s; "ask the audit trail" answered "which aircraft had the most blocked calls?" correctly with the query shown.
-- **Honest limit:** the agents take about 6 s (call end to pilot hearing the fix: 9.2 s with agents on, 2.9 s without). **[confirm live: once the room shows the card at once and adds the citation when it arrives, re-measure and replace this line]**
+- **Clearance agent (MEASURED LIVE, Rishit, R53 and R55):** a pilot's request gets a proposed clearance from the flight plan in Elastic (0.23 to 2.0 s), the plane's last tower call from Moss (0.29 to 0.6 ms) and runway occupancy from an Elastic `geo_shape` query (4 to 5 ms). The controller approves, and the plane moves only after the readback.
+- **Geography:** the airport's runway, hold-short areas and taxiways are `geo_shape` documents in `unstep-airport`; each plane's position is a `geo_point` in `unstep-positions` (Elastic `took` 0 to 1 ms). The console flags a runway incursion from them. The map is a demo map, not a survey.
+- **Flights landed:** a plane that goes quiet lands and a counts-only summary is saved in `unstep-flights` (MEASURED LIVE, R52).
+- **Built, not yet deployed or run live (D52):** a scheduled nightly review by a coach agent over the controllers' decisions (`unstep-reviews`), a shift briefing every 8 hours, and an MCP client for our tools (`scripts/mcp_demo.py`). The coach reports a trend only with enough data and does not claim the system learns.
+- **Honest limit:** the agents take about 10 to 11.5 s through Agent Builder in the latest live runs (R54); the card is on screen at once and the citation is added when it arrives. Older figure: about 6 s (call end to pilot hearing the fix: 9.2 s with agents on, 2.9 s without). **[confirm live: once the room shows the card at once and adds the citation when it arrives, re-measure and replace this line]**
 
 **Stack**
 - **Hub:** Python 3.12, FastAPI WebSocket hub with role-based routing; Pydantic contracts.

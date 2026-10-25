@@ -1,8 +1,9 @@
-"""Where a plane is on the airport, in words (D51). A fixed table of named points, not a survey.
+"""Where a plane is on the airport, in words (D51). Named points on the console's ground graph.
 
-The points mirror the console's ground graph (`web/live/atc/taxi.js`: scene units x, z). The metres-per-unit scale
-and the origin are our stand-in until Rishit's side gives real ones, so every sentence made here says "demo map".
-Pure functions; Elastic gets the same points as `geo_point` in the `unstep-airport` index (scripts/deploy_elastic.py).
+Positions are the console's scene units (web/live/atc/taxi.js). The scale and the real coordinates come from
+`unstep.live.geo` (one source of truth, Rishit's side): one unit is `METERS_PER_UNIT` metres. Distances here are in
+metres on that map, which is a demo map and not a survey, and every sentence says so. Pure functions; the same
+shapes live in Elastic (`unstep-airport`), this module only names points and measures to them.
 """
 
 from __future__ import annotations
@@ -10,13 +11,11 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-ORIGIN_LAT, ORIGIN_LON = 37.6188, -122.3750  # the contracts' default GPS (unstep/cockpit/edge.py)
-METRES_PER_UNIT = 1.0                          # stand-in scale: one console unit is one metre
-LABEL = "demo map, not surveyed"
-_M_PER_DEG_LAT = 111_320.0
+from unstep.live.geo import ANCHOR, HEADING_X, METERS_PER_UNIT, to_latlon
 
+LABEL = "demo map, not surveyed"
 RWY_Z, TWY_Z, TWYA_Z = 22.0, 14.0, 4.5
-HOLD_STOP_Z = RWY_Z - 3.4 - 1.4
+HOLD_STOP_Z = RWY_Z - 3.4 - 1.4  # where a plane stops, nose behind the painted line (taxi.js)
 
 
 @dataclass(frozen=True)
@@ -27,12 +26,8 @@ class Place:
     runway: str | None = None  # the runway a hold-short point protects
 
     @property
-    def lat(self) -> float:
-        return round(ORIGIN_LAT + self.z * METRES_PER_UNIT / _M_PER_DEG_LAT, 7)
-
-    @property
-    def lon(self) -> float:
-        return round(ORIGIN_LON + self.x * METRES_PER_UNIT / (_M_PER_DEG_LAT * math.cos(math.radians(ORIGIN_LAT))), 7)
+    def latlon(self) -> tuple[float, float]:
+        return to_latlon(self.x, self.z)
 
 
 PLACES: tuple[Place, ...] = (
@@ -45,14 +40,13 @@ PLACES: tuple[Place, ...] = (
 )
 
 
-def distance_m(a: Place, b: Place) -> float:
-    return round(math.hypot(a.x - b.x, a.z - b.z) * METRES_PER_UNIT, 1)
+def distance_m(ax: float, az: float, bx: float, bz: float) -> float:
+    return round(math.hypot(ax - bx, az - bz) * METERS_PER_UNIT, 1)
 
 
 def nearest(x: float, z: float) -> tuple[Place, float]:
-    probe = Place("plane", x, z)
-    best = min(PLACES, key=lambda p: distance_m(probe, p))
-    return best, distance_m(probe, best)
+    best = min(PLACES, key=lambda p: distance_m(x, z, p.x, p.z))
+    return best, distance_m(x, z, best.x, best.z)
 
 
 def hold_line(runway: str | None) -> Place | None:
@@ -65,5 +59,21 @@ def describe(x: float, z: float, runway: str | None = None) -> str:
     text = f"{d:g} m from {near.name}"
     line = hold_line(runway)
     if line is not None and line is not near:
-        text += f", {distance_m(Place('plane', x, z), line):g} m from the {line.name} line"
+        text += f", {distance_m(x, z, line.x, line.z):g} m from the {line.name} line"
     return f"{text} ({LABEL})"
+
+
+def to_scene(lat: float, lon: float) -> tuple[float, float]:
+    """The inverse of `to_latlon`: a stored position back to the console's scene units."""
+    lat0, lon0 = ANCHOR
+    north, east = (lat - lat0) * 111_320, (lon - lon0) * 111_320 * math.cos(math.radians(lat0))
+    bx, bz = math.radians(HEADING_X), math.radians(HEADING_X + 90)
+    return ((north * math.cos(bx) + east * math.sin(bx)) / METERS_PER_UNIT,
+            (north * math.cos(bz) + east * math.sin(bz)) / METERS_PER_UNIT)
+
+
+def describe_position(position: dict, runway: str | None = None) -> str:
+    """A stored position ({lat, lon, areas}, as `Geo.latest` keeps it) in one plain sentence."""
+    x, z = to_scene(position["lat"], position["lon"])
+    where = ", ".join(position.get("areas") or []) or "off the mapped areas"
+    return f"In {where}; {describe(x, z, runway)}" if position.get("areas") else f"{where.capitalize()}; {describe(x, z, runway)}"

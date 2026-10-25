@@ -68,6 +68,24 @@ INDEXES = {
 }
 
 
+MAP_VIEWS = {  # fixed ids, so the saved map can point at its data views
+    "unstep-airport": ("unstep-airport", None), "unstep-positions": ("unstep-positions", "ts")}
+
+
+def map_steps() -> list[tuple[str, str, str, dict | None]]:
+    """The Kibana map (airport shapes plus plane tracks). The saved-object layout is written from memory of Kibana's
+    Maps format and has not been run against a cluster: the first live run is the check (hence `--only maps`)."""
+    steps: list[tuple[str, str, str, dict | None]] = []
+    for view_id, (title, time_field) in MAP_VIEWS.items():
+        view = {"id": view_id, "title": title, "name": title, **({"timeFieldName": time_field} if time_field else {})}
+        steps.append((f"data view {title}", "POST", "kb/api/data_views/data_view", {"data_view": view, "override": True}))
+    for path in sorted((DEFS / "maps").glob("*.json")):
+        saved = json.loads(path.read_text())
+        steps.append((f"map {saved['id']}", "POST", f"kb/api/saved_objects/map/{saved['id']}?overwrite=true",
+                      {"attributes": saved["attributes"]}))
+    return steps
+
+
 def load_definitions() -> dict[str, list]:
     tools = [json.loads(p.read_text()) for p in sorted((DEFS / "tools").glob("*.json"))]
     agents = [json.loads(p.read_text()) for p in sorted((DEFS / "agents").glob("*.json"))]
@@ -113,8 +131,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--replace", action="store_true")
+    parser.add_argument("--only", choices=["maps"], help="deploy just this part; it touches no agent, tool or workflow")
     args = parser.parse_args()
-    steps = plan(args.replace)
+    steps = map_steps() if args.only == "maps" else plan(args.replace)
     if args.dry_run:
         for label, method, path, body in steps:
             print(f"{method} {path}  # {label}")
@@ -136,7 +155,7 @@ def main() -> int:
                 r = _update(client, kb.rstrip("/"), label, body)
                 exists = False
             ok = r.is_success or exists
-            soft = label.startswith("data view")  # a convenience for Discover and Lens: never fails the deploy
+            soft = label.startswith("data view") and args.only != "maps"  # a convenience for Discover and Lens: never fails the deploy
             failed += not ok and not soft
             print(f"{'ok  ' if ok else ('warn' if soft else 'FAIL')} {label}: {r.status_code}"
                   f"{' (exists, kept)' if exists else ''}" + ("" if ok else f" {r.text[:300]}"))

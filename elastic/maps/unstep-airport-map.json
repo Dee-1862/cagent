@@ -1,0 +1,11 @@
+{
+  "id": "unstep-airport-map",
+  "type": "map",
+  "attributes": {
+    "title": "Unstep airport and planes",
+    "description": "Airport areas (geo_shape) and plane positions (geo_point). Demo map, not surveyed.",
+    "mapStateJSON": "{\"zoom\": 13, \"center\": {\"lat\": 37.865, \"lon\": -122.33}, \"timeFilters\": {\"from\": \"now-5m\", \"to\": \"now\"}, \"refreshConfig\": {\"isPaused\": false, \"interval\": 1000}, \"query\": {\"language\": \"kuery\", \"query\": \"\"}}",
+    "layerListJSON": "[{\"id\": \"airport-areas\", \"label\": \"Airport areas\", \"type\": \"GEOJSON_VECTOR\", \"visible\": true, \"minZoom\": 0, \"maxZoom\": 24, \"alpha\": 0.6, \"sourceDescriptor\": {\"type\": \"ES_SEARCH\", \"id\": \"airport-source\", \"indexPatternId\": \"unstep-airport\", \"geoField\": \"area\", \"scalingType\": \"LIMIT\", \"limit\": 50, \"filterByMapBounds\": false, \"tooltipProperties\": [\"name\", \"kind\"], \"applyGlobalQuery\": true, \"applyGlobalTime\": false}, \"style\": {\"type\": \"VECTOR\", \"properties\": {\"fillColor\": {\"type\": \"STATIC\", \"options\": {\"color\": \"#54B399\"}}, \"lineColor\": {\"type\": \"STATIC\", \"options\": {\"color\": \"#2d7a63\"}}}}}, {\"id\": \"plane-points\", \"label\": \"Planes (last 5 minutes)\", \"type\": \"GEOJSON_VECTOR\", \"visible\": true, \"minZoom\": 0, \"maxZoom\": 24, \"alpha\": 1, \"sourceDescriptor\": {\"type\": \"ES_SEARCH\", \"id\": \"positions-source\", \"indexPatternId\": \"unstep-positions\", \"geoField\": \"location\", \"scalingType\": \"LIMIT\", \"limit\": 2000, \"filterByMapBounds\": false, \"tooltipProperties\": [\"station\", \"state\", \"areas\"], \"applyGlobalQuery\": true, \"applyGlobalTime\": true}, \"style\": {\"type\": \"VECTOR\", \"properties\": {\"fillColor\": {\"type\": \"DYNAMIC\", \"options\": {\"field\": {\"name\": \"station\", \"origin\": \"source\"}, \"color\": \"Category 10\"}}, \"iconSize\": {\"type\": \"STATIC\", \"options\": {\"size\": 8}}}}}]",
+    "uiStateJSON": "{}"
+  }
+}

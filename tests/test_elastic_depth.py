@@ -77,3 +77,15 @@ def test_mcp_client_initialises_then_lists_and_calls():
     assert asyncio.run(go()) == [{"name": "unstep_trend_decisions"}]
     assert [m for _, m, _ in seen] == ["initialize", "notifications/initialized", "tools/list", "tools/call"]
     assert all(p == "/api/agent_builder/mcp" for p, _, _ in seen) and seen[-1][2] == "s1"
+
+
+def test_maps_only_deploy_touches_no_agent_tool_or_workflow():
+    steps = deploy_elastic.map_steps()
+    labels = [s[0] for s in steps]
+    assert labels == ["data view unstep-airport", "data view unstep-positions", "map unstep-airport-map"]
+    assert all(not l.startswith(("tool", "agent", "workflows")) for l in labels)
+    saved = steps[-1][3]["attributes"]
+    layers = json.loads(saved["layerListJSON"])
+    assert {l["sourceDescriptor"]["indexPatternId"] for l in layers} == set(deploy_elastic.MAP_VIEWS)
+    assert {l["sourceDescriptor"]["geoField"] for l in layers} == {"area", "location"}
+    assert json.loads(saved["mapStateJSON"])["refreshConfig"]["interval"] == 1000

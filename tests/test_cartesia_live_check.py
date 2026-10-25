@@ -71,7 +71,7 @@ def test_dictionary_check_lists_the_entries_that_fail(tmp_path):
     code, report = run_main(tmp_path, "--dry-run", "--only", "dict", backend=backend)
     check = by_name(report)["dict"]
     assert code == 1 and check["status"] == "FAIL"
-    assert check["data"]["failing_with_dictionary"] == ["fower", "quebec", "NOTAM"]
+    assert sorted(check["data"]["failing_with_dictionary"]) == ["NOTAM", "fower", "quebec"]
     texts = " ".join(line["text"] for line in check["lines"] if line["level"] == "FAIL")
     assert "'fower'" in texts and "'quebec'" in texts and "'NOTAM'" in texts and "'juliett'" not in texts
     rows = {r["word"]: r for r in check["data"]["rows"]}
@@ -98,8 +98,8 @@ def test_heard_matching_accepts_plain_words_but_not_near_misses():
 
 
 def test_every_dictionary_entry_is_in_the_check(tmp_path):
-    entries = json.loads(live.DICT_PATH.read_text())
-    assert {"fower", "juliett", "quebec", "NOTAM"} <= {e["text"] for e in entries}
+    entries = json.loads(live.DICT_PATH.read_text()) + json.loads(live.REJECTED_PATH.read_text())
+    assert {"fower", "juliett", "quebec", "NOTAM"} <= {e["text"] for e in entries}  # screened, deployed or not
     _, report = run_main(tmp_path, "--dry-run", "--only", "dict")
     assert {e["text"] for e in entries} <= {r["word"] for r in by_name(report)["dict"]["data"]["rows"]}
     assert "niner" in {r["word"] for r in by_name(report)["dict"]["data"]["rows"]}  # control

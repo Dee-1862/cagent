@@ -50,6 +50,8 @@ from unstep.config import cartesia_stt_model, cartesia_tts_model, cartesia_versi
 
 OUT = ROOT / "data" / "cartesia-live"
 DICT_PATH = ROOT / "assets" / "pronunciation" / "atc.json"
+# Respellings that were heard worse than no entry (docs/24). Not uploaded; still screened so the evidence stays checkable.
+REJECTED_PATH = ROOT / "assets" / "pronunciation" / "rejected.json"
 CHECKS = ("caption", "turns", "tts", "dict", "rate")
 HARD_MAX_SOCKETS = 6  # never open more than this, whatever the flag says
 DEFAULT_SOCKETS = 4
@@ -333,7 +335,7 @@ async def check_dict(b, args) -> Check:
     if not b.has_voice:
         c.add("SKIP", "CARTESIA_VOICE_ID not set")
         return c
-    entries = json.loads(DICT_PATH.read_text(encoding="utf-8"))
+    entries = json.loads(DICT_PATH.read_text(encoding="utf-8")) + json.loads(REJECTED_PATH.read_text(encoding="utf-8"))
     words = [(e["text"], e["pronunciation"], True) for e in entries]
     words += [(w, None, False) for w in CONTROL_WORDS if w.lower() not in {e["text"].lower() for e in entries}]
     variants = [("baseline", False)] + ([("dict", True)] if b.dict_id else [])

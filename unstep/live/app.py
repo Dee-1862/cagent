@@ -191,6 +191,7 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
                 "runway_traffic": await geo.runway_traffic(exclude=station)}
 
     geo = Geo()
+    room.geo = geo
 
     @app.post("/live/geo/positions")
     async def geo_positions(request: Request):

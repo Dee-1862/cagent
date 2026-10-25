@@ -2,6 +2,17 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## Geography in the explanation, sleeping-phone rejoin, pronunciation list, Kibana map, test guide
+
+- Merged Rishit's `unstep/live/geo.py` (one coordinate scale, `unstep-airport` geo_shapes, `unstep-positions`). Our stand-in map was replaced by `unstep/ground/places.py`, which uses his scale. The late explanation on a trace now adds "Where the plane was: ..." from the stored position (room `_where_is`, only when the position is under 15 s old, never on the pilot's path).
+- Pilot app: `Live.wake()` reconnects at once when a phone wakes (tab visible, network back), replaces a socket that does not answer a ping in 2 s, and reuses the same station id; the seat is kept in `sessionStorage` and cleared on `seat_freed` ("Scan again to fly"). Three tests in `app/src/hub.test.ts`.
+- `assets/pronunciation/atc.json` now holds only tree, fife, Unstep and quebec; the three respellings that were heard worse (fower, juliett, NOTAM) moved to `rejected.json`, still screened by the live check. Nothing was created in the Cartesia account. docs/24 says which dictionary the hub sends.
+- README: the pronunciation row, the Moss push (now proven live) and a new limitation (Sonic about 40% slower than a median controller).
+- docs/17: R52 to R55 numbers added, each labelled.
+- `deploy_elastic.py --only maps`: data views and a Kibana map of the airport shapes and plane points. Written from memory of the Maps saved-object layout and not run against a cluster.
+- docs/27: how to test everything.
+
+
 ## Agent Builder depth: scheduled workflows, a coach agent, a trend tool, an MCP client
 
 - New: tool `unstep_trend_decisions` (approved and rejected per day, 30 days, real traffic), agent `unstep-coach` (reads the trend, says "not enough data" under 5 days or 20 decisions, never claims the system learns), workflow `unstep-nightly-review` (scheduled daily, saves to the new `unstep-reviews` index, created by `deploy_elastic.py`).

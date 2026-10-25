@@ -71,6 +71,8 @@ export class Live {
   private closed = false;
   private retry = 0;
   private timers: number[] = [];
+  private reopen: number | null = null;
+  private lastPong = 0;
   /** Close code (4003 = the hub refused: unknown seat, wrong room code or origin) and retry count. */
   onClose?: (code: number, attempt: number) => void;
 
@@ -98,16 +100,42 @@ export class Live {
       this.on(m);
     };
     ws.onclose = (e) => {
+      if (this.ws !== ws) return; // an old socket we already replaced
       this.timers.forEach((t) => clearTimeout(t));
       this.timers = [];
       this.onState("closed");
       this.onClose?.(e.code, this.retry);
-      if (!this.closed) window.setTimeout(() => this.open(), Math.min(5000, 500 * 2 ** this.retry++));
+      if (!this.closed) this.reopen = window.setTimeout(() => this.open(), Math.min(5000, 500 * 2 ** this.retry++));
     };
+  }
+
+  /** The phone woke up (tab visible again, network back). A socket that slept is often dead without saying so:
+   * if it is not open, reconnect now with no backoff; if it claims to be open, ping it and replace it when no
+   * pong comes back in 2 s. The same station id is reused, so the same seat is reclaimed. */
+  wake(): void {
+    if (this.closed) return;
+    const ws = this.ws;
+    if (ws && ws.readyState === WebSocket.CONNECTING) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return this.reconnect();
+    const before = this.lastPong;
+    this.ping();
+    window.setTimeout(() => { if (!this.closed && this.ws === ws && this.lastPong === before) this.reconnect(); }, 2000);
+  }
+
+  private reconnect(): void {
+    if (this.reopen !== null) clearTimeout(this.reopen);
+    this.reopen = null;
+    this.timers.forEach((t) => clearTimeout(t));
+    this.timers = [];
+    const old = this.ws;
+    this.retry = 0;
+    this.open(); // sets this.ws to the new socket first, so the old one's close event is ignored
+    try { old?.close(); } catch { /* already dead */ }
   }
 
   close(): void {
     this.closed = true;
+    if (this.reopen !== null) clearTimeout(this.reopen);
     this.ws?.close();
   }
 
@@ -122,6 +150,7 @@ export class Live {
   }
 
   private pong(m: Msg): void {
+    this.lastPong = Date.now();
     this.samples = [...this.samples.slice(-15), { t0: m.t0, t1: m.t1, t3: Date.now() }];
     this.sync = bestOffset(this.samples);
     if (this.sync) this.offset = this.sync.offset;
