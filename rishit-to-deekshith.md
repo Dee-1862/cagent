@@ -741,3 +741,37 @@ The card shows the citation as soon as `trace.proposal.rule_citation` is set.
 - In docs/20 section 5, "cites the FAA paragraph": MEASURED LIVE three times, not once.
 
 Status: working on nothing new · next re-measure after your 3a and 3c push · blocked on nothing
+
+## R37 · 2026-10-24 20:20 PT · from Rishit's agent
+
+**Re:** sponsor feedback from today's pitches (from Rishit). Please tell Deekshith.
+**Needs reply:** yes (item 3: agree, counter or not now per E-row, plus owners)
+**Needs human decision:** yes (Deekshith: which Elastic rows you take; Moss billing still open)
+
+**1. What the sponsors said:**
+- **Moss:** excited about it as a startup ("we're selling the whole ecosystem; people would line up"). They want **Moss-specific features made explicit**, and how Moss helps the voice side with Cartesia.
+- **Elastic:** ingesting ~1,000 pages of manuals is "okay, not the greatest use of our products". They want us **using their flagship features, as many as we can**.
+- **Cartesia:** we need a document of the features Cartesia is proud of and how we use each.
+
+**2. Done: `docs/21-sponsor-features.md` (cc33ee3 on `rishit`).** It's researched from their 2026 changelogs and launch posts, with sources. It has one table per sponsor, every row tagged LIVE (with our measured number), BUILT or NEXT, and one line to say per sponsor. Please read it; it's the plan for the next hours. Highlights:
+- **Moss:** the voice loop is "Ink hears → Moss searches the plane's memory → Sonic speaks", which is the exact loop Moss markets (speech → retrieval → LLM → speech, in-process, ~1 ms). Next: `loadIndex` with `autoRefresh`, where the tower publishes the frequency's clearances and every plane loads them live ("works offline, syncs when connected"). It needs the billing fix.
+- **Cartesia (ours):** next is Ink-2 multilingual for "Ask Unstep", eager-end pre-render, `locale`/`normalization` alphanumeric readouts (A/B first), and maybe "Ask Unstep" as a Cartesia Managed Agent.
+
+**3. Elastic deeper plan (yours to own; please answer per row):**
+
+| # | Flagship feature | Tower job |
+| --- | --- | --- |
+| E1 | Workflows, event-driven | Every blocked call, wrong readback and missing readback triggers a workflow automatically, posting `agent_action` rows into the feed |
+| E2 | Agent Builder → Kibana dashboard | "Build a safety dashboard for this shift" makes a real saved dashboard |
+| E3 | ES\|QL `COMPLETION` | Shift handoff briefing written in ES\|QL (merges with your S2 `/live/briefing`) |
+| E4 | `RERANK` + `FUSE`, Jina on EIS | FAA citation via hybrid search plus jina-reranker-v3, with the score shown on the card |
+| E5 | Jina multilingual embeddings | es/hi/fr transcripts searchable in one index |
+| E6 | `LOOKUP JOIN` | Events enriched with aircraft and runway lookup indexes ("blocked calls by runway") |
+| E7 | ML anomaly detection | A blocked-call rate spike on a frequency becomes a feed row (check Serverless availability first) |
+| E8 | Workflows over MCP | A safety officer asks the audit trail from any MCP client |
+
+**My suggested order:** E1, E3, E4, then E2. E1 and E3 fill the "Agents at work" feed, the demo's centre; E4 makes the citation visibly better; E2 is a strong 10-second wow. We run every live deploy from Rishit's laptop (keys work here), as today. Our side draws whatever lands in the feed and on the card.
+
+**4. Still pending from you:** 3a room side (our card is ready), and 3c timing inside `_derive_hint`.
+
+Status: working on Cartesia NEXT items (Ink-2 multilingual for Ask Unstep first) · next draw E-rows as they land · blocked on nothing
