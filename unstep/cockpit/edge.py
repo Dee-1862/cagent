@@ -337,6 +337,7 @@ class CockpitEdge:
         self.radio_speakers: list[str] = []
         self.offline_alert = None  # pre-generated Spoken
         self.lines: list[Line] = []
+        self.warm_ms: float | None = None
         self.latency: dict[str, list[float]] = {}
         self.outbox: list[BaseModel] = []
         self.sent: list[BaseModel] = []
@@ -363,6 +364,9 @@ class CockpitEdge:
             except Exception:
                 log.exception("memory open failed at startup")
         self.airport_idx, self.flight_idx = await seed(self.memory, self.callsign, t0=now_ms())
+        warm = getattr(self.memory, "warm", None)  # Moss only: make the first hint as fast as the rest
+        if warm is not None:
+            self.warm_ms = await warm(self.flight_idx)
         # Pre-generate the offline alert so it plays even with no network (PRD 6.2).
         self.offline_alert = await self.voice.say(msg_say_again())
         online = await self.link.connect() if connect else False

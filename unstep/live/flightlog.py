@@ -85,8 +85,11 @@ class FlightLog:
             try:
                 job = await self.memory.push(self.index, WRITER)
             except Exception as exc:
-                log.warning("flight log push failed (%s); kept local, retried at the next flight end", type(exc).__name__)
-                self.pushes.append({"ok": False, "error": type(exc).__name__, "at": int(time.time() * 1000)})
+                reason = " ".join(str(exc).split())[:160]
+                log.warning("flight log push failed (%s: %s); kept local, retried at the next flight end",
+                            type(exc).__name__, reason)
+                self.pushes.append({"ok": False, "error": type(exc).__name__, "reason": reason,
+                                    "at": int(time.time() * 1000)})
                 return None
             self.push_pending = False
             entry = {"ok": True, "job": str(job) if job is not None else None, "flights": len(self.flights),
@@ -111,6 +114,10 @@ class FlightLog:
         last = next((p for p in reversed(self.pushes) if p["ok"]), None)
         backend = getattr(self.memory, "backend", "local")
         where = "Moss Cloud" if backend == "moss" else "the local flight log (offline)"
+        failed = self.pushes[-1] if self.pushes and not self.pushes[-1]["ok"] else None
+        text = f"Flight log: {len(self.flights) if last else 0} flights saved to {where}"
+        if failed:  # say why the cloud copy is behind, e.g. a project usage limit, instead of looking healthy
+            text += f" (last push failed: {failed.get('reason') or failed['error']})"
         return {"type": "flightlog", "index": self.index, "backend": backend, "flights": len(self.flights),
                 "docs": self.docs, "pushed": bool(last), "push_pending": self.push_pending,
-                "last_push": last, "text": f"Flight log: {len(self.flights) if last else 0} flights saved to {where}"}
+                "last_push": last, "last_error": failed, "text": text}

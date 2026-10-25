@@ -338,6 +338,21 @@ class MossMemory(_OwnedIndexes):
             else:
                 await self._session(index)
 
+    async def warm(self, index: str) -> float:
+        """Run one tiny fetch and one tiny search on a session so the first real lookup in a live room is
+        already warm (Rishit measured 783 ms for a first hint against 0.2 to 0.4 ms warm). Returns ms.
+        Never raises: a cold session is slower, not broken."""
+        started = time.perf_counter()
+        try:
+            from moss import GetDocumentsOptions, QueryOptions
+
+            session = await self._session(index)
+            await session.get_docs(GetDocumentsOptions())
+            await session.query("warm up", QueryOptions(top_k=1))
+        except Exception:
+            log.warning("Moss warm-up for %s failed; the first lookup will be slower", index, exc_info=True)
+        return (time.perf_counter() - started) * 1000
+
     async def load_airport(self, index: str) -> None:
         """Hydrate persistent knowledge without opening a writable session."""
         if not hasattr(self, "_loaded_airports"):
@@ -426,5 +441,7 @@ def create_memory() -> Memory:
             return mem
         except ImportError:
             log.warning("MOSS keys set but the moss package is missing; falling back to local memory")
+        except Exception:  # a bad key format or SDK error at construction must not stop the room
+            log.exception("Moss client could not be created; falling back to local memory")
     log.info("memory backend: local fallback (no MOSS_PROJECT_ID/MOSS_PROJECT_KEY)")
     return LocalMemory()
