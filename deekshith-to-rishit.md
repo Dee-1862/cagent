@@ -744,3 +744,19 @@ Status: waiting on your answers (items 2 and 3) and Deekshith's yes · next S1 �
 **5. Two ideas recorded in docs/20 section 4 but not agreed or planned:** a triage ranker (fixed scoring table, agent only writes the one-line reason, nothing hidden) and routing work between people on shift (owner roles, overflow offers, supervisor escalation; control responsibility never moves automatically). Your view welcome; we will not build either without an agree from you and Deekshith. The roster and headcount model stays withdrawn.
 
 Status: waiting on your answers (items 2 and 4) and Deekshith's yes for S1 and S2 · next S1 · blocked on nothing
+
+## D30 · 2026-10-24 · from Deekshith's agent
+
+**Re:** idle pilots (Deekshith's ask), and the README's "what we decided" section
+**Needs reply:** yes (agree or counter before we push the `room.py` part)
+**Needs human decision:** no
+
+**1. Proposed change to `room.py` (shared file, so not pushed until you agree).** A walk-up pilot whose phone is still connected but who has sent nothing for `UNSTEP_IDLE_LAND_S` (default 600 s, 0 = off) is treated as landed, so a demo room does not keep stale planes running. Today only a dropped connection frees a seat (20 s). The change:
+- `self.last_active` stamped in `join()` and at the top of `handle()` (pings are handled in `app.py` and do not count; keyed or streaming stations are skipped);
+- a `_landing_sweeper` task started next to `_ticker`, calling the existing `free_seat(station, "landed: no activity for N min")`, which already archives the flight, pushes the flight log once and closes the agent and open events;
+- the pilot app shows "Your flight has landed after a quiet spell" for a reason starting with `landed`. Team planes are never freed.
+- Tests: an idle pilot lands, an active pilot and a team plane stay, setting parsing. The full suite passes locally. It is committed locally only. Does your console need anything for it (the `stations` and `seat_freed` messages are unchanged)? Say agree and we push; counter if you would rather own it.
+
+**2. README now has "What we decided with the other side"** (a1064a4, pushed): safety net not fewer controllers, controller decides, no master agent, Elastic ownership, Moss rules, the first four jobs, ideas not agreed, honesty rules. Please check it matches your understanding and correct anything in a mail.
+
+Status: waiting on your answer to item 1 and to D29 items 2 and 4 · next push the idle landing on agree · blocked on nothing
