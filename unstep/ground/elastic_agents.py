@@ -28,11 +28,15 @@ import httpx
 
 from unstep.config import elastic_settings, env, kibana_url
 from unstep.contracts import AnomalyEvent, ProposedDirective, TowerTranscript
+from unstep.ground.rules import ElasticRules, LocalRules, RuleHit, describe
 
 log = logging.getLogger("unstep.elastic_agents")
 
 BLOCKED_CALL_WORKFLOW = "unstep-blocked-call"
 BLOCKED_CALL_FAST = "unstep-blocked-call-fast"
+BLOCKED_PARALLEL = "parallel"  # two single-purpose workflows started at the same moment
+INTERCEPT_WORKFLOW = "unstep-blocked-intercept"
+COMPLIANCE_WORKFLOW = "unstep-blocked-compliance"
 READBACK_AUDIT_WORKFLOW = "unstep-readback-audit"
 PROPOSALS_INDEX = "unstep-proposals"
 FINDINGS_INDEX = "unstep-findings"
@@ -71,6 +75,7 @@ class AgentsResult:
     execution_id: str | None = None
     took_ms: float = 0.0
     citation_checked: bool | None = None  # True: paragraph found in unstep-faa
+    branches: dict = field(default_factory=dict)  # parallel mode: each agent's own time, ms
     notes: list[str] = field(default_factory=list)
 
 
@@ -121,9 +126,12 @@ class ElasticAgents:
         self.wait_s, self.poll_s = wait_s, poll_s
         self.client = httpx.AsyncClient(headers={"Authorization": f"ApiKey {api_key}"}, timeout=5.0,
                                         transport=transport)
+        self.rules_elastic = ElasticRules(es, api_key, transport=transport)
+        self.rules_local = LocalRules()
 
     async def aclose(self) -> None:
         await self.client.aclose()
+        await self.rules_elastic.aclose()
 
     async def _run(self, workflow: str, inputs: dict) -> str | None:
         r = await self.client.post(f"{self.kibana}/api/workflows/workflow/{workflow}/run",
@@ -139,6 +147,31 @@ class ElasticAgents:
                 return r.json().get("_source") or {}
             await asyncio.sleep(self.poll_s)
         return None
+
+    async def rule_for(self, instruction_text: str, wait_s: float | None = None) -> RuleHit | None:
+        """The stored rule for an instruction: percolate it in Elastic (rules are data there), and if Elastic is
+        slow, errors or has no answer, use the same rules in process. Prefers a hit that has a paragraph."""
+        wait_s = rules_wait_s() if wait_s is None else wait_s
+        hits: list[RuleHit] = []
+        try:
+            async with asyncio.timeout(wait_s):
+                hits = await self.rules_elastic.match(instruction_text)
+        except (TimeoutError, asyncio.TimeoutError):
+            log.warning("Elastic rule percolate took over %.2f s; using the in-process rules", wait_s)
+        if not any(h.paragraph for h in hits):
+            hits = hits + self.rules_local.match(instruction_text)
+        with_paragraph = [h for h in hits if h.paragraph]
+        return (with_paragraph or hits or [None])[0]
+
+    async def paragraph_text(self, paragraph: str) -> str:
+        """The paragraph's text from unstep-faa, by id (a lookup, not a search)."""
+        try:
+            r = await self.client.get(f"{self.es}/{FAA_INDEX}/_doc/{paragraph}")
+            if r.status_code == 200:
+                return str((r.json().get("_source") or {}).get("body") or "")[:900]
+        except (httpx.HTTPError, ValueError):
+            pass
+        return ""
 
     async def cite(self, query: str, wait_s: float | None = None) -> dict | None:
         """Closest FAA paragraph by hybrid search (and a rerank), with no language model in the loop, so it can
@@ -182,12 +215,16 @@ class ElasticAgents:
         waits longer because nothing is blocked on it)."""
         started = time.perf_counter()
         wait_s = self.wait_s if wait_s is None else wait_s
+        if blocked_call_workflow() == BLOCKED_PARALLEL:
+            return await self._blocked_parallel(event, transcript, proposal, wait_s, rule, started)
         try:
             inputs = {"event_id": event.event_id, "callsign": event.callsign, "heard_text": event.heard_text,
                       "tower_text": transcript.text, "lost_words": " ".join(proposal.blocked_words),
                       "instruction": proposal.instruction_text}
             workflow = blocked_call_workflow()
-            if workflow == BLOCKED_CALL_FAST:  # the one-agent version is given the paragraph the search found
+            if workflow == BLOCKED_CALL_FAST:  # the one-agent version is given the paragraph already found
+                if rule and rule.get("paragraph") and not rule.get("text"):
+                    rule = {**rule, "text": await self.paragraph_text(rule["paragraph"])}
                 inputs.update({"rule_paragraph": (rule or {}).get("paragraph") or "",
                                "rule_title": (rule or {}).get("title") or "",
                                "rule_text": (rule or {}).get("text") or ""})
@@ -216,6 +253,54 @@ class ElasticAgents:
                         event.event_id, type(exc).__name__)
             return None
 
+    async def _branch(self, workflow: str, doc_id: str, inputs: dict, started: float, wait_s: float):
+        """One of the two parallel agents: start its workflow, wait for its own answer document."""
+        execution_id = await self._run(workflow, inputs)
+        doc = await self._wait_doc(PROPOSALS_INDEX, doc_id, started + wait_s)
+        return execution_id, doc, round((time.perf_counter() - started) * 1000, 1)
+
+    async def _blocked_parallel(self, event, transcript, proposal, wait_s, rule, started) -> AgentsResult | None:
+        """Intercept and Compliance as two separate single-call workflows started together, so the wait is the
+        slower of the two instead of the sum. Each is given what it needs and makes no tool calls: Intercept the
+        two transcripts, Compliance the instruction and the paragraph already found. If one fails or is late the
+        other's answer is still used (merge handles a missing half)."""
+        if rule and rule.get("paragraph") and not rule.get("text"):
+            rule = {**rule, "text": await self.paragraph_text(rule["paragraph"])}
+        rule = rule or {}
+        intercept_in = {"event_id": event.event_id, "callsign": event.callsign, "heard_text": event.heard_text,
+                        "tower_text": transcript.text, "lost_words": " ".join(proposal.blocked_words)}
+        compliance_in = {"event_id": event.event_id, "callsign": event.callsign,
+                         "instruction": proposal.instruction_text, "rule_paragraph": rule.get("paragraph") or "",
+                         "rule_title": rule.get("title") or "", "rule_text": rule.get("text") or ""}
+        try:
+            got = await asyncio.gather(
+                self._branch(INTERCEPT_WORKFLOW, f"{event.event_id}:intercept", intercept_in, started, wait_s),
+                self._branch(COMPLIANCE_WORKFLOW, f"{event.event_id}:compliance", compliance_in, started, wait_s),
+                return_exceptions=True)
+        except (httpx.HTTPError, ValueError):
+            return None
+        parts = {}
+        for name, outcome in zip(("intercept", "compliance"), got):
+            if isinstance(outcome, Exception):
+                log.warning("Elastic %s agent for %s failed (%s)", name, event.event_id, type(outcome).__name__)
+                continue
+            execution_id, doc, ms = outcome
+            if doc is not None:
+                parts[name] = (parse_agent_json(doc.get(name)), execution_id, ms)
+        if not parts:
+            log.warning("Neither parallel Elastic agent answered %s within %.1f s; using the local proposal",
+                        event.event_id, wait_s)
+            return None
+        result = AgentsResult(intercept=(parts.get("intercept") or (None,))[0],
+                              compliance=(parts.get("compliance") or (None,))[0],
+                              execution_id=next((p[1] for p in parts.values() if p[1]), None),
+                              branches={k: v[2] for k, v in parts.items()})
+        paragraph = str((result.compliance or {}).get("paragraph") or "")
+        if paragraph:
+            result.citation_checked = await self._paragraph_exists(paragraph)
+        result.took_ms = round((time.perf_counter() - started) * 1000, 1)
+        return result
+
     async def readback_audit(self, event_id: str, instruction: str, readback: str, attempt: int) -> str | None:
         """Start the Readback Auditor; it stores its finding in unstep-findings. Never waits on it."""
         try:
@@ -226,11 +311,29 @@ class ElasticAgents:
             return None
 
 
+def rules_wait_s() -> float:
+    """How long the hub waits for Elastic to percolate the stored rules before using its in-process copy."""
+    try:
+        return max(0.05, float(env("UNSTEP_RULES_WAIT_S", default="0.3")))
+    except ValueError:
+        return 0.3
+
+
+def with_stored_rule(proposal: ProposedDirective, hit: RuleHit | None) -> ProposedDirective:
+    """Put the stored rule's paragraph on the card at once. Wording depends on whether a person reviewed it."""
+    text = describe(hit)
+    if text is None or proposal.rule_citation and "TBD" not in proposal.rule_citation:
+        return proposal
+    return proposal.model_copy(update={
+        "rule_citation": text,
+        "confidence_method": (proposal.confidence_method or "") + f" + stored rule ({hit.backend})"})
+
+
 def blocked_call_workflow() -> str:
     """Which workflow the hub starts for a stepped-on call (UNSTEP_BLOCKED_WORKFLOW). The default is the two-agent
     one that has run live; the one-agent version is opt-in until a live run shows it is faster."""
     name = env("UNSTEP_BLOCKED_WORKFLOW", default=BLOCKED_CALL_WORKFLOW)
-    return name if name in (BLOCKED_CALL_WORKFLOW, BLOCKED_CALL_FAST) else BLOCKED_CALL_WORKFLOW
+    return name if name in (BLOCKED_CALL_WORKFLOW, BLOCKED_CALL_FAST, BLOCKED_PARALLEL) else BLOCKED_CALL_WORKFLOW
 
 
 def rerank_id() -> str | None:

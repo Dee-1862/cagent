@@ -73,7 +73,10 @@ class FlightLog:
         self.push_pending = True
         drop = getattr(source_memory, "drop", None)
         if drop is not None:  # free the plane's session in the shared client
-            drop(flight_index)
+            if reason == "hub stopped":  # the plane is still flying: keep its on-board copy for the restart
+                drop(flight_index, keep_snapshot=True)
+            else:  # the seat is going to someone else: its on-board copy goes too
+                drop(flight_index)
         return record
 
     async def push(self) -> dict | None:

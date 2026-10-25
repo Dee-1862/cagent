@@ -9,6 +9,30 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+
+
+
+## A freed seat deletes its on-board Moss copy
+
+- The on-board snapshot (MM1) is deleted when a seat is freed (drop without `keep_snapshot`), so the next pilot who gets that callsign starts clean and never inherits the last pilot's clearances. A hub stop keeps it, because that plane is still flying and the point is that it restarts with its memory. Test added.
+
+## Four watchers side by side (module only)
+
+- New `unstep/monitor/`: a Readback watcher, Runway watcher, Tracking watcher and Flow watcher, each with its own queue, timers and notices, posting `agent_action` rows in the agreed format. Fixed rules, microsecond answers, thresholds are our own early warnings. One failing watcher does not stop the others. `open_items()` feeds the shift briefing.
+- Not yet connected to the live room: that needs three small additions to `room.py` (posted to Rishit's side first).
+
+## Parallel agents: Intercept and Compliance as two workflows started together
+
+- New `unstep-blocked-intercept` and `unstep-blocked-compliance` workflows with tool-less agents `unstep-intercept-lite` and `unstep-compliance-lite`. With `UNSTEP_BLOCKED_WORKFLOW=parallel` the hub starts both at once and waits for the slower one; each writes its own document so neither overwrites the other, and one missing half does not lose the other. Each branch's time goes into the audit record. Default stays the two-agent workflow that has run live; none of the new pieces has run live.
+
+## Rules as data: the FAA rule for an instruction by stored query, in milliseconds
+
+- Each rule is stored in Elastic (`unstep-rules`) as a percolator query, the same mechanism that checks readbacks. The hub percolates the proposed instruction and puts the matching rule on the card at once, with Elastic's own time, falling back to the same rules in process if Elastic is slow (`UNSTEP_RULES_WAIT_S`, 0.3 s) or down, and to the hybrid search when no rule matches.
+- Rules live in `elastic/rules/rules.json` with a review status. Only `hold-short` has a paragraph, as a candidate (cited live by the agent, not yet read against the FAA text); the card says "Candidate rule, not yet reviewed" until a person marks it reviewed.
+- `scripts/rule_latency.py` compares a dictionary, an in-process scan and Elastic as the rule count grows; the local part is measured (scan 0.02 ms at 7 rules to 9.6 ms at 5,000), the Elastic part needs a live run. Filler rules are synthetic and labelled.
+- `docs/25-latency-ideas.md` records what is fast and why, what is not claimed (not "only Elastic"; the paragraph is not signed off), and ideas not built.
+
 ## Search-first citation, a one-agent workflow and a briefing workflow
 
 - Rishit's live timings (R42) show the Elastic workflow takes about 24 s (intercept 12.7 s, compliance 10.0 s, store 0.3 s), with compliance looking capped at 10 s.
@@ -153,6 +177,20 @@ What changed and why, in a few lines.
 - Checked: 4 tests with a fake shared client (copy on end, a single push, session dropped, no per-aircraft push, retry after a failed push, the route). The live push needs Moss keys.
 
 **Related:** [16-sponsor-depth.md](16-sponsor-depth.md) M6, agent mail R3, R4
+
+## 2026-10-25: Each plane's Moss memory is saved on board and restored from disk (MM1)
+
+**Type:** Added
+**Area:** Edge device
+
+- `MossMemory` saves a plane's flight session with the SDK's `SessionIndex.save_to_disk(cache_path)` under `data/moss/` (gitignored; `UNSTEP_MOSS_DISK` names another folder or `off`). A save follows a new clearance, readback or advisory, at most once per second per plane, as a background task off the radio path; a failed save only logs. `CockpitEdge.start` calls `load_from_disk` before seeding when a snapshot exists, seeds only the documents that are missing, then warms. `stop` flushes the last save.
+- `LocalMemory(disk_dir=...)` does the same with a JSON file, so tests and offline runs behave the same (off unless a folder is given).
+- `scripts/moss_live_check.py` part 5 saves, drops and restores a session from disk and asks "what was my last clearance?", printing doc count and load ms. `--dry-run` uses the local stand-in. Tests: `tests/test_moss_disk.py`, with fakes.
+- Limit: this is memory on board, from disk, with no index download. Opening a Moss session object still contacts Moss to check credentials, so a start with the service unreachable is not shown here.
+
+**Related:** docs/23-moss-max.md (MM1), docs/19-elastic-moss-plan.md section 8.1
+
+---
 
 ## 2026-10-24: Benchmark report against the status quo and published work
 

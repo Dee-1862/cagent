@@ -13,6 +13,9 @@ class SlowAgents:
     def __init__(self, delay, result):
         self.delay, self.result, self.waits = delay, result, []
 
+    async def rule_for(self, text, wait_s=None):
+        return None
+
     async def cite(self, query, wait_s=None):
         return None
 

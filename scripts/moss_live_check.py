@@ -15,6 +15,10 @@ What it prints, and why:
   4. the flight log: two flights archived, ONE push, then a brand new client (a restart) and how many flights
      came back and how fast. The index is named flightlog-check-<time>, never the real one, and per-aircraft
      sessions are never pushed.
+  5. the plane's memory on disk (MM1): save a session with `save_to_disk`, drop it, build a new session object
+     and `load_from_disk` it with no index download, then ask "what was my last clearance?". Prints the doc count
+     and the load ms. This proves "on board, from disk, no cloud index"; it does not prove the process can start
+     with the Moss service unreachable (opening a session object still contacts Moss to check credentials).
 
 Exit code 1 if a check that our code relies on fails. A dry run proves the flow only, not Moss.
 """
@@ -23,7 +27,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -33,7 +39,7 @@ sys.path.insert(0, str(ROOT))
 from unstep.clock import now_ms  # noqa: E402
 from unstep.cockpit.hint import derive_hint  # noqa: E402
 from unstep.cockpit.memory import Doc, LocalMemory, create_memory  # noqa: E402
-from unstep.cockpit.queries import answer_query  # noqa: E402
+from unstep.cockpit.queries import answer_query, record  # noqa: E402
 from unstep.cockpit.seed import COCKPIT, seed  # noqa: E402
 from unstep.live.flightlog import FlightLog  # noqa: E402
 from unstep.scenario import CALLSIGN, T0  # noqa: E402
@@ -109,6 +115,37 @@ async def flight_log_checks(factory, report, keep: bool) -> int:
     return failures
 
 
+async def disk_checks(make_memory, report) -> int:
+    """MM1: a plane's flight session saved to disk, then restored into a brand new session object."""
+    from unstep.cockpit.memory import flight_index
+
+    flight = flight_index(CALLSIGN)
+    with tempfile.TemporaryDirectory(prefix="unstep-moss-disk-") as folder:
+        first = make_memory(folder)
+        await first.open(flight)
+        _, flight = await seed(first, CALLSIGN, t0=T0)
+        await record(first, flight, CALLSIGN, "clr-disk-check", "Cessna 1-2-3, hold short runway 33", "clearance",
+                     ts=now_ms())
+        await first.flush_saves()
+        report(f"5. on-board memory: saved {first.saves} snapshot(s) of the plane session under {folder}")
+        failures = 0 if first.saves else 1
+        del first  # the "kill"
+        second = make_memory(folder)  # a restart: a new session object, restored from disk
+        await second.open(flight)
+        count = await second.load_snapshot(flight)
+        if count is None:
+            report("   nothing came back from disk")
+            return failures + 1
+        await seed(second, CALLSIGN, t0=T0, skip_existing=True)
+        ids = [d.id for d in (await second.fetch(flight)).docs]
+        q = await answer_query(second, flight, CALLSIGN, "What was my last clearance?")
+        report(f"   after a restart from disk: {count} docs loaded in {second.last_load_ms} ms, "
+               f"{len(ids)} after seeding (duplicates: {len(ids) - len(set(ids))})")
+        report(f"   what was my last clearance? -> {q.answer[:140]}")
+        failures += (len(ids) != len(set(ids))) + ("hold short runway 33" not in q.answer.lower())
+        return failures
+
+
 async def main_async(dry_run: bool, keep: bool, out=print) -> int:
     if dry_run:
         shared = LocalMemory()
@@ -127,6 +164,13 @@ async def main_async(dry_run: bool, keep: bool, out=print) -> int:
 
     failures = await plane_checks(mem, out)
     failures += await flight_log_checks(factory, out, keep)
+    if dry_run:
+        failures += await disk_checks(lambda folder: LocalMemory(disk_dir=folder), out)
+    else:
+        from unstep.cockpit.memory import MossMemory
+
+        pid, key = os.environ["MOSS_PROJECT_ID"], os.environ["MOSS_PROJECT_KEY"]
+        failures += await disk_checks(lambda folder: MossMemory(pid, key, disk_dir=folder), out)
     out("ok" if not failures else f"{failures} check(s) failed")
     return 1 if failures else 0
 

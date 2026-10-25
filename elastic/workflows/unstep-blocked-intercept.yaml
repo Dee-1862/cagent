@@ -1,0 +1,45 @@
+# Half of the parallel version of unstep-blocked-call: the Intercept question only. The hub starts this and
+# unstep-blocked-compliance at the same moment (UNSTEP_BLOCKED_WORKFLOW=parallel), so the wait is the slower of the
+# two instead of their sum. Each stores its answer under its own document id, so neither overwrites the other.
+version: "1"
+name: unstep-blocked-intercept
+description: Intercept agent for one stepped-on radio call, run in parallel with the compliance check
+enabled: true
+triggers:
+  - type: manual
+    inputs:
+      - name: event_id
+        type: string
+        required: true
+      - name: callsign
+        type: string
+        required: true
+      - name: heard_text
+        type: string
+        required: true
+      - name: tower_text
+        type: string
+        required: true
+      - name: lost_words
+        type: string
+        required: false
+steps:
+  - name: intercept
+    type: ai.agent
+    agent-id: unstep-intercept-lite
+    create-conversation: true
+    with:
+      message: |-
+        Event {{ inputs.event_id }} for {{ inputs.callsign }}.
+        The cockpit heard: "{{ inputs.heard_text }}"
+        The controller said at the same time: "{{ inputs.tower_text }}"
+        Words lost in the overlap: "{{ inputs.lost_words }}"
+  - name: store
+    type: elasticsearch.index
+    with:
+      index: unstep-proposals
+      id: "{{ inputs.event_id }}:intercept"
+      document:
+        event_id: "{{ inputs.event_id }}"
+        execution_id: "{{ execution.id }}"
+        intercept: "{{ steps.intercept.output.message }}"

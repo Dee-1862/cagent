@@ -338,6 +338,8 @@ class CockpitEdge:
         self.offline_alert = None  # pre-generated Spoken
         self.lines: list[Line] = []
         self.warm_ms: float | None = None
+        self.restored_docs: int | None = None  # documents restored from this plane's on-board snapshot
+        self.load_ms: float | None = None
         self.latency: dict[str, list[float]] = {}
         self.outbox: list[BaseModel] = []
         self.sent: list[BaseModel] = []
@@ -363,7 +365,13 @@ class CockpitEdge:
                 await opener(airport_index(AIRPORT_ICAO), flight_index(self.callsign))
             except Exception:
                 log.exception("memory open failed at startup")
-        self.airport_idx, self.flight_idx = await seed(self.memory, self.callsign, t0=now_ms())
+        # MM1: if this plane saved its memory on board, restore it before seeding (and seed only what is missing).
+        loader = getattr(self.memory, "load_snapshot", None)
+        restored = await loader(flight_index(self.callsign)) if loader is not None else None
+        self.restored_docs = restored
+        self.load_ms = getattr(self.memory, "last_load_ms", None) if restored is not None else None
+        self.airport_idx, self.flight_idx = await seed(self.memory, self.callsign, t0=now_ms(),
+                                                       skip_existing=bool(restored))
         warm = getattr(self.memory, "warm", None)  # Moss only: make the first hint as fast as the rest
         if warm is not None:
             self.warm_ms = await warm(self.flight_idx)
@@ -380,6 +388,9 @@ class CockpitEdge:
                 await asyncio.wait_for(t, 5)
             except (asyncio.TimeoutError, Exception):
                 t.cancel()
+        flush = getattr(self.memory, "flush_saves", None)
+        if flush is not None:
+            await flush()  # the last clearance is on disk before we go
         await self.link.close()
         self.out.save()
 

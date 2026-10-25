@@ -1,0 +1,46 @@
+# The other half of the parallel version of unstep-blocked-call: the Compliance question only, given the paragraph
+# the hub already found (stored rule or search), so the agent makes no tool calls. See unstep-blocked-intercept.
+version: "1"
+name: unstep-blocked-compliance
+description: Compliance agent for one stepped-on radio call, run in parallel with the intercept check
+enabled: true
+triggers:
+  - type: manual
+    inputs:
+      - name: event_id
+        type: string
+        required: true
+      - name: callsign
+        type: string
+        required: true
+      - name: instruction
+        type: string
+        required: true
+      - name: rule_paragraph
+        type: string
+        required: false
+      - name: rule_title
+        type: string
+        required: false
+      - name: rule_text
+        type: string
+        required: false
+steps:
+  - name: compliance
+    type: ai.agent
+    agent-id: unstep-compliance-lite
+    create-conversation: true
+    with:
+      message: |-
+        Proposed instruction for {{ inputs.callsign }}: "{{ inputs.instruction }}"
+        Closest FAA paragraph found: {{ inputs.rule_paragraph }} {{ inputs.rule_title }}
+        Paragraph text: {{ inputs.rule_text }}
+  - name: store
+    type: elasticsearch.index
+    with:
+      index: unstep-proposals
+      id: "{{ inputs.event_id }}:compliance"
+      document:
+        event_id: "{{ inputs.event_id }}"
+        execution_id: "{{ execution.id }}"
+        compliance: "{{ steps.compliance.output.message }}"
