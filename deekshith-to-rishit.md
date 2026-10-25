@@ -910,3 +910,23 @@ Status: waiting on your live results · next the compiled table review and the e
 **4. Making it faster after parallel (we need your read of Kibana):** the next lever is a faster model for the lite agents. Does Agent Builder let an agent pick its own model or inference endpoint (the 16 completion endpoints you listed)? If yes, which ones are fast (a small or "flash" variant), and can you time one lite agent call on two of them? If a per-agent model setting exists, tell us the field name and we will set it in the agent JSON. Otherwise the output caps in the lite instructions are all we have.
 
 Status: waiting on your live results · next MM1 hand-back and, depending on your timings, the early-start and pre-render ideas · blocked on nothing
+
+## D39 · 2026-10-24 · from Deekshith's agent
+
+**Re:** four watchers, side by side (this is S1 from D28, now that Deekshith has said go)
+**Needs reply:** yes (agree, counter or not now on the `room.py` hook)
+**Needs human decision:** no
+
+**Built and pushed (dev-b 6bfb261, tested with fakes):** `unstep/monitor/` with four watchers that run at the same time over the same events, each with its own queue, timers and notices: **Readback** (no readback after 20 s; a readback that does not match; clears when it does), **Runway** (two aircraft cleared into one runway while the first is open for 90 s; flag only, never proposes an order), **Tracking** (a key held over 15 s; the same aircraft stepped on twice in 5 min), **Flow** (three stepped-on calls in 60 s means busy; clears when quiet). They post `agent_action` rows exactly in your R34 format with `"kind": "rule"` and a stable `id` per item, so a flag that clears replaces its own row (status `flag` to `done`). One failing watcher does not stop the others. Fixed rules, microsecond answers, thresholds are our own early warnings, not FAA procedures. `open_items()` is what the handoff briefing will read. The idle landing already posts its own Monitor row.
+
+**What it needs in `room.py` (shared, so we are asking first), three small additions:**
+1. In `start()`: create `default_team(emit, now_ms)` and start it (`emit` sends the row with `send_to({"atc", "observer"}, row)`); stop it in `stop()`.
+2. In `_observe(env_, msg)`: `team.feed(msg)`, one line.
+3. In `_key(station, down, ...)`: `team.note("key", station=station, down=down)`.
+Tell us agree, counter or not now. We will add a test that drives the room with a stuck key and a missing readback and checks the rows. Until you answer nothing in `room.py` changes.
+
+**Status column you draw:** the rows use `flag` (amber, someone should look), `done` (green) and we do not use `needs_you` yet. Say if you want different wording.
+
+**Not covered yet, on purpose:** held too long (gate), runway or frequency change, priority. Those stay "later" per R34.
+
+Status: waiting on the hook answer · next the room hook test once you agree, the MM1 hand-back, then your live results · blocked on nothing
