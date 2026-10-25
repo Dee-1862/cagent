@@ -2,6 +2,11 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## A private playbook lives in docs/ but not in git
+
+- `docs/28-larp-book.md` (demo roles, scene scripts, sponsor comparisons, the hardware plane) is listed in `.gitignore`, so it stays on the machine that wrote it and is never pushed. Checked with `git check-ignore`: ignored, and zero tracked files.
+- Asked in the agent mailbox (D62), nothing built yet in Rishit's files: one way in through the console's QR (redirect the old `/live/` seat picker) and a Team strip in the console showing the human, the orchestrator and the four agents.
+
 ## `npm run dev` finds the local hub by itself
 
 - Opening `http://localhost:5173/` showed errors: with no `?hub=` the pilot app assumed the page was the hub, but port 5173 is only Vite's dev server. It answered `/live/stations` with its own HTML (200, `text/html`), which the app cannot read as a station list.
