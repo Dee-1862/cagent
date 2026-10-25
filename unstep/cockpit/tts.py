@@ -21,6 +21,7 @@ from typing import Callable, Optional, Protocol
 
 import numpy as np
 
+from unstep.cockpit.cartesia_errors import CartesiaRateLimited, connect_with_backoff
 from unstep.cockpit.phraseology import normalize_for_speech
 
 SAMPLE_RATE = 24000
@@ -181,11 +182,11 @@ class CartesiaTTS:
         import websockets
 
         if self._ws is None:
-            self._ws = await websockets.connect(
+            self._ws = await connect_with_backoff(lambda: websockets.connect(
                 f"{TTS_URL}?cartesia_version={CARTESIA_VERSION}",
                 additional_headers={"X-API-Key": self.api_key},
                 max_size=None,
-            )
+            ))
         return self._ws
 
     async def close(self) -> None:
@@ -267,6 +268,8 @@ class CartesiaTTS:
             elif kind == "done":
                 break
             elif kind == "error":
+                if msg.get("status_code") == 429:
+                    raise CartesiaRateLimited(f"Cartesia TTS rate limited: {msg.get('title')}: {msg.get('message')}")
                 raise RuntimeError(f"Cartesia TTS error: {msg.get('title')}: {msg.get('message')}")
         return SpeechResult(b"".join(chunks), self.sample_rate, first_ms, words,
                             cancelled=context_id in self._cancelled, context_id=context_id)

@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Callable, Iterable, Optional
 from urllib.parse import quote, urlencode
 
+from unstep.cockpit.cartesia_errors import connect_with_backoff
 from unstep.contracts import Word
 
 log = logging.getLogger("unstep.stt")
@@ -87,13 +88,24 @@ async def _connect(url: str, api_key: str, attempts: int = 3):
 
     for attempt in range(1, attempts + 1):
         try:
-            return await websockets.connect(url, additional_headers={"X-API-Key": api_key},
-                                            max_size=None, open_timeout=4)
+            return await connect_with_backoff(lambda: websockets.connect(
+                url, additional_headers={"X-API-Key": api_key}, max_size=None, open_timeout=4))
         except (TimeoutError, OSError):
             if attempt == attempts:
                 raise
             log.warning("Cartesia STT handshake failed (attempt %d); retrying", attempt)
             await asyncio.sleep(0.5 * attempt)
+
+
+def settle_caption(so_far: str, final: bool = False) -> str:
+    """Caption text that is safe to show: ink-2 sends final-text deltas that can split a word
+    ("Cess" then "na"), so until the utterance is final the last word may still grow. Hold it back.
+    Costs about one delta (0.5 to 0.7 s measured by Rishit, docs/09) of caption lag."""
+    text = so_far.strip()
+    if final:
+        return text
+    head, sep, _last = text.rpartition(" ")
+    return head if sep else ""
 
 
 @dataclass
