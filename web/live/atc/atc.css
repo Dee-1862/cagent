@@ -74,3 +74,23 @@ dialog{z-index:20;background:#161a20;border-radius:20px}input{border-radius:10px
 .audit .section-title{padding:0 0 6px}.audit .section-title h2{font-size:15px;text-transform:none;letter-spacing:0}.audit .section-title small{display:none}
 .audit form{display:flex;gap:8px}.audit input{flex:1;min-height:36px}.audit button{min-height:36px;padding:6px 14px}
 .audit-out{max-height:220px;overflow:auto;font-size:14px}.audit-out:not(:empty){margin-top:8px}
+/* Narrow screens (laptops, the recorder's 1080 px frame): right column = agents, left column stacks */
+@media(max-width:1300px){
+.decisions{top:236px;bottom:44px}
+.radio-panel{left:24px;right:428px;bottom:44px;height:auto;max-height:210px}
+.analytics{left:24px;right:428px;width:auto;bottom:268px;height:auto}
+.analytics .stat-tiles{display:flex;gap:16px}
+#show-evidence{left:24px;bottom:420px}
+.headline{width:calc(100vw - 840px);min-width:260px}
+}
+.decisions{top:236px}@media(max-width:1300px){.decisions{top:236px}}
+/* The presenter's one-tap lines stay visible (they drive the demo) */
+.suggestions{display:flex;gap:8px;padding:8px 0 0}
+.suggestions button{min-height:32px;padding:4px 12px;border-radius:999px;font-size:13px;font-weight:600;background:rgba(255,255,255,.06);border:1px solid var(--hairline)}
+.radio-panel{height:auto}
+#show-evidence{bottom:300px}
+@media(max-width:1300px){.analytics{bottom:312px}#show-evidence{bottom:460px}}
+/* The radio strip never grows into other panels: lanes scroll inside it */
+#radio{max-height:104px;overflow-y:auto}
+.radio-panel{max-height:220px}
+.radio-panel{right:428px;max-height:256px}
