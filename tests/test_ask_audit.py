@@ -76,10 +76,10 @@ def test_route_is_off_without_elastic_and_works_with_it(monkeypatch):
 
 def test_agent_and_tools_are_read_only_esql_over_real_traffic_only():
     tools = {json.loads(p.read_text())["id"]: json.loads(p.read_text()) for p in (ROOT / "elastic" / "tools").glob("unstep_audit_*.json")}
-    assert len(tools) == 4
+    assert len(tools) == 5
     for t in tools.values():
         q = t["configuration"]["query"]
-        assert t["type"] == "esql" and q.startswith("FROM unstep-events") and "sim" not in q  # never the simulated index
+        assert t["type"] == "esql" and q.startswith(("FROM unstep-events", "FROM unstep-flights")) and "sim" not in q
         assert "NOW() - 60 minutes" in q and not any(w in q.upper() for w in (" DELETE", "INSERT", "UPDATE"))
     agent = json.loads((ROOT / "elastic" / "agents" / "unstep-audit.json").read_text())
     assert set(agent["configuration"]["tools"][0]["tool_ids"]) == set(tools)

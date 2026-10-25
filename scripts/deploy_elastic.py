@@ -39,8 +39,10 @@ def _audit_indexes() -> dict:
 
     from unstep.config import elastic_events_index
 
+    from unstep.ground.flights import FLIGHTS_INDEX, MAPPINGS as FLIGHT_MAPPINGS
+
     return {elastic_events_index(): {"mappings": MAPPINGS}, "unstep-sim-events": {"mappings": MAPPINGS},
-            EVAL_INDEX: {"mappings": EVAL_MAPPINGS}}
+            EVAL_INDEX: {"mappings": EVAL_MAPPINGS}, FLIGHTS_INDEX: {"mappings": FLIGHT_MAPPINGS}}
 
 
 DATA_VIEWS = {  # Kibana data views, so Discover and Lens can chart the audit trail and the benchmark

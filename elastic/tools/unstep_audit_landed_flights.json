@@ -1,0 +1,10 @@
+{
+  "id": "unstep_audit_landed_flights",
+  "type": "esql",
+  "description": "Flights that ended in the last 60 minutes, newest first: callsign, why it ended, how many calls it heard and how many of those were stepped on. Counts only. Real flights only.",
+  "tags": ["unstep", "audit"],
+  "configuration": {
+    "query": "FROM unstep-flights | WHERE @timestamp >= NOW() - 60 minutes | KEEP @timestamp, callsign, reason, calls_heard, blocked_calls, readbacks, clearances | SORT @timestamp DESC | LIMIT 25",
+    "params": {}
+  }
+}

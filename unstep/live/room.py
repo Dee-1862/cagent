@@ -601,6 +601,10 @@ class LiveRoom:
 
             # Flight log: each plane's memory is copied here when its flight ends; the only session we push
             self.flight_log = FlightLog(self._shared_moss if self.live else LocalMemory(), self.frequency)
+            if self.live:  # a one-line record of each flight in Elastic when it ends (counts only)
+                from unstep.ground.flights import FlightSummaries
+
+                self.flight_log.summaries = FlightSummaries.from_env()
 
             async def monitor_on(msg):
                 try:

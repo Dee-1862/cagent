@@ -39,6 +39,8 @@ class FlightLog:
         self.push_pending = False
         self.pushes: list[dict] = []
         self._lock = asyncio.Lock()
+        self.frequency = frequency
+        self.summaries = None  # unstep.ground.flights.FlightSummaries: a one-line record per flight in Elastic
 
     async def archive(self, callsign: str, source_memory, flight_index: str, reason: str) -> dict | None:
         """Copy one plane's session into the flight log. Returns the flight record, or None if it was empty."""
@@ -68,6 +70,14 @@ class FlightLog:
                 self.memory.register_index(self.index, WRITER)
                 await self.memory.add_docs(self.index, docs, writer=WRITER)
         record = {"callsign": callsign, "flight_id": flight_id, "ended_at": ended, "docs": len(docs), "reason": reason}
+        if self.summaries is not None:  # counts only, off the landing path: a slow Elastic never holds a seat
+            from unstep.ground.flights import summarize
+
+            summary = summarize(callsign, self.frequency, flight_id, reason, ended, res.docs)
+            task = asyncio.get_running_loop().create_task(self.summaries.record(summary))
+            self._summary_tasks = getattr(self, "_summary_tasks", set())
+            self._summary_tasks.add(task)
+            task.add_done_callback(self._summary_tasks.discard)
         self.flights.append(record)
         self.docs += len(docs)
         self.push_pending = True

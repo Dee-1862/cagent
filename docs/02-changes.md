@@ -22,6 +22,13 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## A one-line record of each flight in Elastic when it ends (R49)
+
+- When a flight is archived (a pilot lands, a seat is freed, the hub stops), a summary with counts only is written to a new `unstep-flights` index: callsign, frequency, why it ended, how many calls it heard, how many were stepped on, readbacks, clearances, advisories. Best effort and off the landing path: a slow or failing Elastic never holds a seat. The words stay in the plane's own flight log. `UNSTEP_FLIGHT_SUMMARIES=0` turns it off.
+- New read-only audit tool `unstep_audit_landed_flights` on the `unstep-audit` agent, so "which flights ended in the last hour and how many calls did each miss?" can be asked. The deploy script creates the index. Redeploy with `--replace` to update the agent. Tested with fakes; not yet run live.
+- Not recorded: when the pilot joined, and how many readbacks were right or wrong (the archived documents do not carry them).
+
 ## The hub answers rules from memory, refreshed from Elastic
 
 - `rule_for` no longer calls Elastic on each instruction: it answers from an in-memory copy of the stored rules in microseconds (0.08 to 0.10 ms live) and refreshes the copy from the `unstep-rules` index in the background (`UNSTEP_RULES_SYNC_S`, default 30). Elastic's own percolate time was 1 ms but the wall time was about 75 ms, almost all network, so a per-instruction call was the slow part. A rule edited in Elastic reaches the hub within the interval, with no deploy; a failed refresh keeps the rules the hub already has. `UNSTEP_RULES_WAIT_S` is gone.
