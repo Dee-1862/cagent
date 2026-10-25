@@ -408,6 +408,8 @@ class GroundAgents:
 
     @staticmethod
     def _audit(event, transcript, proposal, started, agents, note=None) -> AuditRecord:
+        from unstep.ground.elastic_agents import blocked_call_workflow
+
         return AuditRecord(event_id=event.event_id, stage="ground_agents", actor="agents",
                            latency_ms=now_ms() - started, payload={
                                "matched_transcript": transcript.transcript_id if transcript else None,
@@ -415,7 +417,7 @@ class GroundAgents:
                                "blocked_words": proposal.blocked_words,
                                "confidence": proposal.confidence,
                                "confidence_method": proposal.confidence_method,
-                               "agents": ("Elastic Workflow unstep-blocked-call" if agents
+                               "agents": (f"Elastic Workflow {blocked_call_workflow()}" if agents
                                           else note or "local intercept + compliance"),
                                **({"workflow_execution_id": agents.execution_id,
                                    "workflow_ms": agents.took_ms, "branches_ms": agents.branches,

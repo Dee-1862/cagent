@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import httpx
+import pytest
 import yaml
 
 from unstep import scenario
@@ -18,6 +19,12 @@ from unstep.live.room import GroundAgents
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFS = ROOT / "elastic"
+
+
+@pytest.fixture(autouse=True)
+def _original_workflow(monkeypatch):
+    """These tests cover the original two-agent workflow; the default is now the parallel pair (tests/test_faa_cite.py)."""
+    monkeypatch.setenv("UNSTEP_BLOCKED_WORKFLOW", "unstep-blocked-call")
 
 
 def test_parse_agent_json_takes_the_first_object():

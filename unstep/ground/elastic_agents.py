@@ -330,10 +330,12 @@ def with_stored_rule(proposal: ProposedDirective, hit: RuleHit | None) -> Propos
 
 
 def blocked_call_workflow() -> str:
-    """Which workflow the hub starts for a stepped-on call (UNSTEP_BLOCKED_WORKFLOW). The default is the two-agent
-    one that has run live; the one-agent version is opt-in until a live run shows it is faster."""
-    name = env("UNSTEP_BLOCKED_WORKFLOW", default=BLOCKED_CALL_WORKFLOW)
-    return name if name in (BLOCKED_CALL_WORKFLOW, BLOCKED_CALL_FAST, BLOCKED_PARALLEL) else BLOCKED_CALL_WORKFLOW
+    """Which workflow the hub starts for a stepped-on call (UNSTEP_BLOCKED_WORKFLOW). The default is the parallel
+    pair: live, one call took 12.2 s that way against 23.4 s and 33.8 s for the original two-agent workflow
+    (Rishit's run, R47). `unstep-blocked-call` is the original, `unstep-blocked-call-fast` the one-agent version
+    (16.2 s live)."""
+    name = env("UNSTEP_BLOCKED_WORKFLOW", default=BLOCKED_PARALLEL)
+    return name if name in (BLOCKED_CALL_WORKFLOW, BLOCKED_CALL_FAST, BLOCKED_PARALLEL) else BLOCKED_PARALLEL
 
 
 def rerank_id() -> str | None:

@@ -144,3 +144,16 @@ Separate from the per-call parallelism in section 7, there is parallelism across
 They are fixed rules, not language models: they answer in microseconds, same input same output, and the thresholds are our own early warnings, not FAA procedures. An Elastic agent can be asked to explain a row afterwards, off this path. `team.open_items()` lists what is still waiting, which is what the shift handoff briefing needs.
 
 Connected to the live room behind `UNSTEP_WATCHERS=1` (off by default): `_observe` feeds every gateway message, `_key` notes key down and up, and rows go to the console feed. Not done: the console drawing (Rishit's side) and a live run. The landing of an idle pilot already posts its own Monitor row.
+
+**Live results (Rishit, R47, one stepped-on call per variant, per-step times from the Kibana executions API):**
+
+| Variant | Total | Steps |
+| --- | --- | --- |
+| Original two-agent workflow, run 1 | 23.4 s | intercept 12.2 s, compliance 10.0 s, store 0.3 s |
+| Original two-agent workflow, run 2 | 33.8 s | intercept 22.6 s, compliance 10.0 s, store 0.3 s |
+| **Parallel pair (now the default)** | **12.2 s** | intercept-lite 10.7 s (12.2 s on another run), compliance-lite 5.7 s (7.1 s) |
+| One agent (`unstep-blocked-call-fast`) | 16.2 s | ground 14.8 s, store 0.5 s |
+
+The parallel pair cut the agents' time about 2 to 2.8 times (these are single calls, not a distribution, so treat the factor as indicative). The tool-using Compliance agent stops at 10.02 to 10.03 s on every run, which is a cap, while the tool-less compliance-lite finishes in 5.7 s. Intercept now sets the pace and varies a lot (10.7 to 22.6 s). The deployed agent object has no model or connector field, so there is no per-agent model setting to use. The Intercept-lite instructions were then shortened (output is `match` and a sentence under 20 words); that change is untested live.
+
+**What the 6 s auto-relay wait really means.** With the agents taking 6 to 12 s, a proposal the policy might auto-relay waits up to `UNSTEP_AGENTS_WAIT_S` (6 s) and then proceeds, so Intercept's veto rarely arrives in time. The deterministic checks are the real gate. This is a decision for the team, not something to claim as an agent veto.

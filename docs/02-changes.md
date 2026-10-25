@@ -14,6 +14,14 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## Parallel agents are now the default (live: 12.2 s against 23.4 and 33.8 s)
+
+- Rishit's live runs (R47): the original two-agent workflow took 23.4 s and 33.8 s, the parallel pair 12.2 s, the one-agent version 16.2 s; the tool-using Compliance agent is capped at 10.0 s while compliance-lite takes 5.7 s. `UNSTEP_BLOCKED_WORKFLOW` now defaults to `parallel`; the original is still available by name.
+- Intercept-lite instructions shortened (a match flag and a sentence under 20 words), since Intercept is now the slow branch. Redeploy with `--replace` to push it; untested live.
+- Rule lookup measured live: Elastic `took` 2.0 ms at 7 rules and 1.0 ms at 100, 1,000 and 5,000 (wall about 75 ms from the laptop). Hold-short now points at 3-7-2 (candidate), per Rishit's reading of the FAA text.
+- The audit record names the workflow that actually ran.
+
 ## Watchers: Tracking and Flow merged, and an Open-call watcher added
 
 - The Tracking watcher (stuck key, repeated stepped-on aircraft) and the Flow watcher (busy frequency) are one **Frequency watcher**: they were all about who is blocking whom.
