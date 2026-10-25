@@ -204,7 +204,34 @@ export function createAirport(container, {quality = "high", followStation} = {})
   const loader=new GLTFLoader();
   const entries=new Map(); let selected=null, disposed=false, onPick=()=>{};
   const raycaster=new THREE.Raycaster(); const pointer=new THREE.Vector2();
-  const slots=[[-15,TWY_Z],[-21,TWY_Z],[-27,TWY_Z],[-4,TWY_Z],[2,TWY_Z],[8,TWY_Z],[-32,TWY_Z],[14,TWY_Z]];
+  // Taxi model: planes queue nose-east on taxiway B toward connector B1, then hold short, line up and
+  // depart on runway 33. Each new plane joins the back of the queue; the queue moves up when one leaves.
+  const CONN_X=-10, HOLD_STOP_Z=HOLD_Z-1.4, QUEUE_X0=-16, QUEUE_GAP=6.5, TAXI=3.2;
+  const queueSpot=i=>new THREE.Vector3(QUEUE_X0-i*QUEUE_GAP,0,TWY_Z);
+  let queueSerial=0;
+  const queued=()=>[...entries.values()].filter(e=>e.state==="queue"&&!e.removing).sort((a,b)=>a.queueOrder-b.queueOrder);
+  function reflow(){
+    queued().forEach((e,i)=>{ const spot=queueSpot(i); const last=e.path.at(-1);
+      if(e.group.position.distanceTo(spot)>.05 && !(last && last.distanceTo(spot)<.05)) { e.path=[spot]; e.speed=TAXI; } });
+  }
+  const toHold=()=>[new THREE.Vector3(CONN_X,0,TWY_Z),new THREE.Vector3(CONN_X,0,HOLD_STOP_Z)];
+  const toLineUp=()=>[new THREE.Vector3(CONN_X,0,RWY_Z),new THREE.Vector3(CONN_X+3,0,RWY_Z)];
+  function command(id,action){
+    // A heard instruction moves the plane. Returns false when it doesn't apply in the plane's current state.
+    const e=entries.get(id); if(!e||e.removing) return false;
+    const airborne=["takeoff","departed"].includes(e.state);
+    const leaveQueue=()=>{ if(e.state==="queue"){ e.state="taxi"; reflow(); } };
+    if(action==="stop"){ if(airborne) return false; e.path=[]; e.after=null; if(e.state!=="queue") e.state="stopped"; return true; }
+    if(action==="hold_short"){ if(airborne||["holding","lined_up"].includes(e.state)) return false;
+      leaveQueue(); e.path=toHold(); e.after="holding"; e.speed=TAXI; return true; }
+    if(action==="line_up"){ if(airborne||e.state==="lined_up") return false;
+      leaveQueue(); e.path=[...(e.state==="holding"?[]:toHold()),...toLineUp()]; e.after="lined_up"; e.speed=TAXI; return true; }
+    if(action==="takeoff"){ if(airborne) return false;
+      leaveQueue(); e.path=e.state==="lined_up"?[]:[...(e.state==="holding"?[]:toHold()),...toLineUp()]; e.after="takeoff"; e.speed=TAXI;
+      if(!e.path.length){ e.state="takeoff"; e.after=null; e.v=2; } return true; }
+    return false;
+  }
+  const turn=(from,to)=>{ let d=to-from; while(d>Math.PI) d-=2*Math.PI; while(d<-Math.PI) d+=2*Math.PI; return d; };
   const ringGeometry=new THREE.RingGeometry(2.3,2.5,64);
   const towerRing=new THREE.Mesh(ringGeometry,new THREE.MeshBasicMaterial({color:colors.blue,transparent:true,opacity:0,side:THREE.DoubleSide,depthWrite:false}));
   towerRing.rotation.x=-Math.PI/2;towerRing.position.set(TOWER.x,.09,TOWER.z);scene.add(towerRing);
@@ -228,11 +255,13 @@ export function createAirport(container, {quality = "high", followStation} = {})
     for(const [id,e] of entries) if(!present.has(id)) e.removing=true;
     aircraft.forEach((s,i)=>{
       if(entries.has(s.id)) {entries.get(s.id).station=s;entries.get(s.id).removing=false;return;}
-      const [x,z]=slots[i%slots.length];
+      const {x,z}=queueSpot(queued().length);                         // join the back of the queue
       const group=new THREE.Group(); group.position.set(x,0,z); group.rotation.y=0; scene.add(group);
-      const e={id:s.id,station:s,group,ring:ring(colors.blue),born:performance.now(),removing:false,opacity:1,flashUntil:0,needs:false,hold:false};
+      const e={id:s.id,station:s,group,ring:ring(colors.blue),born:performance.now(),removing:false,opacity:1,flashUntil:0,needs:false,hold:false,
+               state:"queue",queueOrder:queueSerial++,path:[],after:null,speed:TAXI,yaw:0,targetYaw:0,alt:0,pitch:0,fade:1,v:0};
       e.ring.position.set(x,.07,z); entries.set(s.id,e); attachModel(e,modelFor(s,i));
     });
+    reflow();
   }
   let keyedIds=new Set(), steppedIds=new Set();
   function keyed(ids) {keyedIds=new Set(Array.isArray(ids)?ids:Object.keys(ids||{}));}
@@ -280,25 +309,46 @@ export function createAirport(container, {quality = "high", followStation} = {})
       camera.position.x=views.overview.position[0]+Math.sin(t/9000)*1.5;
     }
     controls.update();
-    hold.material.emissiveIntensity=[...entries.values()].some(e=>e.hold) ? (reduced.matches?.8:.65+.25*Math.sin(t/260)) : .15;
+    hold.material.emissiveIntensity=[...entries.values()].some(e=>e.hold||e.state==="holding") ? (reduced.matches?.8:.65+.25*Math.sin(t/260)) : .15;
     towerRing.visible=keyedIds.has("atc");
     if(towerRing.visible){towerRing.scale.setScalar(reduced.matches?1.1:1+(t%1300)/1300*2);towerRing.material.opacity=reduced.matches?.75:1-(t%1300)/1300;}
     for(let i=beams.length-1;i>=0;i--){const b=beams[i];b.line.material.opacity=Math.max(0,(b.until-t)/2400)*.8;if(t>=b.until){scene.remove(b.line);b.line.geometry.dispose();b.line.material.dispose();beams.splice(i,1);}}
     for(const [id,e] of entries) {
       const age=(t-e.born)/600, spawn=reduced.matches?1:Math.min(1,Math.max(0,1-Math.pow(1-age,3)));
       e.opacity=e.removing?Math.max(0,e.opacity-dt*1.5):spawn;
-      e.group.position.y=(e.removing?(1-e.opacity)*2:(1-spawn)*2)+(e.needs&&!reduced.matches?.12*Math.sin(t/320):0);
-      e.group.scale.setScalar(Math.max(.001,e.opacity));
-      e.ring.visible=keyedIds.has(id)||steppedIds.has(id)||t<e.flashUntil||age<1.3||e.needs;
+      // taxi along the path, turning smoothly toward the next point
+      if(e.path.length){
+        const target=e.path[0], p=e.group.position, dx=target.x-p.x, dz=target.z-p.z, d=Math.hypot(dx,dz), step=e.speed*dt;
+        if(d<=step){ p.x=target.x; p.z=target.z; e.path.shift();
+          if(!e.path.length&&e.after){ e.state=e.after; e.after=null; if(e.state==="takeoff") e.v=2; } }
+        else { p.x+=dx/d*step; p.z+=dz/d*step; e.targetYaw=Math.atan2(-dz,dx); }
+      }
+      if(e.state==="takeoff"){                                         // roll, rotate, climb out
+        e.v=Math.min(28,e.v+7*dt); e.group.position.x+=e.v*dt; e.targetYaw=0;
+        if(e.group.position.x>CONN_X+16){ e.alt+=e.v*.24*dt; e.pitch=Math.min(.2,e.pitch+dt*.35); }
+        if(e.group.position.x>60||e.alt>16){ e.state="departed"; e.departedAt=t; }
+      }
+      if(e.state==="departed"){
+        e.fade=Math.max(0,e.fade-dt*1.4);
+        if(t-e.departedAt>3500){                                       // the circuit ends: rejoin the back of the queue
+          const spot=queueSpot(queued().length); e.state="queue"; e.queueOrder=queueSerial++; e.alt=0; e.pitch=0; e.fade=1; e.v=0;
+          e.group.position.set(spot.x,0,spot.z); e.yaw=e.targetYaw=0; e.born=t; reflow();
+        }
+      }
+      e.yaw+=turn(e.yaw,e.targetYaw)*Math.min(1,dt*5); e.group.rotation.set(0,e.yaw,e.pitch);
+      e.group.position.y=(e.removing?(1-e.opacity)*2:(1-spawn)*2)+(e.needs&&!reduced.matches?.12*Math.sin(t/320):0)+e.alt;
+      e.group.scale.setScalar(Math.max(.001,e.opacity*e.fade));
+      e.ring.position.set(e.group.position.x,.07,e.group.position.z);
+      e.ring.visible=e.alt<.5&&(keyedIds.has(id)||steppedIds.has(id)||t<e.flashUntil||age<1.3||e.needs);
       const color=steppedIds.has(id)?colors.red:t<e.flashUntil?e.flashColor:e.needs?colors.amber:colors.blue;
       e.ring.material.color.setHex(color);
       const pulse=keyedIds.has(id)&&!reduced.matches?1+(t%1300)/1300*2:1.15;
       e.ring.scale.setScalar(pulse);
       e.ring.material.opacity=e.opacity*(reduced.matches?.75:keyedIds.has(id)?1-(t%1300)/1300:.7);
-      if(e.removing&&e.opacity===0){scene.remove(e.group,e.ring);e.ring.material.dispose();entries.delete(id);}
+      if(e.removing&&e.opacity===0){scene.remove(e.group,e.ring);e.ring.material.dispose();entries.delete(id);reflow();}
     }
     if(composer)composer.render();else renderer.render(scene,camera);
   }
   animate();
-  return {setStations,keyed,steppedOn,advisory,readback,holdShort,needsYou,setView,setAutoSway,onSelect(callback){onPick=callback;},project,dispose(){disposed=true;cancelAnimationFrame(frame);observer.disconnect();controls.dispose();renderer.domElement.removeEventListener("click",click);for(const b of beams){b.line.geometry.dispose();b.line.material.dispose();}ringGeometry.dispose();towerRing.material.dispose();composer?.dispose();pmrem.dispose();renderer.dispose();container.replaceChildren();}};
+  return {setStations,command,keyed,steppedOn,advisory,readback,holdShort,needsYou,setView,setAutoSway,onSelect(callback){onPick=callback;},project,dispose(){disposed=true;cancelAnimationFrame(frame);observer.disconnect();controls.dispose();renderer.domElement.removeEventListener("click",click);for(const b of beams){b.line.geometry.dispose();b.line.material.dispose();}ringGeometry.dispose();towerRing.material.dispose();composer?.dispose();pmrem.dispose();renderer.dispose();container.replaceChildren();}};
 }
