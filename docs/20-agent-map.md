@@ -95,9 +95,9 @@ From Elastic's [Agent Builder overview](https://www.elastic.co/docs/explore-anal
 | Workflows call agents (`ai.agent` step) | `unstep-blocked-call` and `unstep-readback-audit` | BUILT, MEASURED LIVE |
 | Agents call workflows (a `workflow` tool on an agent) | `elastic/proposed/unstep_run_briefing.json`; the API body is a guess (Elastic documents creating it in the Kibana UI), so it is not deployed | PROPOSED, UNVERIFIED |
 | Search step before the agent, saving the answer to an index | Not yet in the blocked-call workflow. Plan: hybrid retrieval ahead of the agent, and the briefing workflow | PROPOSED |
-| Scheduled and manual workflow triggers (alert-rule trigger also documented) | `unstep-briefing` every 8 h and the new `unstep-nightly-review` every day (`type: scheduled`, `with: every:`), both also manual. Written to the documented shape; not yet deployed or run live | BUILT (definitions), NEEDS LIVE RUN |
+| Scheduled and manual workflow triggers (alert-rule trigger also documented) | `unstep-briefing` every 8 h and the new `unstep-nightly-review` every day (`type: scheduled`, `with: every:`), both also manual. Written to the documented shape; not yet deployed or run live | DEPLOYED (R57); scheduled runs not yet observed |
 | Late answer shown on the open card instead of blocking it | Built in the room (3a): see below | BUILT, NEEDS LIVE RUN |
-| MCP server (`/api/agent_builder/mcp`) and A2A server | `scripts/mcp_demo.py` lists and calls our tools over MCP (tested with a mock; no live run yet). A2A not used | BUILT (client), NEEDS LIVE RUN |
+| MCP server (`/api/agent_builder/mcp`) and A2A server | `scripts/mcp_demo.py` lists and calls our tools over MCP (MEASURED LIVE, R57: lists the tools and a call returned real ES|QL rows). A2A not used | MEASURED LIVE |
 | Permissions: security roles and API keys control which tools an agent can use and what data it can query | We use one key for all four agents. Per-agent keys or roles could turn "least privilege by tool" into enforced separation; not checked | PROPOSED, UNVERIFIED |
 | Model selection: other model providers or local models through inference endpoints | Not used. A faster model for the agents is one lever on the 6.2 s; not measured | PROPOSED, UNVERIFIED |
 | Skills (reusable instruction and tool bundles) | Not used | PROPOSED |

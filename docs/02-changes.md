@@ -2,6 +2,12 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## Elastic deploy confirmed live; map deploy fixed for serverless Kibana (R57)
+
+- Rishit ran `--replace` live: 8 agents and 7 workflows deployed, scheduled triggers on. `scripts/mcp_demo.py` works live and `unstep_trend_decisions` returned real rows.
+- `deploy_elastic.py --only maps` now imports the map with `POST /api/saved_objects/_import` (multipart ndjson); the old route answered 400 on serverless Kibana and the script read that as "exists". A 400 on a map is now a failure. Plane points are coloured by `station` (unverified; they drew black before).
+
+
 ## Geography in the explanation, sleeping-phone rejoin, pronunciation list, Kibana map, test guide
 
 - Merged Rishit's `unstep/live/geo.py` (one coordinate scale, `unstep-airport` geo_shapes, `unstep-positions`). Our stand-in map was replaced by `unstep/ground/places.py`, which uses his scale. The late explanation on a trace now adds "Where the plane was: ..." from the stored position (room `_where_is`, only when the position is under 15 s old, never on the pilot's path).

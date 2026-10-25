@@ -81,8 +81,11 @@ def map_steps() -> list[tuple[str, str, str, dict | None]]:
         steps.append((f"data view {title}", "POST", "kb/api/data_views/data_view", {"data_view": view, "override": True}))
     for path in sorted((DEFS / "maps").glob("*.json")):
         saved = json.loads(path.read_text())
-        steps.append((f"map {saved['id']}", "POST", f"kb/api/saved_objects/map/{saved['id']}?overwrite=true",
-                      {"attributes": saved["attributes"]}))
+        # Serverless Kibana answers 400 "not available with the current configuration" to POST /saved_objects/map/<id>;
+        # the import API works there (Rishit, R57). Body marker `_ndjson` is sent as a multipart file.
+        steps.append((f"map {saved['id']}", "POST", "kb/api/saved_objects/_import?overwrite=true",
+                      {"_ndjson": json.dumps({"id": saved["id"], "type": "map", "attributes": saved["attributes"],
+                                              "references": []})}))
     return steps
 
 
@@ -149,8 +152,16 @@ def main() -> int:
     with httpx.Client(headers=headers, timeout=30) as client:
         for label, method, path, body in steps:
             base = es.rstrip("/") if path.startswith("es/") else kb.rstrip("/")
-            r = client.request(method, f"{base}/{path[3:]}", json=body)
-            exists = r.status_code in (400, 409) and ("already" in r.text or "exists" in r.text)
+            if body and "_ndjson" in body:  # saved-objects import: a multipart file, no JSON body
+                headers_no_ct = {k: v for k, v in headers.items() if k != "Content-Type"}
+                r = client.request(method, f"{base}/{path[3:]}", headers=headers_no_ct,
+                                   files={"file": ("objects.ndjson", body["_ndjson"] + "\n", "application/ndjson")})
+                if r.is_success and r.json().get("success") is False:  # 200 with errors inside
+                    r.status_code = 400
+            else:
+                r = client.request(method, f"{base}/{path[3:]}", json=body)
+            exists = (r.status_code in (400, 409) and ("already" in r.text or "exists" in r.text)
+                      and not label.startswith("map "))  # a 400 on a map is a failure, not "already there"
             if exists and args.replace and (label.startswith("tool ") or label.startswith("agent ")):
                 r = _update(client, kb.rstrip("/"), label, body)
                 exists = False

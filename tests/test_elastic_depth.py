@@ -84,7 +84,8 @@ def test_maps_only_deploy_touches_no_agent_tool_or_workflow():
     labels = [s[0] for s in steps]
     assert labels == ["data view unstep-airport", "data view unstep-positions", "map unstep-airport-map"]
     assert all(not l.startswith(("tool", "agent", "workflows")) for l in labels)
-    saved = steps[-1][3]["attributes"]
+    assert steps[-1][2].startswith("kb/api/saved_objects/_import")  # serverless Kibana (R57)
+    saved = json.loads(steps[-1][3]["_ndjson"])["attributes"]
     layers = json.loads(saved["layerListJSON"])
     assert {l["sourceDescriptor"]["indexPatternId"] for l in layers} == set(deploy_elastic.MAP_VIEWS)
     assert {l["sourceDescriptor"]["geoField"] for l in layers} == {"area", "location"}

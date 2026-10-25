@@ -26,8 +26,8 @@ python -m unstep.live --offline            # or: python scripts/run_demo.py for 
 | Restart from disk, flight log survives | Moss | `python scripts/moss_live_check.py` prints `ok` |
 | Landing after quiet | Moss, Elastic | `UNSTEP_IDLE_LAND_S=20`: the plane lands, its flight appears in `unstep-flights` and Moss Cloud |
 | Where the plane was, in the late explanation | Elastic | Step "Where the plane was: In Taxiway B; 12 m from ... (demo map, not surveyed)" on the trace |
-| Agents' MCP path | Elastic | `python scripts/mcp_demo.py` lists the tools (not yet run live) |
-| Kibana map of airport and planes | Elastic | `python scripts/deploy_elastic.py --only maps`, then Maps in Kibana (the saved-object layout is unverified) |
+| Agents' MCP path | Elastic | `python scripts/mcp_demo.py` lists the tools (run live by Rishit, R57) |
+| Kibana map of airport and planes | Elastic | `python scripts/deploy_elastic.py --only maps`, then Maps in Kibana (uses the saved-objects import API, which works on serverless Kibana; the base map tiles are not available there) |
 | Scheduled coach review, 8-hour briefing | Elastic | Only after `--replace`, which needs Rishit's OK; they spend model calls on their own |
 
 ## 3. What is deployed
