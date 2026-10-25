@@ -130,6 +130,19 @@ def idle_land_s() -> float:
         return 600.0
 
 
+DEFAULT_MOSS_LOAD_TRIES = 4
+
+
+def moss_load_tries() -> int:
+    """How many times to load the airport index when Moss says it changed mid-load (UNSTEP_MOSS_LOAD_TRIES,
+    default 4). Moss answers "The index changed while the operation ran. Retry the operation." when the
+    cloud index is written or loaded by something else at the same moment, for example planes starting together."""
+    try:
+        return max(1, int(env("UNSTEP_MOSS_LOAD_TRIES", default=str(DEFAULT_MOSS_LOAD_TRIES))))
+    except ValueError:
+        return DEFAULT_MOSS_LOAD_TRIES
+
+
 def moss_aircraft() -> int:
     """How many aircraft get their own Moss session (UNSTEP_MOSS_AIRCRAFT, default 6, the whole fleet).
 

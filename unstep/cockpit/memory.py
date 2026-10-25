@@ -539,10 +539,26 @@ class MossMemory(_OwnedIndexes, _DiskSnapshots):
 
     async def load_airport(self, index: str) -> None:
         """Hydrate persistent knowledge without opening a writable session."""
+        from unstep.config import moss_load_tries
+
         if not hasattr(self, "_loaded_airports"):
             self._loaded_airports: set[str] = set()
-        if index not in self._loaded_airports:
-            await self.client.load_index(index)
+            self._airport_locks: dict[str, asyncio.Lock] = {}
+        # Planes start together on one shared client: one load per airport, the others wait for it.
+        async with self._airport_locks.setdefault(index, asyncio.Lock()):
+            if index in self._loaded_airports:
+                return
+            tries = moss_load_tries()
+            for attempt in range(1, tries + 1):
+                try:
+                    await self.client.load_index(index)
+                    break
+                except Exception as exc:
+                    # Moss: "The index changed while the operation ran. Retry the operation."
+                    if "changed while the operation ran" not in str(exc) or attempt == tries:
+                        raise
+                    log.warning("Moss reported %s changed during load; retry %d of %d", index, attempt, tries - 1)
+                    await asyncio.sleep(0.3 * attempt)
             self._loaded_airports.add(index)
 
     async def add_docs(self, index: str, docs: list[Doc], writer: str) -> int:

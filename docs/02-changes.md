@@ -2,6 +2,13 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## Loading the airport index retries when Moss says it changed
+
+- Seen on startup of `python -m unstep.live`: "memory open failed at startup ... MossError: The index changed while the operation ran. Retry the operation." Moss raises it when the cloud index is written or loaded at the same moment; our code gave up on the first one and the plane flew on local memory.
+- `MossMemory.load_airport` now loads each airport index once at a time (planes share one client and start together, so the others wait for the first load) and retries that exact error, up to `UNSTEP_MOSS_LOAD_TRIES` times (default 4, `moss_load_tries()` in `unstep/config.py`) with a short wait. Any other error is raised at once.
+- Tests: three planes loading together make three attempts and one load; a different error is not retried; the retry limit is respected.
+- Not reproduced on demand: the error depends on another write to the cloud index at the same moment, so the proof is the tests that raise that exact message. A live start here showed no memory error.
+
 ## The pilot app no longer blames the site when the hub is down
 
 - Seen on a Vercel preview: "The tower is up but refuses this page. Add the address to UNSTEP_ALLOWED_ORIGINS". The hub was not refusing anything: the sleeping Render service answered 502, and the old no-cors probe counted that 502 page as "up". A direct WebSocket test from that same Vercel address connected, and a stranger address (`example.com`) got 403, so the origin check itself was right.
