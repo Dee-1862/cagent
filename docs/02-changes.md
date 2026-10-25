@@ -2,6 +2,17 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## A link phones can use instead of localhost, and a Raspberry Pi plane
+
+- The console's QR pointed at `http://localhost:8765/pilot/`, which only works on the laptop. The hub now lists what people can use: `GET /live/addresses` returns "This computer only", "Same wifi" (this computer's private IPv4 addresses, link-local ones left out) and "Public link" (`UNSTEP_PUBLIC_URL`), each marked shareable or not. It says "start with `--host 0.0.0.0`" when the hub listens on this computer alone.
+- `GET /live/pilot-link?base=<address>` builds the pilot link for a chosen address, and `/live/qr.svg` accepts those addresses too. Anything else is still refused (400): the hub's own request host, its own LAN addresses, `UNSTEP_PUBLIC_URL` and the listed pilot app origins only.
+- Started with `--host 0.0.0.0`, the hub now trusts this computer's own LAN addresses as Host values, so the `UNSTEP_ALLOWED_HOSTS` step is no longer needed for phones (a name or an address you type yourself still needs the setting). Checked live: the console page opened through the LAN address.
+- `GET /live/pi-join` gives the "Add Raspberry Pi" button its hub address and command. The room code is named in the command (`--token <room code>`), never sent.
+- `scripts/pi_plane.py`: a Raspberry Pi joins as a pilot over the pilot app's own messages (`key`, `mic_frame`, `mic_end`), syncs its clock, prints what the hub says and plays the advisory with `aplay`. It needs only `websockets`. `--wav` talks from a recorded call; `--mic plughw:3,0` talks live (Enter starts and stops). Push to talk by covering the camera or a GPIO pin is not built.
+- Checked on the real Pi 4 over Ethernet to this laptop's hub: joined as Plane A, clock 78 ms off, sent a 4 s recorded call (40 frames) and heard the room. The live microphone path was not tested: the Logitech was no longer visible to the Pi.
+- Tests: `tests/test_live_addresses.py` (endpoints, QR and link rules, LAN filtering) and `tests/test_pi_plane.py` (a real offline hub; the call reaches the radio).
+- Not done: the two small buttons in the console (change link, add Raspberry Pi) are in Rishit's files; asked in the agent mailbox (D63) and waiting for his answer.
+
 ## A private playbook lives in docs/ but not in git
 
 - `docs/28-larp-book.md` (demo roles, scene scripts, sponsor comparisons, the hardware plane) is listed in `.gitignore`, so it stays on the machine that wrote it and is never pushed. Checked with `git check-ignore`: ignored, and zero tracked files.
