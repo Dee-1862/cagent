@@ -72,9 +72,19 @@ with sync_playwright() as p:
     def feed_has(snippet):
         return atc.evaluate(f"[...document.querySelectorAll('#feed .feed-row')].some(r => r.textContent.includes({json.dumps(snippet)}))")
 
-    def tower_then_readback(station, instruction, readback, settle=6000):
+    names = {"N123AB": "Plane A", "H456": "Plane B"}
+
+    def await_readback_window(station, timeout=25):
+        """A pilot reads back after hearing the call: wait until the console says it is waiting for this plane."""
+        for _ in range(timeout * 2):
+            if feed_has(f"{names[station]} was told"):
+                return
+            atc.wait_for_timeout(500)
+
+    def tower_then_readback(station, instruction, readback):
         tower(instruction)
-        atc.wait_for_timeout(settle)  # the call is spoken, heard, and the console starts waiting
+        atc.wait_for_timeout(1500)
+        await_readback_window(station)
         pilot_says(station, readback)
 
     ps = wait_for(lambda ps: {"N123AB", "H456"} <= set(ps), 20)
@@ -163,7 +173,8 @@ with sync_playwright() as p:
     check("request taxi -> the agent proposes a taxi clearance to its runway", "taxi to runway 33 via Bravo, hold short of runway 33" in text, text)
     check("...using the flight plan from Elastic", "Elastic" in card, card[:200])
     send_proposal()
-    atc.wait_for_timeout(6000)
+    atc.wait_for_timeout(1500)
+    await_readback_window("N123AB")
     pilot_says("N123AB", "taxi to runway 33 via bravo, hold short of runway 33, Cessna 123")
     ps = wait_for(lambda ps: ps["N123AB"]["state"] == "holding", 60)
     check("sent clearance + readback -> holding short of runway 33", ps["N123AB"]["state"] == "holding" and ps["N123AB"]["x"] == -33, str(ps["N123AB"]))
@@ -185,7 +196,8 @@ with sync_playwright() as p:
     check("ready for departure with the runway clear -> cleared for takeoff", "runway 33, cleared for takeoff" in text, text)
     check("...with the runway area clear by Elastic geo", "Runway: clear (Elastic geo" in card, card[:400])
     send_proposal()
-    atc.wait_for_timeout(6000)
+    atc.wait_for_timeout(1500)
+    await_readback_window("N123AB")
     pilot_says("N123AB", "runway 33 cleared for takeoff, Cessna 123")
     ps = wait_for(lambda ps: ps["N123AB"]["alt"] > 1, 50)
     check("sent takeoff clearance + readback -> Plane A departs", ps["N123AB"]["alt"] > 1, str(ps["N123AB"]))
