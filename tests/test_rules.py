@@ -71,22 +71,57 @@ def agents(handler):
                             transport=httpx.MockTransport(handler))
 
 
-def test_the_hub_uses_elastics_rule_and_falls_back_to_its_own_copy():
-    elastic_hit = {"took": 2, "hits": {"hits": [{"_id": "hold-short", "_source": {
-        "paragraph": "3-7-9", "title": "Edited in Elastic", "status": "reviewed"}}]}}
-    got = asyncio.run(agents(lambda r: httpx.Response(200, json=elastic_hit)).rule_for("hold short runway 33"))
-    assert got.paragraph == "3-7-9" and got.backend == "elastic"  # a rule edited in the index wins: no deploy
-    down = asyncio.run(agents(lambda r: httpx.Response(500)).rule_for("hold short runway 33"))
-    assert down.paragraph == "3-7-2" and down.backend == "local"
+def stored_rule_response(paragraph="3-7-9", title="Edited in Elastic", status="reviewed"):
+    return {"took": 1, "hits": {"hits": [{"_id": "hold-short", "_source": {
+        "query": {"bool": {"should": [{"match_phrase": {"text": "hold short"}}], "minimum_should_match": 1}},
+        "paragraph": paragraph, "title": title, "status": status, "evidence": "edited"}}]}}
 
 
-def test_a_slow_percolate_does_not_hold_the_card():
-    async def slow(request):
-        await asyncio.sleep(1)
-        return httpx.Response(200, json={"took": 1, "hits": {"hits": []}})
+def test_the_hub_answers_from_its_own_copy_and_picks_up_a_rule_edited_in_elastic():
+    calls = []
 
-    got = asyncio.run(agents(slow).rule_for("hold short runway 33", wait_s=0.05))
-    assert got.backend == "local"
+    def handler(request):
+        calls.append(request.url.path)
+        return httpx.Response(200, json=stored_rule_response())
+
+    async def go():
+        a = agents(handler)
+        first = await a.rule_for("hold short runway 33")  # the file copy: no Elastic round trip on this path
+        assert first.backend == "local" and first.paragraph == "3-7-2" and first.took_ms < 50
+        await a._rules_task  # the background refresh from Elastic
+        second = await a.rule_for("hold short runway 33")
+        assert second.paragraph == "3-7-9" and second.status == "reviewed"  # edited in the index: no deploy
+        assert calls == ["/unstep-rules/_search"]  # one refresh, not one call per instruction
+
+    asyncio.run(go())
+
+
+def test_a_failed_refresh_keeps_the_rules_the_hub_already_has():
+    async def go():
+        a = agents(lambda r: httpx.Response(500))
+        await a.rule_for("hold short runway 33")
+        await a._rules_task
+        again = await a.rule_for("hold short runway 33")
+        assert again.paragraph == "3-7-2"  # the file copy stands
+
+    asyncio.run(go())
+
+
+def test_the_refresh_happens_once_per_interval_not_on_every_instruction():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(200, json=stored_rule_response())
+
+    async def go():
+        a = agents(handler)
+        for _ in range(5):
+            await a.rule_for("hold short runway 33")
+        await a._rules_task
+        assert len(calls) == 1
+
+    asyncio.run(go())
 
 
 def test_the_stored_rule_goes_on_the_card_and_the_instruction_is_untouched():

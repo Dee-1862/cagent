@@ -26,7 +26,8 @@ Elastic's percolator reverses the usual search. Normally you store documents and
 
 - Each rule is stored in the `unstep-rules` index as a query ("hold short" or "holding short") with its paragraph and a review status (`elastic/rules/rules.json`, loaded by `scripts/deploy_elastic.py`).
 - A proposed instruction is the document. Elastic returns the matching rules in one request, with its own `took`.
-- The hub shows the rule on the card at once. If Elastic is slow (over `UNSTEP_RULES_WAIT_S`, 0.3 s) or down, the hub uses the same rules in process. If no stored rule matches, it falls back to the hybrid search, and the agents explain afterwards, in parallel and off the path.
+- The hub keeps an in-memory copy of the stored rules and answers from it in microseconds. Elastic stays the source of truth: the hub refreshes the copy from the `unstep-rules` index in the background every `UNSTEP_RULES_SYNC_S` seconds (default 30), so a rule edited in Elastic reaches the hub within that time, with no deploy. If no stored rule matches, it falls back to the hybrid search, and the agents explain afterwards, in parallel and off the path.
+- Why not ask Elastic on every instruction: Elastic's own matching time was 1 ms but the wall time from outside was about 75 ms, nearly all network. The percolator query is still how the same answer is produced server-side (`rule_latency.py --elastic`), and it is still the way to test a rule against Elastic itself.
 
 What Elastic contributes that a hard-coded table does not:
 
@@ -139,3 +140,5 @@ What the search suggested (reranker scores rank candidates, they do not prove a 
 `rules.json` now carries the three title-matching ones as `candidate` (the card says "Candidate rule, not yet reviewed"), keeps hold-short on 3-7-2 with a note that the search disagrees, and leaves the weak ones without a paragraph. The new rules reach the stored copy in Elastic at the next `deploy_elastic.py`.
 
 The agents' part in this picture: they are the compilers' assistants and the second opinion, not the runtime. They can be asked, offline, to explain or challenge a candidate; the runtime lookup is deterministic and the same input gives the same rule.
+
+MEASURED LIVE (this sandbox, against the real index): the hub's copy answered in 0.08 to 0.10 ms, and after one refresh it held all 7 stored rules from Elastic. It showed hold-short as 3-7-4 (candidate), because that is what the deployed index still says; the file now says 3-7-2. That difference is the point of rules as data: the hub follows the index, so the next `deploy_elastic.py` (or an edit in Elastic) changes what the card cites. Someone must decide between 3-7-2 and 3-7-4.

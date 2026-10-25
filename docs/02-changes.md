@@ -21,6 +21,12 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## The hub answers rules from memory, refreshed from Elastic
+
+- `rule_for` no longer calls Elastic on each instruction: it answers from an in-memory copy of the stored rules in microseconds (0.08 to 0.10 ms live) and refreshes the copy from the `unstep-rules` index in the background (`UNSTEP_RULES_SYNC_S`, default 30). Elastic's own percolate time was 1 ms but the wall time was about 75 ms, almost all network, so a per-instruction call was the slow part. A rule edited in Elastic reaches the hub within the interval, with no deploy; a failed refresh keeps the rules the hub already has. `UNSTEP_RULES_WAIT_S` is gone.
+- Seen live: after a refresh the hub held the 7 stored rules, with hold-short as 3-7-4 from the deployed index while `rules.json` says 3-7-2. A person has to settle which paragraph governs.
+
 ## Live demo-mic test fixed, rule catalog compiler, and live numbers
 
 - `tests/test_demo_mic.py`: two tests failed since the day they were added. The helper `speak()` polled `mic.waiting` for False, but with instant fakes the scene asks the next prompt in the same event-loop pass, so it never saw it drop and waited forever for a prompt it had already missed (it only passed where timers are slow, such as Windows). It now counts prompts. All six pass, with and without a Cartesia key.

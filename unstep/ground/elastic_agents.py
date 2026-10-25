@@ -128,9 +128,13 @@ class ElasticAgents:
                                         transport=transport)
         self._compliance_cache: dict[tuple, tuple[float, dict, str | None]] = {}  # key -> (when, answer, run id)
         self.rules_elastic = ElasticRules(es, api_key, transport=transport)
-        self.rules_local = LocalRules()
+        self.rules_local = LocalRules()  # the file copy until the first refresh from Elastic lands
+        self._rules_synced_at = float("-inf")
+        self._rules_task: asyncio.Task | None = None
 
     async def aclose(self) -> None:
+        if self._rules_task is not None and not self._rules_task.done():
+            self._rules_task.cancel()
         await self.client.aclose()
         await self.rules_elastic.aclose()
 
@@ -149,18 +153,25 @@ class ElasticAgents:
             await asyncio.sleep(self.poll_s)
         return None
 
+    async def refresh_rules(self) -> int:
+        """Pull every stored rule from Elastic into the hub's in-memory copy. Returns how many rules it now has."""
+        rules = await self.rules_elastic.fetch_all()
+        if rules:
+            self.rules_local = LocalRules(rules)
+        self._rules_synced_at = time.monotonic()
+        return len(rules)
+
     async def rule_for(self, instruction_text: str, wait_s: float | None = None) -> RuleHit | None:
-        """The stored rule for an instruction: percolate it in Elastic (rules are data there), and if Elastic is
-        slow, errors or has no answer, use the same rules in process. Prefers a hit that has a paragraph."""
-        wait_s = rules_wait_s() if wait_s is None else wait_s
-        hits: list[RuleHit] = []
-        try:
-            async with asyncio.timeout(wait_s):
-                hits = await self.rules_elastic.match(instruction_text)
-        except (TimeoutError, asyncio.TimeoutError):
-            log.warning("Elastic rule percolate took over %.2f s; using the in-process rules", wait_s)
-        if not any(h.paragraph for h in hits):
-            hits = hits + self.rules_local.match(instruction_text)
+        """The stored rule for an instruction, answered from the hub's own in-memory copy in microseconds (an
+        Elastic call from the hub costs the network round trip: Elastic's own time was 1 ms but the wall time
+        about 75 ms). Elastic stays the source of truth: the copy is refreshed from the index in the background
+        every UNSTEP_RULES_SYNC_S seconds, so a rule edited in Elastic reaches the hub within that time, with no
+        deploy. Prefers a hit that has a paragraph. `wait_s` is kept for callers and no longer used."""
+        stale = time.monotonic() - self._rules_synced_at > rules_sync_s()
+        if stale and (self._rules_task is None or self._rules_task.done()):
+            self._rules_synced_at = time.monotonic()  # one refresh per interval, even if it fails
+            self._rules_task = asyncio.create_task(self.refresh_rules())
+        hits = self.rules_local.match(instruction_text)
         with_paragraph = [h for h in hits if h.paragraph]
         return (with_paragraph or hits or [None])[0]
 
@@ -340,12 +351,12 @@ class ElasticAgents:
             return None
 
 
-def rules_wait_s() -> float:
-    """How long the hub waits for Elastic to percolate the stored rules before using its in-process copy."""
+def rules_sync_s() -> float:
+    """How often the hub refreshes its in-memory copy of the stored rules from Elastic (UNSTEP_RULES_SYNC_S, 30)."""
     try:
-        return max(0.05, float(env("UNSTEP_RULES_WAIT_S", default="0.3")))
+        return max(1.0, float(env("UNSTEP_RULES_SYNC_S", default="30")))
     except ValueError:
-        return 0.3
+        return 30.0
 
 
 def with_stored_rule(proposal: ProposedDirective, hit: RuleHit | None) -> ProposedDirective:

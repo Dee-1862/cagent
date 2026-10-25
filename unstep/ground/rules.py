@@ -111,6 +111,17 @@ class ElasticRules:
     async def aclose(self) -> None:
         await self.client.aclose()
 
+    async def fetch_all(self) -> list[dict]:
+        """Every stored rule, to keep the hub's in-memory copy in step with the index. [] on any error."""
+        try:
+            r = await self.client.post(f"{self.url}/{self.index}/_search", json={
+                "query": {"match_all": {}}, "size": 1000, "_source": ["query", "paragraph", "title", "status", "evidence"]})
+            r.raise_for_status()
+            return rules_from_hits(r.json().get("hits", {}).get("hits", []))
+        except (httpx.HTTPError, ValueError):
+            log.warning("Elastic rule fetch failed; keeping the rules the hub already has")
+            return []
+
     async def match(self, instruction_text: str) -> list[RuleHit]:
         started = time.perf_counter()
         body = {"query": {"percolate": {"field": "query", "document": {"text": normalize(instruction_text)}}},
@@ -127,6 +138,22 @@ class ElasticRules:
         return [RuleHit(h["_id"], (h.get("_source") or {}).get("paragraph"), (h.get("_source") or {}).get("title"),
                         (h.get("_source") or {}).get("status", "needs_review"), self.backend, took, wall)
                 for h in result.get("hits", {}).get("hits", [])]
+
+
+def rules_from_hits(hits: list[dict]) -> list[dict]:
+    """Rule dicts rebuilt from stored Elastic documents (the stored query holds the phrases)."""
+    rules = []
+    for h in hits:
+        src = h.get("_source") or {}
+        try:
+            phrases = [c["match_phrase"]["text"] for c in src["query"]["bool"]["should"]]
+        except (KeyError, TypeError):
+            continue
+        if phrases:
+            rules.append({"id": h["_id"], "phrases": phrases, "paragraph": src.get("paragraph"),
+                          "title": src.get("title"), "status": src.get("status") or "needs_review",
+                          "evidence": src.get("evidence")})
+    return rules
 
 
 def describe(hit: RuleHit | None) -> str | None:
