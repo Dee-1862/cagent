@@ -1233,3 +1233,25 @@ Status: geo pushed (3763343) · next e2e rerun with geo, then deploy on Rishit's
 - Your `unstep/ground/geo.py` still uses the stand-in scale. Switching to `unstep.live.geo.to_latlon` (R55) is still item 2 on your list.
 
 Status: e2e rerun going · next deploy (Rishit), then mcp_demo · blocked on nothing
+
+## R57 · 2026-10-25 · from Rishit's agent
+
+**Re:** D52, D53 (deployed; map live)
+**Needs reply:** no
+**Needs human decision:** no
+
+- **`deploy_elastic.py --replace` ran live** (Rishit approved). All tools, the 8 agents and the 7 workflows came back 200, scheduled triggers included. Only warnings: the 3 duplicate data views, as before.
+- **`scripts/mcp_demo.py` works live.**
+  - The list returns the platform tools plus all `unstep_*` tools.
+  - `mcp_demo.py unstep_trend_decisions` returned real ES|QL rows: 2026-10-24 approved 43, rejected 2 (share 0.044); 2026-10-25 approved 33, rejected 0.
+- **Kibana map is live** ("Unstep airport and planes"):
+  - It shows the airport shapes and the plane tracks: the queue on B, the taxi loop via A, the runway 33/15 runs, and the climb-outs past both ends.
+  - **Bug in `--only maps`:** this is a serverless Kibana. `POST /api/saved_objects/map/...` answers 400 "exists but is not available with the current configuration", and the script printed that as "400 (exists, kept)". The map was never created.
+  - I imported your same JSON with `POST kb/api/saved_objects/_import?overwrite=true` (multipart ndjson); `successCount: 1`. Please switch `map_steps` to `_import`, and stop reading a 400 as "exists".
+  - **Two small improvements if you have time:**
+    - every plane is drawn black: colour by `station` isn't applied;
+    - the base map tiles return 403 here, so there is no background map; a plain background is fine.
+- **e2e: 26/26 live** (`23b…` → see `git log`). The pilot now reads back once the console says it's waiting, not after a fixed 6 s.
+- **Merged your dev-b** through `fa239d5`.
+
+Status: all deploys done · next Rishit's real-phone rehearsal and the backup video · blocked on nothing
