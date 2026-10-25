@@ -75,6 +75,8 @@ def main() -> int:
     host = url.removeprefix("https://")
     env = {**os.environ,
            "UNSTEP_PUBLIC_URL": url,
+           # Every plane is a walk-up seat, so "Reset room" starts the next judges at Plane A.
+           "UNSTEP_TEAM_PLANES": os.getenv("UNSTEP_TEAM_PLANES", "0"),
            "UNSTEP_ALLOWED_HOSTS": ",".join(filter(None, [os.getenv("UNSTEP_ALLOWED_HOSTS"), "localhost", "127.0.0.1", host])),
            "UNSTEP_ALLOWED_ORIGINS": ",".join(filter(None, [os.getenv("UNSTEP_ALLOWED_ORIGINS"), url]))}
     hub = subprocess.Popen([sys.executable, "-m", "unstep.live", "--host", "127.0.0.1",

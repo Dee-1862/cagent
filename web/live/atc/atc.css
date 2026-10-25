@@ -113,3 +113,6 @@ main{inset:0;overflow:hidden}.headline{top:68px;left:calc((100vw - 360px - min(7
 .lane .caption{flex:0 1 42%}.lane .recovery-line{flex:1 1 30%;min-width:90px;color:var(--amber)}.lane .heard:not(.recovery-line){flex:0 1 20%}.lane .advisory-line{flex:0 1 20%}
 
 .lane.idle{display:none}
+/* Reset is the presenter's between-groups button: easy to find, never mistaken for an action on the radio */
+#reset{background:rgba(255,255,255,.08);border:1px solid var(--hairline);border-radius:999px;padding:6px 14px;min-height:32px;color:var(--text)}
+#reset:hover{background:rgba(255,69,58,.18);border-color:var(--red)}

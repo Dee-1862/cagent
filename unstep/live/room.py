@@ -901,7 +901,9 @@ class LiveRoom:
 
     @staticmethod
     def is_team_station(station: str) -> bool:
-        return station in TEAM_STATIONS
+        """UNSTEP_TEAM_PLANES=0 (the QR walk-up demo): no team planes, so every plane is a walk-up
+        seat and "reset room" starts the next group of judges again at Plane A."""
+        return station in TEAM_STATIONS and env("UNSTEP_TEAM_PLANES") != "0"
 
     def is_walk_up(self, station: str) -> bool:
         s = self.stations.get(station)
