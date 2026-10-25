@@ -11,11 +11,14 @@ would silently overwrite the first (M-011).
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import math
 import os
 import re
 import time
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol
 
@@ -89,6 +92,86 @@ class _OwnedIndexes:
             raise KeyError(f"{index} is not registered; call register_index first")
         if writer != owner:
             raise PermissionError(f"{writer} may not write {index}; only {owner} writes it")
+
+
+class _DiskSnapshots:
+    """On-board snapshots of a plane's flight session (MM1): no cloud, written in the background.
+
+    Subclasses provide `_write_snapshot(index)` and `_read_snapshot(index)`. A save is scheduled after a
+    clearance, readback or advisory is added, at most once per `save_interval_s` per index, as a background
+    task, so it is never on the radio path. A failed save only logs. `disk_dir` None turns it all off.
+    """
+
+    SAVED_TYPES = {"clearance", "readback", "advisory"}
+    save_interval_s = 1.0
+
+    def _init_disk(self, disk_dir: Optional[str | os.PathLike]) -> None:
+        self.disk_dir: Optional[Path] = Path(disk_dir) if disk_dir else None
+        self.last_load_ms: Optional[float] = None
+        self.saves = 0  # snapshots written, for tests and the live check
+        self._dirty: set[str] = set()
+        self._save_tasks: dict[str, asyncio.Task] = {}
+        self._last_save: dict[str, float] = {}
+
+    def has_snapshot(self, index: str) -> bool:
+        return getattr(self, "disk_dir", None) is not None and not index.startswith("airport-") and self._snapshot_exists(index)
+
+    def _note_added(self, index: str, docs: list[Doc]) -> None:
+        if getattr(self, "disk_dir", None) is None or index.startswith("airport-"):
+            return
+        if not any(str(d.metadata.get("type", "")) in self.SAVED_TYPES for d in docs):
+            return
+        self._dirty.add(index)
+        task = self._save_tasks.get(index)
+        if task is not None and not task.done():
+            return  # the pending save will pick this up
+        try:
+            self._save_tasks[index] = asyncio.get_running_loop().create_task(self._save_loop(index))
+        except RuntimeError:
+            pass  # no event loop: nothing to save in the background
+
+    async def _save_loop(self, index: str) -> None:
+        while index in self._dirty:
+            wait = self.save_interval_s - (time.monotonic() - self._last_save.get(index, float("-inf")))
+            if wait > 0:
+                await asyncio.sleep(wait)
+            await self._save_now(index)
+
+    async def _save_now(self, index: str) -> bool:
+        self._dirty.discard(index)
+        self._last_save[index] = time.monotonic()
+        try:
+            await self._write_snapshot(index)
+            self.saves += 1
+            return True
+        except Exception:
+            log.warning("could not save the memory snapshot of %s to disk; the radio is not affected", index,
+                        exc_info=True)
+            return False
+
+    async def flush_saves(self) -> None:
+        """Save anything still waiting, now (used when the plane stops)."""
+        if getattr(self, "disk_dir", None) is None:
+            return
+        for task in list(self._save_tasks.values()):
+            if not task.done():
+                task.cancel()
+        for index in list(self._dirty):
+            await self._save_now(index)
+
+    async def load_snapshot(self, index: str) -> Optional[int]:
+        """Restore a plane's session from disk. Returns the document count, or None if there was nothing
+        to load or the load failed (logged; the plane then starts from its seed as before)."""
+        if not self.has_snapshot(index):
+            return None
+        started = time.perf_counter()
+        try:
+            count = await self._read_snapshot(index)
+        except Exception:
+            log.warning("could not load the memory snapshot of %s; starting fresh", index, exc_info=True)
+            return None
+        self.last_load_ms = round((time.perf_counter() - started) * 1000, 1)
+        return count
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +273,7 @@ def above_floor(docs: list[Doc], min_score: Optional[float]) -> list[Doc]:
     return docs if not min_score else [d for d in docs if d.score >= min_score]
 
 
-class LocalMemory(_OwnedIndexes):
+class LocalMemory(_OwnedIndexes, _DiskSnapshots):
     """Pure-Python stand-in for Moss, for offline runs and tests.
 
     Score = alpha * token overlap (stand-in for semantic) + (1 - alpha) * BM25
@@ -199,9 +282,34 @@ class LocalMemory(_OwnedIndexes):
 
     backend = "local"
 
-    def __init__(self) -> None:
+    def __init__(self, disk_dir: Optional[str | os.PathLike] = None) -> None:
         super().__init__()
         self.indexes: dict[str, dict[str, Doc]] = {}
+        self._init_disk(disk_dir)  # off unless asked: offline runs and tests stay in memory
+
+    def _snapshot_path(self, index: str) -> Path:
+        return self.disk_dir / f"{index}.json"
+
+    def _snapshot_exists(self, index: str) -> bool:
+        return self._snapshot_path(index).is_file()
+
+    async def _write_snapshot(self, index: str) -> None:
+        docs = [{"id": d.id, "text": d.text, "metadata": d.metadata} for d in self.indexes.get(index, {}).values()]
+        path = self._snapshot_path(index)
+
+        def write() -> None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps({"index": index, "docs": docs}), encoding="utf-8")
+            os.replace(tmp, path)  # a failed save leaves the last snapshot loadable
+
+        await asyncio.to_thread(write)
+
+    async def _read_snapshot(self, index: str) -> int:
+        raw = json.loads(await asyncio.to_thread(self._snapshot_path(index).read_text, "utf-8"))
+        self.indexes[index] = {d["id"]: Doc(id=d["id"], text=d["text"], metadata=dict(d.get("metadata") or {}))
+                               for d in raw["docs"]}
+        return len(self.indexes[index])
 
     async def open(self, *indexes: str) -> None:
         """Nothing to open locally; here so callers can treat both backends the same."""
@@ -232,6 +340,7 @@ class LocalMemory(_OwnedIndexes):
         store = self.indexes.setdefault(index, {})
         for d in docs:
             store[d.id] = Doc(id=d.id, text=d.text, metadata=dict(d.metadata))
+        self._note_added(index, docs)
         return len(docs)
 
     async def query(self, index, text, top_k=3, alpha=0.8, filter=None, min_score=None) -> QueryResult:
@@ -303,7 +412,7 @@ def to_moss_filter(flt: Optional[dict]) -> Optional[dict]:
     return clauses[0] if len(clauses) == 1 else {"$and": clauses}
 
 
-class MossMemory(_OwnedIndexes):
+class MossMemory(_OwnedIndexes, _DiskSnapshots):
     """Loaded airport knowledge and flight/frequency sessions, queried in-process.
 
     Airport indexes are read-only here. Only the ingestion script writes them.
@@ -316,19 +425,43 @@ class MossMemory(_OwnedIndexes):
 
     backend = "moss"
 
-    def __init__(self, project_id: str, project_key: str) -> None:
+    def __init__(self, project_id: str, project_key: str, disk_dir: Optional[str | os.PathLike] = None) -> None:
         super().__init__()
         from moss import MossClient  # lazy: tests and offline runs don't need the SDK
 
         self.client = MossClient(project_id, project_key)
         self.sessions: dict[str, Any] = {}
+        if disk_dir is None:  # on board by default; UNSTEP_MOSS_DISK=off turns it off, or names another folder
+            env = os.getenv("UNSTEP_MOSS_DISK", "data/moss")
+            disk_dir = None if env.strip().lower() in ("off", "0", "false", "") else env
+        self._init_disk(disk_dir)
+
+    def _snapshot_exists(self, index: str) -> bool:
+        return (self.disk_dir / index).is_dir()
+
+    async def _write_snapshot(self, index: str) -> None:
+        # SessionIndex.save_to_disk(cache_path) writes <cache_path>/<session name>/ and, per the SDK, a failed
+        # or interrupted save leaves the last snapshot loadable.
+        session = self.sessions.get(index)
+        if session is None:
+            return
+        await session.save_to_disk(str(self.disk_dir))
+
+    async def _read_snapshot(self, index: str) -> int:
+        # SessionIndex.load_from_disk(cache_path) replaces the session's documents and model. The session was
+        # opened without downloading the cloud index (see _session), so nothing is fetched here.
+        session = await self._session(index)
+        return await session.load_from_disk(str(self.disk_dir))
 
     async def _session(self, index: str):
         if index.startswith("airport-"):
             raise PermissionError("Airport indexes are read-only; use pre-flight ingestion")
         # Opening a session checks credentials with Moss Cloud, so open before going offline.
         if index not in self.sessions:
-            self.sessions[index] = await self.client.session(index)
+            if self.has_snapshot(index):  # restore from disk, not from a cloud index of the same name
+                self.sessions[index] = await self.client.session(index, auto_load_on_init=False)
+            else:
+                self.sessions[index] = await self.client.session(index)
         return self.sessions[index]
 
     async def open(self, *indexes: str) -> None:
@@ -371,6 +504,7 @@ class MossMemory(_OwnedIndexes):
             for d in docs
         ]
         added, updated = await session.add_docs(infos)
+        self._note_added(index, docs)
         return added + updated
 
     async def has_doc(self, index: str, doc_id: str) -> bool:

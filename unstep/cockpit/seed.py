@@ -48,8 +48,11 @@ def flight_docs(callsign: str = CALLSIGN, t0: int = T0) -> list[Doc]:
     ]
 
 
-async def seed(memory: Memory, callsign: str = CALLSIGN, t0: int = T0) -> tuple[str, str]:
-    """Register owners and load both indexes. Returns (airport index, flight index)."""
+async def seed(memory: Memory, callsign: str = CALLSIGN, t0: int = T0,
+               skip_existing: bool = False) -> tuple[str, str]:
+    """Register owners and load both indexes. Returns (airport index, flight index).
+
+    `skip_existing`: the flight session was just restored from disk, so seed only the documents it lacks."""
     a, f = airport_index(AIRPORT_ICAO), flight_index(callsign)
     memory.register_index(a, PREFLIGHT)
     memory.register_index(f, COCKPIT)
@@ -57,5 +60,10 @@ async def seed(memory: Memory, callsign: str = CALLSIGN, t0: int = T0) -> tuple[
         await memory.load_airport(a)
     else:
         await memory.add_docs(a, airport_docs(), writer=PREFLIGHT)
-    await memory.add_docs(f, flight_docs(callsign, t0), writer=COCKPIT)
+    docs = flight_docs(callsign, t0)
+    has_doc = getattr(memory, "has_doc", None)
+    if skip_existing and has_doc is not None:
+        docs = [d for d in docs if not await has_doc(f, d.id)]
+    if docs:
+        await memory.add_docs(f, docs, writer=COCKPIT)
     return a, f

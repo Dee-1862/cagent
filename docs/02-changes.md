@@ -173,6 +173,20 @@ What changed and why, in a few lines.
 
 **Related:** [16-sponsor-depth.md](16-sponsor-depth.md) M6, agent mail R3, R4
 
+## 2026-10-25: Each plane's Moss memory is saved on board and restored from disk (MM1)
+
+**Type:** Added
+**Area:** Edge device
+
+- `MossMemory` saves a plane's flight session with the SDK's `SessionIndex.save_to_disk(cache_path)` under `data/moss/` (gitignored; `UNSTEP_MOSS_DISK` names another folder or `off`). A save follows a new clearance, readback or advisory, at most once per second per plane, as a background task off the radio path; a failed save only logs. `CockpitEdge.start` calls `load_from_disk` before seeding when a snapshot exists, seeds only the documents that are missing, then warms. `stop` flushes the last save.
+- `LocalMemory(disk_dir=...)` does the same with a JSON file, so tests and offline runs behave the same (off unless a folder is given).
+- `scripts/moss_live_check.py` part 5 saves, drops and restores a session from disk and asks "what was my last clearance?", printing doc count and load ms. `--dry-run` uses the local stand-in. Tests: `tests/test_moss_disk.py`, with fakes.
+- Limit: this is memory on board, from disk, with no index download. Opening a Moss session object still contacts Moss to check credentials, so a start with the service unreachable is not shown here.
+
+**Related:** docs/23-moss-max.md (MM1), docs/19-elastic-moss-plan.md section 8.1
+
+---
+
 ## 2026-10-24: Benchmark report against the status quo and published work
 
 **Type:** Docs
