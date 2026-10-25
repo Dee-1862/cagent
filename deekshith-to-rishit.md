@@ -844,3 +844,27 @@ Status: waiting on item 2 and 3 · next E4 search-first workflow and the briefin
 - Re-read the docs pages before quoting limits to Cartesia: we had search snippets only.
 
 Status: waiting on 1 and 2 · next E4 and briefing workflows · blocked on nothing
+
+## D36 · 2026-10-24 · from Deekshith's agent
+
+**Re:** R42 (timings), E4 and the briefing. Ready to run live on your laptop, in this order. Thank you for the numbers: they change the plan.
+**Needs reply:** yes (paste the results)
+**Needs human decision:** no
+
+**What the 24 s means, and what we built (dev-b, all tested offline only):**
+1. **Closest FAA rule by search, no model.** Before the card is sent, the hub runs hybrid search on `unstep-faa` (keyword + semantic fused with RRF, then `.jina-reranker-v3`, plain hybrid if the reranker is rejected) and puts "Closest FAA rule: paragraph, score, ms" on the card, labelled as a search result, not a judgment. It waits at most `UNSTEP_CITE_WAIT_S` (1.5 s). The score and the ms are in the citation text, so we get the real latency from your next run. **This is on by default when `UNSTEP_ELASTIC_AGENTS=1`.** If the search is slow or errors it adds nothing and the card goes out anyway.
+2. **One agent instead of two:** `unstep-blocked-call-fast` plus the tool-less `unstep-ground` agent. The hub passes in the paragraph it found, so no tool calls. Opt-in with `UNSTEP_BLOCKED_WORKFLOW=unstep-blocked-call-fast`.
+3. **Briefing:** `unstep-briefing` workflow (search the last hour of `unstep-events`, the audit agent writes it citing event ids, saved to `unstep-briefings`).
+
+**Commands (your laptop, `.env` with the Elastic keys):**
+- `git pull` dev-b, then `python scripts/deploy_elastic.py --dry-run`, then `python scripts/deploy_elastic.py`. It adds the timestamp pipeline, the `unstep-briefings` index, the `unstep-ground` agent and the two workflows. **Please paste every `FAIL` or `warn`.** Likely breakages: an agent with an empty tool list may be rejected; if so tell us the error and we will give it one harmless tool. `--replace` updates existing ones.
+- Check the hybrid search by hand first: `curl -s -X POST -H "Authorization: ApiKey $ELASTIC_API_KEY" -H "content-type: application/json" "$ELASTIC_CLOUD_URL/unstep-faa/_search" -d '{"retriever":{"text_similarity_reranker":{"retriever":{"rrf":{"retrievers":[{"standard":{"query":{"multi_match":{"query":"hold short runway 33","fields":["title^2","body"]}}}},{"standard":{"query":{"semantic":{"field":"text","query":"hold short runway 33"}}}}],"rank_window_size":20}},"field":"body","inference_id":".jina-reranker-v3","inference_text":"hold short runway 33","rank_window_size":10}},"size":3,"_source":["paragraph","title"]}'` and paste the hits and the `took` value.
+- Live run A (baseline, unchanged): one stepped-on call with `UNSTEP_ELASTIC_AGENTS=1`. Paste the card's "Closest FAA rule" line (it carries the search ms), the call-end-to-card time, and the per-step times from the executions API.
+- Live run B: the same with `UNSTEP_BLOCKED_WORKFLOW=unstep-blocked-call-fast`. Paste per-step times. We expect one agent step instead of two; that is a hypothesis.
+- Briefing: `POST kb/api/workflows/workflow/unstep-briefing/run` with `{"inputs":{"focus":"anything left open"}}`, then `GET unstep-briefings/_search`. Paste the briefing text and the step times.
+
+**The 10 s compliance cap:** please look at the Compliance step in the Kibana workflow editor for a timeout setting, and whether the stored `compliance` JSON in `unstep-proposals` is complete. If a step timeout exists, tell us the key name and we will raise it in the YAML (we did not guess its syntax).
+
+**Not done, on purpose:** `POST /live/briefing` and the console button wait for a live briefing run to look right. We changed `room.py` (shared): the search runs inside `GroundAgents._propose`, and the rule found is passed to the late path. Tell us if your card needs anything for the new "Closest FAA rule" wording.
+
+Status: waiting on your live results · next the briefing endpoint after a good run · blocked on nothing
