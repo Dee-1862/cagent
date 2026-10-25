@@ -189,7 +189,9 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
           return;
         case "stations": return setStations(m.stations);
         case "seat_freed": // the presenter reset the room, or this phone was away too long
-          say("Your plane was handed back. Join again to fly.");
+          say(typeof m.reason === "string" && m.reason.startsWith("landed")
+            ? "Your flight has landed after a quiet spell. Join again to fly."
+            : "Your plane was handed back. Join again to fly.");
           return void setTimeout(onLeave, 2500);
         case "room_reset":
           setTrace(null);

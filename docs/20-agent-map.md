@@ -79,7 +79,51 @@ These came up and are recorded so they are not lost. None is built or scheduled.
 | --- | --- |
 | "A spoken sentence is checked by fixed code first; only the agents that event needs are called, and a person decides." | BUILT |
 | "Each agent can only call its own fixed queries." | BUILT |
-| "The compliance agent cites the FAA paragraph for the instruction." | MEASURED LIVE (once, R31) |
+| "The compliance agent cites the FAA paragraph for the instruction." | MEASURED LIVE (three real stepped-on calls, R31 to R35) |
 | "The agents also watch for a missing readback, a stuck mic and conflicting clearances." | PROPOSED, not built. Do not say it yet |
 | "Agents are isolated by permission." | Not checked. Do not say it |
 | "This reduces staffing, workload or incidents." | Not measured. Do not say it |
+
+## 6. Agent Builder depth: what the product offers and where we stand
+
+From Elastic's [Agent Builder overview](https://www.elastic.co/docs/explore-analyze/ai-features/elastic-agent-builder) (GA from 9.3, also on Serverless). The judge's point was to go deeper than retrieving from a document store, so each capability is listed with what we do.
+
+| Agent Builder capability | What we do | Tag |
+| --- | --- | --- |
+| Custom agents with their own instructions and toolsets | Four agents, each with its own tool list (section 2) | BUILT, MEASURED LIVE |
+| Custom tools (ES\|QL with parameters, index search) | Seven tools | BUILT, MEASURED LIVE |
+| Workflows call agents (`ai.agent` step) | `unstep-blocked-call` and `unstep-readback-audit` | BUILT, MEASURED LIVE |
+| Agents call workflows (a `workflow` tool on an agent) | Not used. Plan: the audit agent gets a tool that writes the shift briefing | PROPOSED |
+| Search step before the agent, saving the answer to an index | Not yet in the blocked-call workflow. Plan: hybrid retrieval ahead of the agent, and the briefing workflow | PROPOSED |
+| Scheduled and manual workflow triggers (alert-rule trigger also documented) | Manual only (the hub starts runs). Plan: a scheduled briefing | PROPOSED |
+| Late answer shown on the open card instead of blocking it | Built in the room (3a): see below | BUILT, NEEDS LIVE RUN |
+| MCP server (`/api/agent_builder/mcp`) and A2A server | Not used. A one-line MCP demo from a coding agent is cheap | PROPOSED |
+| Permissions: security roles and API keys control which tools an agent can use and what data it can query | We use one key for all four agents. Per-agent keys or roles could turn "least privilege by tool" into enforced separation; not checked | PROPOSED, UNVERIFIED |
+| Model selection: other model providers or local models through inference endpoints | Not used. A faster model for the agents is one lever on the 6.2 s; not measured | PROPOSED, UNVERIFIED |
+| Skills (reusable instruction and tool bundles) | Not used | PROPOSED |
+| Token usage monitoring | Not used. Would let us report tokens per stepped-on call | PROPOSED |
+
+**Do the agents need to talk to each other?** Not on the critical path. Today the Intercept and Compliance agents run one after the other in a workflow; they do not hold a conversation, and each extra hop is another model call of seconds. Passing data through a workflow (search, then one agent, then save) gets the depth without the delay. Agent-to-agent work belongs off the critical path, for example a briefing workflow that an agent starts as a tool.
+
+**Late citation (3a), and the one case that still waits.** The proposal card now goes out at once from the local check, and the Elastic agents' citation is added to the open card when it arrives (up to `UNSTEP_AGENTS_LATE_S`, default 30 s). The instruction never changes, confidence can only go down, and the step is labelled as arriving after the card. The exception: if the policy might relay a proposal by itself (restrictive and high confidence), the room still waits for the agents, because Intercept can veto it (match false lowers confidence). Making that case late would let an auto-relay happen before the veto.
+
+## 7. Where the time goes, and the search-first fix
+
+Rishit's measurement of five real runs of `unstep-blocked-call` (Kibana workflow history, R42):
+
+| Step | Typical | Slowest |
+| --- | --- | --- |
+| Intercept agent | 12.7 s | 19.3 s |
+| Compliance agent | 10.0 s | 10.0 s |
+| Store result | 0.3 s | 0.4 s |
+| Whole run | 24 s | 31 s |
+
+Two things follow. The earlier 6 s wait mostly gave up before the agents answered, so the veto it was meant to give rarely arrived in time. And the Compliance agent takes 10.02 to 10.03 s on every run, which looks like a 10 s cap, not real work (not yet checked in the workflow's step settings). The citations it produced were real.
+
+What the hub does about it now (BUILT, NEEDS LIVE RUN):
+
+1. **Closest rule by search, no model.** Before the card is sent, the hub runs a hybrid search of the FAA order (keyword and semantic results fused, then reranked with `.jina-reranker-v3`, falling back to plain hybrid if the reranker is rejected). The card shows "Closest FAA rule: paragraph, score, ms". It is labelled as a search result, not as a judgment that the paragraph governs the call; the agents can still replace it. The search waits at most `UNSTEP_CITE_WAIT_S` (default 1.5 s). Its real latency is unmeasured.
+2. **One agent call instead of two** (`unstep-blocked-call-fast`, agent `unstep-ground`, no tools). The hub passes in the paragraph it found, so the agent makes no tool calls. Opt in with `UNSTEP_BLOCKED_WORKFLOW=unstep-blocked-call-fast` after a live run shows it is faster. Not run live yet.
+3. **Briefing workflow** (`unstep-briefing`): search the last hour of the audit trail, the audit agent writes a handoff briefing citing event ids, saved to `unstep-briefings`. Off the radio path. Not run live yet. The step type names used (`elasticsearch.search`, `ai.agent`, `elasticsearch.index`) are the ones in Elastic's workshop repo.
+
+Still unproven and not claimed: that the one-agent version is faster, that search latency is low enough to stay on the path, and that the closest paragraph is usually the governing one.

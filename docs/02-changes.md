@@ -5,6 +5,36 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+
+
+
+## Search-first citation, a one-agent workflow and a briefing workflow
+
+- Rishit's live timings (R42) show the Elastic workflow takes about 24 s (intercept 12.7 s, compliance 10.0 s, store 0.3 s), with compliance looking capped at 10 s.
+- The hub now runs a hybrid search (keyword plus semantic, fused, then reranked with `.jina-reranker-v3`) of the FAA order before sending the card, and shows the closest paragraph with its score and time, labelled as a search result. `UNSTEP_RERANK_ID`, `UNSTEP_CITE_WAIT_S` (1.5 s).
+- New opt-in workflow `unstep-blocked-call-fast` and tool-less agent `unstep-ground`: one agent call given the paragraph the search found (`UNSTEP_BLOCKED_WORKFLOW`). The default stays the two-agent workflow that has run live.
+- New `unstep-briefing` workflow and `unstep-briefings` index (with a timestamp pipeline). None of the three has run against a live cluster yet.
+
+## Cartesia findings, and a 429 backoff
+
+- New `docs/24-cartesia-findings.md`: five graded findings (manual STT tail latency and handshakes, ink-2 final-text deltas with no word timestamps, HTTP 429 with several clients, the "niner" dictionary entry, the turns endpoint report). Several turned out to be documented behaviour or our own doing, and the doc says so. Items taken from Cartesia's docs came from search snippets and must be re-read before quoting.
+- A Cartesia HTTP 429 on the WebSocket handshake is retried with backoff (TTS and STT) and then raised as `CartesiaRateLimited`; a TTS error event with status 429 raises the same class.
+- `settle_caption` in `stt.py` holds back a possibly split last word until the utterance is final. Not wired into the room yet (shared file).
+
+## The Elastic agents' citation no longer blocks the card (3a)
+
+- The stepped-on call's proposal card goes out at once from the local check; the Elastic agents' FAA citation is added to the open card when the workflow answers (up to 30 s, `UNSTEP_AGENTS_LATE_S`). The instruction never changes; confidence can only go lower; the trace gets an `agents_cited` step.
+- The one case that still waits for the agents is a proposal the policy might auto-relay (restrictive, high confidence), because Intercept can veto it. Without this, an auto-relay could happen before the veto.
+- `docs/20-agent-map.md` section 6 maps Agent Builder's capabilities (workflows both ways, MCP and A2A, permissions, model selection, skills) to what we use, and says why the agents should not chat with each other on the critical path.
+
+## Idle pilots land: stale planes free themselves
+
+- A walk-up pilot who is still connected but has sent nothing for `UNSTEP_IDLE_LAND_S` (default 600 s; 0 turns it off) is treated as landed: the seat is freed the same way a gone phone is (flight archived to the flight log, pushed once, cockpit agent and open events closed). Pings do not count, so a forgotten open tab lands too. Team planes are never freed.
+- The pilot app says "Your flight has landed after a quiet spell" when it was freed this way.
+- Touches `room.py` (an activity stamp and a sweeper task); agreed by Rishit's side (R36, R38). A landing also posts a Monitor row (`agent_action`, kind rule) into the console's Agents at work feed.
+- README known limitations corrected to match the live runs (Elastic and the agents are deployed, Moss sessions have run live, the turns-endpoint report is not reproduced).
+
 ## Moss connection checklist and an agent map
 
 - A plane's flight session is warmed at join (`MossMemory.warm`), so the first hint in a live room is not the slow one (Rishit measured 783 ms against 0.2 to 0.4 ms warm; the effect of warming is still to be measured).

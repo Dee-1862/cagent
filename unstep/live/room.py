@@ -18,6 +18,7 @@ import base64
 import io
 import json
 import logging
+import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Any, Awaitable, Callable
@@ -27,7 +28,7 @@ import soundfile as sf
 
 from unstep import scenario
 from unstep.clock import now_ms
-from unstep.config import ROOT, env, moss_aircraft, radio_sound, realtime_replay
+from unstep.config import ROOT, env, idle_land_s, moss_aircraft, radio_sound, realtime_replay
 from unstep.contracts import (AnomalyEvent, ApprovedDirective, AuditRecord, Insight, PilotQuery,
                               ProposedDirective, ReadbackResult, RejectedDirective, TowerTranscript,
                               VoiceApproval, Word, unwrap, wrap)
@@ -339,6 +340,7 @@ class GroundAgents:
     def __init__(self, send, wait_s: float = TRANSCRIPT_WAIT_S, elastic=None):
         self.send, self.wait_s = send, wait_s
         self.elastic = elastic  # unstep.ground.elastic_agents.ElasticAgents, or None for local only
+        self.on_late = None  # async (event_id, merged proposal, AgentsResult): the room draws a late citation
         self.transcripts: list[TowerTranscript] = []
         self._changed = asyncio.Condition()
         self._tasks: set[asyncio.Task] = set()
@@ -370,25 +372,63 @@ class GroundAgents:
         transcript = self._match(event)
         proposal = propose(event, transcript)
         agents = None
+        late = False
+        rule = None
         if self.elastic is not None and transcript is not None:
-            from unstep.ground.elastic_agents import merge
+            from unstep.cockpit.phraseology import is_restrictive
+            from unstep.ground.elastic_agents import merge, with_closest_rule
 
-            agents = await self.elastic.blocked_call(event, transcript, proposal)
-            proposal = merge(proposal, agents)
+            # Hybrid search (+ rerank) of the FAA order: the closest rule in the time of a search, before any
+            # language model. The card shows it as a search result; the Compliance agent can still replace it.
+            rule = await self.elastic.cite(proposal.instruction_text)
+            proposal = with_closest_rule(proposal, rule)
+
+            # The agents can veto (Intercept says no match). If the policy might relay this by itself
+            # (restrictive and high confidence), the proposal still waits for them, as before. Otherwise
+            # a person decides anyway, so the card goes out at once and the citation follows (3a).
+            might_auto_relay = is_restrictive(proposal.slots.action) and proposal.confidence == "high"
+            if might_auto_relay or self.on_late is None:
+                agents = await self.elastic.blocked_call(event, transcript, proposal, rule=rule)
+                proposal = merge(proposal, agents)
+            else:
+                late = True
         await self.send(proposal)
-        await self.send(AuditRecord(event_id=event.event_id, stage="ground_agents", actor="agents",
-                                    latency_ms=now_ms() - started, payload={
-                                        "matched_transcript": transcript.transcript_id if transcript else None,
-                                        "tower_text": transcript.text if transcript else None,
-                                        "blocked_words": proposal.blocked_words,
-                                        "confidence": proposal.confidence,
-                                        "confidence_method": proposal.confidence_method,
-                                        "agents": ("Elastic Workflow unstep-blocked-call" if agents
-                                                   else "local intercept + compliance"),
-                                        **({"workflow_execution_id": agents.execution_id,
-                                            "workflow_ms": agents.took_ms,
-                                            "intercept": agents.intercept, "compliance": agents.compliance,
-                                            "citation": proposal.rule_citation} if agents else {})}))
+        await self.send(self._audit(event, transcript, proposal, started, agents,
+                                    "Elastic agents pending (late)" if late else None))
+        if late:
+            task = asyncio.create_task(self._late(event, transcript, proposal, started, rule))
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
+
+    @staticmethod
+    def _audit(event, transcript, proposal, started, agents, note=None) -> AuditRecord:
+        return AuditRecord(event_id=event.event_id, stage="ground_agents", actor="agents",
+                           latency_ms=now_ms() - started, payload={
+                               "matched_transcript": transcript.transcript_id if transcript else None,
+                               "tower_text": transcript.text if transcript else None,
+                               "blocked_words": proposal.blocked_words,
+                               "confidence": proposal.confidence,
+                               "confidence_method": proposal.confidence_method,
+                               "agents": ("Elastic Workflow unstep-blocked-call" if agents
+                                          else note or "local intercept + compliance"),
+                               **({"workflow_execution_id": agents.execution_id,
+                                   "workflow_ms": agents.took_ms,
+                                   "intercept": agents.intercept, "compliance": agents.compliance,
+                                   "citation": proposal.rule_citation} if agents else {})})
+
+    async def _late(self, event, transcript, proposal, started, rule=None) -> None:
+        """The card is already on screen; add the agents' citation when it arrives. The instruction never changes."""
+        from unstep.ground.elastic_agents import late_wait_s, merge
+
+        try:
+            agents = await self.elastic.blocked_call(event, transcript, proposal, wait_s=late_wait_s(), rule=rule)
+            if agents is None:
+                return
+            merged = merge(proposal, agents)
+            await self.send(self._audit(event, transcript, merged, started, agents))
+            await self.on_late(event.event_id, merged, agents)
+        except Exception:
+            log.exception("late Elastic agents for %s failed; the local proposal stands", event.event_id)
 
 
 class LiveRoom:
@@ -457,6 +497,7 @@ class LiveRoom:
         self.claims: dict[str, float] = {}  # station -> hub time join() handed it out
         self._join_lock = asyncio.Lock()
         self._moss_used = 0
+        self.last_active: dict[str, float] = {}  # station -> time.monotonic() of its last input
         self._shared_moss = None
         self.reset_at = 0  # hub time of the last presenter reset; /live/stats never counts before it
 
@@ -537,6 +578,7 @@ class LiveRoom:
 
             self.elastic_agents = elastic_agents_from_env() if self.live else None
             ground = GroundAgents(lambda m: self.links["agents"].send(m), elastic=self.elastic_agents)
+            ground.on_late = self._agents_cited
             self.links["agents"] = InProcLink(gw, "agents", ground.on_message)
             self.policy = PolicyAgent(lambda m: self.links["policy"].send(m))
             self.links["policy"] = InProcLink(gw, "policy", self.policy.on_message,
@@ -574,6 +616,7 @@ class LiveRoom:
                     await self._start_edge(s)
             self._spawn(self._scheduler())
             self._spawn(self._ticker())
+            self._spawn(self._landing_sweeper())
             self._started = True
 
     async def _start_edge(self, s: Station) -> None:
@@ -838,6 +881,7 @@ class LiveRoom:
     # ------------------------------------------------------------ browsers
 
     async def join(self, station: str, ws) -> None:
+        self.last_active[station] = time.monotonic()
         self.clients[station].add(ws)
         self.claims.pop(station, None)
         await ws.send_json(self.snapshot(station))
@@ -862,6 +906,22 @@ class LiveRoom:
     def is_walk_up(self, station: str) -> bool:
         s = self.stations.get(station)
         return s is not None and s.kind == "aircraft" and not self.is_team_station(station)
+
+    async def _landing_sweeper(self) -> None:
+        """A walk-up pilot who is still connected but has done nothing for UNSTEP_IDLE_LAND_S has landed: free
+        the seat the same way a gone phone is (archive the flight to the flight log, push once, close its
+        cockpit agent and open events), so a demo room does not keep stale planes running."""
+        limit = idle_land_s()
+        if limit <= 0:
+            return
+        while True:
+            await asyncio.sleep(min(15.0, max(0.5, limit / 4)))
+            now = time.monotonic()
+            for station in list(self.stations):
+                if not self.is_walk_up(station) or station in self.key_since or station in self.streams:
+                    continue
+                if now - self.last_active.get(station, now) >= limit:
+                    await self.free_seat(station, f"landed: no activity for {round(limit / 60, 1):g} min")
 
     async def _free_later(self, station: str) -> None:
         await asyncio.sleep(SEAT_FREE_S)
@@ -916,6 +976,12 @@ class LiveRoom:
         self.stations.pop(station, None)
         self.graph = [n for n in self.graph if n["id"] != f"cockpit:{s.callsign}"]
         log.info("freed seat %s (%s)", station, reason)
+        if reason.startswith("landed"):  # the console's "Agents at work" feed shows what the monitor did
+            self.send_to({"atc", "observer"}, {
+                "type": "agent_action", "id": f"landed-{s.callsign}-{now_ms()}", "ts": now_ms(), "agent": "Monitor",
+                "kind": "rule", "station": s.callsign, "event_id": None, "status": "done",
+                "text": f"{s.name or s.callsign} landed after {reason.removeprefix('landed: no activity for ')} with no "
+                        "activity; seat freed", "detail": "Flight archived to the flight log", "sponsor": None})
         self.send_to(None, {"type": "stations", "stations": self.stations_info(), "graph": self.graph})
         self.presence()
         return True
@@ -973,6 +1039,7 @@ class LiveRoom:
 
     async def handle(self, station: str, data: dict) -> None:
         kind = data.get("type")
+        self.last_active[station] = time.monotonic()  # any input but a ping counts as the pilot being there
         if kind == "say":
             await self.say(station, str(data.get("text", ""))[:300])
         elif kind == "mic":
@@ -1785,6 +1852,31 @@ class LiveRoom:
             self.flow("ground", "elastic", "audit", event_id)
         else:
             return
+        self.send_to(None, {"type": "trace", "trace": trace})
+
+    async def _agents_cited(self, event_id: str, merged, agents) -> None:
+        """3a: the Elastic agents answered after the card was shown. Add their citation (and a lower confidence,
+        never a higher one) to the open trace and say so. The instruction itself never changes."""
+        trace = self.traces.get(event_id)
+        if trace is None or not trace.get("proposal"):
+            return
+        proposal = trace["proposal"]
+        citation = merged.rule_citation
+        lowered = merged.confidence == "low" and proposal.get("confidence") != "low"
+        if not citation and not lowered:
+            return
+        if citation:
+            proposal["rule_citation"] = citation
+        if lowered:
+            proposal["confidence"] = "low"
+        proposal["confidence_method"] = merged.confidence_method
+        after = " and after the decision" if trace.get("status") in ("approved", "auto_relayed", "delivered") else ""
+        seconds = round((agents.took_ms or 0) / 1000, 1)
+        self._time(trace, "agents_cited", now_ms(), ms=agents.took_ms, by="elastic")
+        self._step(trace, "ground", "agents_cited",
+                   f"Elastic's agents checked the fix and cited {citation or 'no paragraph'} "
+                   f"({seconds} s, after the card was shown{after})",
+                   citation=citation, workflow_ms=agents.took_ms, confidence=proposal.get("confidence"))
         self.send_to(None, {"type": "trace", "trace": trace})
 
     async def _prompt_controller(self, trace: dict) -> None:

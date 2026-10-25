@@ -52,6 +52,11 @@ INDEXES = {
                                                      "execution_id": {"type": "keyword"},
                                                      "intercept": {"type": "text", "index": False},
                                                      "compliance": {"type": "text", "index": False}}}},
+    # Shift handoff briefings written by the unstep-briefing workflow; a pipeline stamps @timestamp on write.
+    "unstep-briefings": {"settings": {"index.default_pipeline": "unstep-briefings-timestamp"},
+                         "mappings": {"properties": {"@timestamp": {"type": "date"}, "focus": {"type": "keyword"},
+                                                     "execution_id": {"type": "keyword"},
+                                                     "briefing": {"type": "text"}}}},
     "unstep-findings": {"mappings": {"properties": {"event_id": {"type": "keyword"},
                                                     "execution_id": {"type": "keyword"},
                                                     "audit": {"type": "text", "index": False}}}},
@@ -69,6 +74,8 @@ def plan(replace: bool) -> list[tuple[str, str, str, dict | None]]:
     """(label, method, "es"|"kb" + path, body) for every request, in order."""
     d = load_definitions()
     steps: list[tuple[str, str, str, dict | None]] = []
+    steps.append(("pipeline unstep-briefings-timestamp", "PUT", "es/_ingest/pipeline/unstep-briefings-timestamp",
+                  {"processors": [{"set": {"field": "@timestamp", "value": "{{_ingest.timestamp}}"}}]}))
     for name, body in {**INDEXES, **_audit_indexes()}.items():
         steps.append((f"index {name}", "PUT", f"es/{name}", body))
     from unstep.config import elastic_events_index

@@ -32,6 +32,7 @@ from unstep.contracts import AnomalyEvent, ProposedDirective, TowerTranscript
 log = logging.getLogger("unstep.elastic_agents")
 
 BLOCKED_CALL_WORKFLOW = "unstep-blocked-call"
+BLOCKED_CALL_FAST = "unstep-blocked-call-fast"
 READBACK_AUDIT_WORKFLOW = "unstep-readback-audit"
 PROPOSALS_INDEX = "unstep-proposals"
 FINDINGS_INDEX = "unstep-findings"
@@ -100,6 +101,19 @@ def merge(proposal: ProposedDirective, result: AgentsResult | None) -> ProposedD
     return proposal.model_copy(update=update)
 
 
+def with_closest_rule(proposal: ProposedDirective, hit: dict | None) -> ProposedDirective:
+    """Put the hybrid search's closest paragraph on the card at once, labelled as a search result. It never touches
+    the instruction or the confidence."""
+    if not hit or proposal.rule_citation and "TBD" not in proposal.rule_citation:
+        return proposal
+    how = "hybrid search + rerank" if hit.get("reranked") else "hybrid search"
+    title = f" ({hit['title']})" if hit.get("title") else ""
+    return proposal.model_copy(update={
+        "rule_citation": f"Closest FAA rule: JO 7110.65, paragraph {hit['paragraph']}{title}, "
+                         f"{how} score {hit['score']} in {hit['ms']} ms",
+        "confidence_method": (proposal.confidence_method or "") + f" + Elastic {how}"})
+
+
 class ElasticAgents:
     def __init__(self, kibana: str, es: str, api_key: str, *, wait_s: float = 6.0, poll_s: float = 0.25,
                  transport: httpx.AsyncBaseTransport | None = None):
@@ -126,6 +140,35 @@ class ElasticAgents:
             await asyncio.sleep(self.poll_s)
         return None
 
+    async def cite(self, query: str, wait_s: float | None = None) -> dict | None:
+        """Closest FAA paragraph by hybrid search (and a rerank), with no language model in the loop, so it can
+        answer in the time of a search. Returns {paragraph, title, score, reranked, ms} or None. This is retrieval,
+        not a judgment that the paragraph governs the call: the card says "closest rule" and the Compliance agent
+        can still replace it later."""
+        started = time.perf_counter()
+        wait_s = cite_wait_s() if wait_s is None else wait_s
+        reranker = rerank_id()
+        try:
+            async with asyncio.timeout(wait_s):
+                for use in ([reranker, None] if reranker else [None]):
+                    r = await self.client.post(f"{self.es}/{FAA_INDEX}/_search",
+                                               json=faa_search_body(query, use))
+                    if r.status_code == 200:
+                        hits = r.json().get("hits", {}).get("hits", [])
+                        for h in hits:
+                            src = h.get("_source") or {}
+                            paragraph = str(src.get("paragraph") or h.get("_id") or "")
+                            if _PARAGRAPH.match(paragraph):
+                                return {"paragraph": paragraph, "title": src.get("title"),
+                                        "text": str(src.get("body") or "")[:900],
+                                        "score": round(float(h.get("_score") or 0), 3), "reranked": bool(use),
+                                        "ms": round((time.perf_counter() - started) * 1000, 1)}
+                        return None
+                    log.warning("FAA search answered %s%s", r.status_code, " with the reranker" if use else "")
+        except (httpx.HTTPError, ValueError, TimeoutError, asyncio.TimeoutError) as exc:
+            log.warning("FAA hybrid search failed (%s)", type(exc).__name__)
+        return None
+
     async def _paragraph_exists(self, paragraph: str) -> bool:
         if not _PARAGRAPH.match(paragraph):
             return False
@@ -133,20 +176,35 @@ class ElasticAgents:
         return r.status_code == 200 and bool(r.json().get("found"))
 
     async def blocked_call(self, event: AnomalyEvent, transcript: TowerTranscript,
-                           proposal: ProposedDirective) -> AgentsResult | None:
+                           proposal: ProposedDirective, wait_s: float | None = None,
+                           rule: dict | None = None) -> AgentsResult | None:
+        """Run the workflow and read the agents' answer back. `wait_s` overrides how long to wait (the late path
+        waits longer because nothing is blocked on it)."""
         started = time.perf_counter()
+        wait_s = self.wait_s if wait_s is None else wait_s
         try:
-            execution_id = await self._run(BLOCKED_CALL_WORKFLOW, {
-                "event_id": event.event_id, "callsign": event.callsign, "heard_text": event.heard_text,
-                "tower_text": transcript.text, "lost_words": " ".join(proposal.blocked_words),
-                "instruction": proposal.instruction_text})
-            doc = await self._wait_doc(PROPOSALS_INDEX, event.event_id, started + self.wait_s)
+            inputs = {"event_id": event.event_id, "callsign": event.callsign, "heard_text": event.heard_text,
+                      "tower_text": transcript.text, "lost_words": " ".join(proposal.blocked_words),
+                      "instruction": proposal.instruction_text}
+            workflow = blocked_call_workflow()
+            if workflow == BLOCKED_CALL_FAST:  # the one-agent version is given the paragraph the search found
+                inputs.update({"rule_paragraph": (rule or {}).get("paragraph") or "",
+                               "rule_title": (rule or {}).get("title") or "",
+                               "rule_text": (rule or {}).get("text") or ""})
+            execution_id = await self._run(workflow, inputs)
+            doc = await self._wait_doc(PROPOSALS_INDEX, event.event_id, started + wait_s)
             if doc is None:
                 log.warning("Elastic workflow for %s took over %.1f s; using the local proposal",
-                            event.event_id, self.wait_s)
+                            event.event_id, wait_s)
                 return None
-            result = AgentsResult(intercept=parse_agent_json(doc.get("intercept")),
-                                  compliance=parse_agent_json(doc.get("compliance")),
+            if doc.get("ground") is not None:  # the one-agent workflow stores both answers in one JSON object
+                both = parse_agent_json(doc.get("ground")) or {}
+                intercept, compliance = both.get("intercept"), both.get("compliance")
+                intercept = intercept if isinstance(intercept, dict) else None
+                compliance = compliance if isinstance(compliance, dict) else None
+            else:
+                intercept, compliance = parse_agent_json(doc.get("intercept")), parse_agent_json(doc.get("compliance"))
+            result = AgentsResult(intercept=intercept, compliance=compliance,
                                   execution_id=execution_id or doc.get("execution_id"))
             paragraph = str((result.compliance or {}).get("paragraph") or "")
             if paragraph:
@@ -166,6 +224,49 @@ class ElasticAgents:
         except (httpx.HTTPError, ValueError) as exc:
             log.warning("readback audit for %s not started (%s)", event_id, type(exc).__name__)
             return None
+
+
+def blocked_call_workflow() -> str:
+    """Which workflow the hub starts for a stepped-on call (UNSTEP_BLOCKED_WORKFLOW). The default is the two-agent
+    one that has run live; the one-agent version is opt-in until a live run shows it is faster."""
+    name = env("UNSTEP_BLOCKED_WORKFLOW", default=BLOCKED_CALL_WORKFLOW)
+    return name if name in (BLOCKED_CALL_WORKFLOW, BLOCKED_CALL_FAST) else BLOCKED_CALL_WORKFLOW
+
+
+def rerank_id() -> str | None:
+    """The rerank endpoint for the FAA search (UNSTEP_RERANK_ID, default Jina's v3 reranker, which Rishit listed on
+    the live project). Set it empty to skip reranking."""
+    value = env("UNSTEP_RERANK_ID", default=".jina-reranker-v3")
+    return value or None
+
+
+def cite_wait_s() -> float:
+    try:
+        return max(0.2, float(env("UNSTEP_CITE_WAIT_S", default="1.5")))
+    except ValueError:
+        return 1.5
+
+
+def faa_search_body(query: str, reranker: str | None, size: int = 3) -> dict:
+    """Hybrid search of the FAA order: keyword and semantic results fused with RRF, then (optionally) re-ordered by a
+    cross-encoder. The same pattern as Elastic's Cal Hacks workshop repo; the fields are ours (`text` is the
+    semantic_text field, `body` the plain text copy, see scripts/ingest_faa.py)."""
+    rrf = {"rrf": {"retrievers": [
+        {"standard": {"query": {"multi_match": {"query": query, "fields": ["title^2", "body"]}}}},
+        {"standard": {"query": {"semantic": {"field": "text", "query": query}}}}],
+        "rank_window_size": 20}}
+    retriever = rrf if not reranker else {"text_similarity_reranker": {
+        "retriever": rrf, "field": "body", "inference_id": reranker, "inference_text": query,
+        "rank_window_size": 10}}
+    return {"retriever": retriever, "size": size, "_source": ["paragraph", "title", "chapter", "body"]}
+
+
+def late_wait_s() -> float:
+    """How long the late path waits for the agents after the card is already shown (UNSTEP_AGENTS_LATE_S)."""
+    try:
+        return max(1.0, float(env("UNSTEP_AGENTS_LATE_S", default="30")))
+    except ValueError:
+        return 30.0
 
 
 def elastic_agents_from_env() -> ElasticAgents | None:

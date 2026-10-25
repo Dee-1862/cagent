@@ -182,10 +182,10 @@ Two people, two agents. Deekshith's side builds the pilot app and the hub; Rishi
 
 - **Overlap detection is narrow.** It finds the heterodyne beat tone, not a second voice, and is only proven on clips we mixed ourselves. A full overlap, where the stronger signal captures the receiver, can't be detected from audio at all ([research RA-4](docs/06-research.md#3-evidence-table)). The reliable signal is comparing tower and cockpit transcripts.
 - **Simulator, not avionics.** A laptop stands in for the audio panel. Nothing here is certified.
-- **Moss real backend untested end to end.** Filters are translated to Moss's format and covered by tests, but the full demo has only run on the local fallback.
-- **Cartesia workarounds.** `ink-2` returns no word timestamps and `ink-whisper` has no key terms (Cartesia feedback item 2), so tower word times need a second stream. The turns endpoint returns empty transcripts if audio arrives faster than real time (Cartesia feedback item 1), so replays are paced at real time.
+- **Moss cloud push is not proven.** Live sessions, fragment search and the exchange answers have run on real Moss (Rishit's runs, R31). Pushing the flight log to Moss Cloud is blocked on the test project by a usage limit, so "the flight log survives a restart" is not claimed.
+- **Cartesia workarounds.** `ink-2` returns no word timestamps and `ink-whisper` has no key terms (Cartesia feedback item 2), so tower word times need a second stream. The turns endpoint once returned empty transcripts when audio arrived faster than real time (Cartesia feedback item 1); a 15-run re-test did not reproduce it, so it is reported, not confirmed.
 - **Readback parser is regex-based.** It compares callsign, action and runway only; unusual phrasing can be misread.
-- Ground agents and Elastic are mocked today (task B5). Controller voice approval is built and tested with scripted speech; live mode replays a recorded answer clip, there is no live microphone input yet.
+- Ground agents and Elastic are deployed and have run live (the compliance agent cited FAA 3-7-4 three times on real stepped-on calls, the percolator matched a readback live, and the audit question answered live). They add about 6 s unless the citation is allowed to arrive after the proposal (planned). Controller voice approval is built and tested with scripted speech.
 
 ## Repo layout
 
