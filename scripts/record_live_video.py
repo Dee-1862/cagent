@@ -77,7 +77,7 @@ def layout_html(port: int, token: str | None) -> str:
     base = f"http://127.0.0.1:{port}"
     q = f"?token={quote(token)}" if token else ""
     return f"""<!doctype html><html><body style="margin:0;background:#0b1220;display:flex;height:{HEIGHT}px">
-<iframe id="atc" src="{base}/live/atc/{q}" style="border:0;width:1080px;height:{HEIGHT}px" allow="autoplay"></iframe>
+<iframe id="atc" src="{base}/live/atc/{q}{'&' if q else '?'}quality=low" style="border:0;width:1080px;height:{HEIGHT}px" allow="autoplay"></iframe>
 <iframe id="a" src="{base}/pilot/{q}#/fly/N123AB" style="border:0;width:420px;height:{HEIGHT}px" allow="autoplay"></iframe>
 <iframe id="b" src="{base}/pilot/{q}#/fly/H456" style="border:0;width:420px;height:{HEIGHT}px" allow="autoplay"></iframe>
 </body></html>"""
@@ -196,7 +196,7 @@ def run_story(page, password: str | None) -> None:
     step("auto-resend off, so the decision card shows", autonomy_off)
     step("both phones on the radio", phones_ready)
     step("tower says hold short 33 while Plane B talks", step_on)
-    step("TALKED OVER on the console", lambda: expect(atc.get_by_text("TALKED OVER").first).to_be_visible(timeout=t))
+    step("TALKED OVER on the console", lambda: expect(atc.locator(".talked-over >> visible=true").first).to_be_visible(timeout=t))  # the Legend also says "talked over"
     page.wait_for_timeout(1500)
     step("decision card: Approve and send",
          lambda: atc.get_by_role("button", name="Approve and send").first.click(timeout=t))
@@ -206,11 +206,11 @@ def run_story(page, password: str | None) -> None:
     step("Plane A reads back correctly",
          lambda: a.get_by_role("button", name="Read back: hold short 33").click(timeout=t))
     step("recovery line to the tower for Plane B",
-         lambda: expect(atc.get_by_text("was blocked").first).to_be_visible(timeout=t))
+         lambda: expect(atc.get_by_text("was blocked").locator("visible=true").first).to_be_visible(timeout=t))
     page.wait_for_timeout(3000)
 
     def panels():  # the calm console keeps these behind the evidence sheet and the Safety tab
-        atc.get_by_role("button", name="Show how Unstep handled it").click(timeout=t)
+        atc.locator("#show-evidence").click(timeout=t)
         expect(atc.locator(".waterfall").first).to_be_visible(timeout=t)
         page.wait_for_timeout(3000)
         atc.locator("#close-evidence").click(timeout=t)

@@ -24,7 +24,7 @@ def wav_b64(n=1600, rate=16000):
 
 def test_layout_has_the_console_and_two_phones_with_the_token():
     html = rec.layout_html(9999, "room code")
-    assert 'id="atc" src="http://127.0.0.1:9999/live/atc/?token=room%20code"' in html
+    assert 'id="atc" src="http://127.0.0.1:9999/live/atc/?token=room%20code&quality=low"' in html
     assert "#/fly/N123AB" in html and "#/fly/H456" in html
 
 

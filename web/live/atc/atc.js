@@ -34,15 +34,28 @@ async function startAirport() {
   try {
     if (!document.createElement("canvas").getContext("webgl2") && !document.createElement("canvas").getContext("webgl")) return;
     const {createAirport} = await import("./scene3d.js");
-    airport = createAirport($("scene3d"), {quality:"high"});
+    airport = createAirport($("scene3d"), {quality:(matchMedia("(max-width: 700px)").matches || new URLSearchParams(location.search).get("quality") === "low") ? "low" : "high"});
     airport.onSelect(() => showEvidence());
     document.body.classList.add("has-scene");
     syncScene();
     (function tickTags() { if (!airport) return; renderPlaneTags(); requestAnimationFrame(tickTags); })();
   } catch (error) { console.warn("3D airport unavailable; using map", error); }
 }
-startAirport();
 const $ = (id) => document.getElementById(id);
+// Optional chrome is isolated from the radio and evidence handlers.
+try {
+  const side = $("side-panel"), collapse = document.querySelector(".side-collapse");
+  collapse?.addEventListener("click", () => { const closed=side.classList.toggle("collapsed"); collapse.setAttribute("aria-expanded",String(!closed)); });
+  document.querySelectorAll("[data-view]").forEach(button=>button.addEventListener("click",()=>{
+    sceneCall("setView",button.dataset.view);
+    document.querySelectorAll("[data-view]").forEach(b=>b.setAttribute("aria-pressed",String(b===button)));
+    $("view-mode").textContent="3D";$("view-mode").setAttribute("aria-pressed","false");
+  }));
+  $("view-mode")?.addEventListener("click",event=>{const top=event.currentTarget.getAttribute("aria-pressed")!=="true";event.currentTarget.setAttribute("aria-pressed",String(top));event.currentTarget.textContent=top?"2D":"3D";sceneCall("setView",top?"top":"overview");});
+  $("auto-sway")?.addEventListener("click",event=>{const on=event.currentTarget.getAttribute("aria-pressed")!=="true";event.currentTarget.setAttribute("aria-pressed",String(on));sceneCall("setAutoSway",on);});
+  $("labels-toggle")?.addEventListener("click",event=>{const on=event.currentTarget.getAttribute("aria-pressed")!=="true";event.currentTarget.setAttribute("aria-pressed",String(on));$("plane-tags").classList.toggle("tags-hidden",!on);});
+  const updateTime=()=>{const node=$("local-time");if(node)node.textContent=new Intl.DateTimeFormat(undefined,{hour:"2-digit",minute:"2-digit"}).format(new Date());};updateTime();setInterval(updateTime,60000);
+} catch(error) { console.warn("Console chrome",error); }
 const names = {atc: "Tower"};
 const shortName = (id) => state.stations.get(id)?.name || (id === "atc" ? "Tower" : id || "A plane");
 const state = {ws: null, ready: false, offset: 0, live: false, autonomy: false,
@@ -471,7 +484,8 @@ function renderRadio() {
   const all = ["atc", ...visibleAircraft().map((s) => s.id)];
   const recent = new Set(all
     .filter((id) => state.lanes.has(id) || state.captions.has(id) || state.liveOverlap.has(id))
-    .sort((a, b) => Math.max(state.lanes.get(b)?.start_ms || 0, state.captions.get(b)?.ts || 0) - Math.max(state.lanes.get(a)?.start_ms || 0, state.captions.get(a)?.ts || 0))
+    // A lane being talked over right now always ranks first, even before its caption arrives.
+    .sort((a, b) => Math.max(state.liveOverlap.has(b) ? Infinity : 0, state.lanes.get(b)?.start_ms || 0, state.captions.get(b)?.ts || 0) - Math.max(state.liveOverlap.has(a) ? Infinity : 0, state.lanes.get(a)?.start_ms || 0, state.captions.get(a)?.ts || 0))
     .slice(0, 2));
   $("radio").replaceChildren(...all.map((id) => {
     const tx = state.lanes.get(id);
@@ -701,6 +715,7 @@ async function loadPilotLink() {
 loadPilotLink();
 try { state.reasons = await (await fetch("/live/static/atc/reasons.json")).json(); }
 catch { notice("Detailed policy wording unavailable; failed checks still require a human decision."); }
+startAirport();
 renderRadio(); controls(); connect();
 setInterval(updateCountdowns, 250);
 loadStats();

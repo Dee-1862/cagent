@@ -9,15 +9,14 @@
 <body id="atc">
   <div id="scene3d" aria-hidden="true"></div><div id="plane-tags"></div>
   <header>
-    <a class="brand" href="/live/">UNSTEP<span class="brand-mark">↗</span></a>
-    <div class="identity"><strong>Control Tower</strong><small>KUNS · Radio <span id="frequency">118.700</span></small></div>
+    <button class="menu-icon" type="button" aria-label="Menu">&#9776;</button><a class="brand" href="/live/">KUNS Airport</a><div class="identity"><strong>&rsaquo; Control Tower</strong><small>&rsaquo; <span id="frequency">118.700</span></small></div>
     <span id="projector-seat" class="sr-only">Control Tower projector seat</span>
     <div class="presence"><b id="planes">0 planes connected</b><small id="password-state">Checking tower access…</small></div>
-    <span id="connection" class="connection">OFFLINE</span>
-    <button id="sound" class="quiet">Turn on sound</button>
+    <span class="time-chip"><span id="connection" class="connection">OFFLINE</span> &middot; <time id="local-time"></time></span>
+    <button id="sound" class="quiet" aria-label="Turn on sound" title="Sound">&#9834;</button>
     <button id="reset" class="quiet" disabled title="Frees every walk-up plane and clears the board. The two team planes stay.">Reset room</button>
   </header>
-  <main>
+  <main><details class="legend-card"><summary>Legend</summary><div><span>&bull; Listening</span><span class="cyan">&bull; On air</span><span class="bad">&bull; Talked over</span><span class="violet">&bull; Private advisory</span><span class="good">&bull; Read back OK</span><span class="amber">&bull; Needs you</span></div></details>
     <div class="pilot-join"><a id="join-qr" href="/live/"><img id="qr" width="120" height="120" alt="Scan to join as a plane"></a><div class="join"><small>Scan to fly</small><a id="join-url" href="/live/"></a><small id="phone-hint" hidden>Phones: start with --host 0.0.0.0 and open this page via the laptop's LAN IP</small></div></div>
     <section class="headline" aria-live="polite">
       <h1 class="sr-only">What just happened</h1>
@@ -46,14 +45,13 @@
         </svg>
         <div class="legend"><span>○ Listening</span><span class="bad">◉ Missed a call</span><span class="amber">● Instruction delivered</span><span class="good">✓ Read back correctly</span></div>
       </section>
-      <section class="decisions panel" id="side-panel">
+      <section class="decisions panel" id="side-panel"><button class="side-collapse" type="button" aria-expanded="true">Agents at work <span>&#8963;</span></button>
         <nav class="side-tabs" aria-label="Console views"><button type="button" data-tab="agents" aria-selected="true">Agents</button><button type="button" data-tab="safety" aria-selected="false">Safety</button><button type="button" data-tab="ask" aria-selected="false">Ask</button></nav>
         <div class="tab-pane" data-pane="agents">
         <div class="section-title"><h2>Agents at work</h2><small><span id="decision-count">0</span> need you</small></div>
         <div id="inbox"></div>
         <ol id="feed" class="feed" aria-live="polite"></ol>
         <label class="switch"><input id="autonomy" type="checkbox" disabled><span>Auto-resend the tower’s own stop/wait instructions</span></label>
-        <button id="show-evidence" type="button" aria-controls="evidence-sheet" aria-expanded="false">Show how Unstep handled it</button>
         </div>
         <div class="tab-pane" data-pane="safety" hidden><section class="panel analytics"><div class="section-title"><h2>Safety analytics <small id="stats-source">Elastic</small> <small id="stats-simulated" class="sim-badge" hidden></small></h2><small id="stats-note">Counts since this console opened</small></div><div class="stat-tiles"><div><b id="stat-blocked">–</b><span>Blocked calls</span></div><div><b id="stat-readback">–</b><span>Readback errors caught</span></div><div><b id="stat-auto">–</b><span>Auto-resent stop/wait calls</span></div></div><details class="esql"><summary>Show the ES|QL query</summary><pre id="stat-esql"></pre></details></section></div>
         <div class="tab-pane" data-pane="ask" hidden></div>
@@ -61,13 +59,13 @@
     </div>
     <section class="panel radio-panel">
       <div class="section-title"><h2>Radio <small>One shared frequency</small></h2><span id="onair" class="cyan">Waiting for radio activity</span></div>
-      <div id="radio"></div>
+      <div id="radio"></div><div class="toolbar"><div class="camera-tools"><button type="button" data-view="overview" aria-pressed="true">Overview</button><button type="button" data-view="runway">Runway</button><button type="button" data-view="gates">Gates</button><button type="button" id="view-mode" aria-pressed="false">3D</button><button type="button" id="auto-sway" aria-pressed="true">Auto sway</button><button type="button" id="labels-toggle" aria-pressed="true">Labels</button><button id="show-evidence" type="button" aria-controls="evidence-sheet" aria-expanded="false">Show how</button></div><div class="composer-tools">
       <form id="say-form"><label class="sr-only" for="say">Tower radio message</label><input id="say" maxlength="300" placeholder="Say something on the tower radio…" required><button id="transmit" type="submit" disabled>Transmit</button></form>
-      <div class="suggestions"><button data-say="Cessna one two three, hold short runway three three.">Tell Plane A to stop</button><button data-say="Cessna one two three, cleared for takeoff runway three three.">Clear Plane A for takeoff</button></div>
+      <div class="suggestions"><button data-say="Cessna one two three, hold short runway three three.">Tell Plane A to stop</button><button data-say="Cessna one two three, cleared for takeoff runway three three.">Clear Plane A for takeoff</button></div></div></div>
     </section>
     <section id="evidence-sheet" class="panel explanation"><div class="section-title"><h2>How Unstep handled it</h2><button id="close-evidence" type="button" aria-label="Close explanation">Close</button><small id="event-label">Evidence appears as it arrives</small></div><div id="steps"></div><div id="history"></div></section>
     <aside id="notice" role="status"></aside>
-    <footer><span id="mode">Connecting to the room…</span> · Illustration: positions are not live tracking · 3D models: Vojtěch Balák, Poly by Google, Miha Lunar · CC-BY 3.0</footer>
+    <div class="field-readout">RWY 33 · 330° · KUNS 118.700</div><footer><span id="mode">Connecting to the room…</span> · Illustration: positions are not live tracking · 3D models: Vojtěch Balák, Poly by Google, Miha Lunar · CC-BY 3.0</footer>
   </main>
   <dialog id="auth"><form id="auth-form"><h2>Control Tower access</h2><p id="auth-note">Enter the ATC password to join.</p><label for="password">ATC password</label><input id="password" type="password" autocomplete="current-password"><button>Enter Control Tower</button><a href="/live/">Choose another seat</a></form></dialog>
   <script>window.UNSTEP_TOKEN_QUERY = "__UNSTEP_TOKEN_QUERY__";</script>
