@@ -84,3 +84,11 @@ def test_agent_and_tools_are_read_only_esql_over_real_traffic_only():
     agent = json.loads((ROOT / "elastic" / "agents" / "unstep-audit.json").read_text())
     assert set(agent["configuration"]["tools"][0]["tool_ids"]) == set(tools)
     assert "never guess" in agent["configuration"]["instructions"] and "cannot see live radio" in agent["configuration"]["instructions"]
+
+
+def test_parse_converse_repairs_utf8_read_as_cp1252():
+    from unstep.ground.audit_chat import parse_converse
+
+    broken = "Cessna 123 — four blocked calls".encode("utf-8").decode("cp1252")
+    assert parse_converse({"response": {"message": broken}})["answer"] == "Cessna 123 — four blocked calls"
+    assert parse_converse({"response": {"message": "plain text"}})["answer"] == "plain text"

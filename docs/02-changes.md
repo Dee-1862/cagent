@@ -2,6 +2,13 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+
+## Audit answers repaired, deploy order hint (from Rishit's first live Elastic run)
+
+- `ask-audit` answers that came back as UTF-8 read as cp1252 (an em dash shown as three odd characters) are repaired when parsed. The cause is not yet found; the repair is a guard.
+- `deploy_elastic.py` says the FAA index must exist first and prints a hint when the FAA tool is rejected for that reason.
+- Merged Rishit's aa03e70 (ES|QL tool params are strings) and 932c3e4 (decision card shows the Elastic agents' FAA citation).
+
 ## Format
 
 Each entry uses this template:

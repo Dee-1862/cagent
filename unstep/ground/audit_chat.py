@@ -38,6 +38,16 @@ def _walk(node):
             yield from _walk(v)
 
 
+def _unmojibake(text: str) -> str:
+    """Repair UTF-8 text that was read as cp1252 somewhere on the way (an em dash turns into three odd characters)."""
+    if "\u00e2" not in text and "\u00c3" not in text:
+        return text
+    try:
+        return text.encode("cp1252").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return text
+
+
 def parse_converse(body) -> dict:
     """Pull the answer text and the ES|QL the agent ran out of a converse response, without assuming the layout."""
     answer = None
@@ -55,6 +65,7 @@ def parse_converse(body) -> dict:
             if isinstance(v, str) and _ESQL.match(v) and v.strip() not in queries:
                 queries.append(v.strip())
     tools = sorted({d["tool_id"] for d in _walk(body) if isinstance(d.get("tool_id"), str)})
+    answer = _unmojibake(answer) if answer else answer
     return {"answer": answer, "esql": queries, "tools": tools}
 
 

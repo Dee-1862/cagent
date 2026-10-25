@@ -8,6 +8,9 @@ Kibana is not the Elasticsearch address with ".es." -> ".kb.", KIBANA_URL:
     python scripts/deploy_elastic.py              # create what is missing, keep what exists
     python scripts/deploy_elastic.py --replace    # also update existing tools, agents, workflows
 
+The FAA search tool needs the unstep-faa index to exist first, so on a fresh project run
+`python scripts/ingest_faa.py --source data/faa` before the real deploy (or re-run the deploy after it).
+
 Then set UNSTEP_ELASTIC_AGENTS=1 for the live room. API paths used (Kibana 9.4 / Serverless):
 POST /api/agent_builder/tools, POST /api/agent_builder/agents (PUT /{id} to update),
 POST /api/workflows?overwrite=. Prints one line per object and exits 1 on any failure.
@@ -120,6 +123,8 @@ def main() -> int:
             failed += not ok and not soft
             print(f"{'ok  ' if ok else ('warn' if soft else 'FAIL')} {label}: {r.status_code}"
                   f"{' (exists, kept)' if exists else ''}" + ("" if ok else f" {r.text[:300]}"))
+            if not ok and "faa" in label and "unstep-faa" in r.text:
+                print("     hint: create the index first: python scripts/ingest_faa.py --source data/faa, then re-run")
     return 1 if failed else 0
 
 
