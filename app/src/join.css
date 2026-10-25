@@ -1,0 +1,106 @@
+/* The join screen: a radio panel, not a stack of boxes. Night-cockpit palette (warm near-black, warm white, one amber
+   annunciator), IBM Plex Mono for numbers and labels, IBM Plex Sans Condensed for the words. Scoped to .joinx so the
+   rest of the app is untouched. */
+
+@font-face { font-family: "Plex Mono"; font-weight: 500; font-display: swap; src: url("./fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Plex Mono"; font-weight: 600; font-display: swap; src: url("./fonts/ibm-plex-mono-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Plex Cond"; font-weight: 500; font-display: swap; src: url("./fonts/ibm-plex-sans-condensed-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Plex Cond"; font-weight: 600; font-display: swap; src: url("./fonts/ibm-plex-sans-condensed-latin-600-normal.woff2") format("woff2"); }
+
+body:has(.joinx) { background: #0c0d0a; }
+
+.joinx {
+  --jx-bg: #0c0d0a;
+  --jx-ink: #ece7d8;
+  --jx-mute: #8d8a78;
+  --jx-line: rgba(236, 231, 216, 0.16);
+  --jx-amber: #ffb000;
+  --jx-green: #7bd88f;
+  --mono: "Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --cond: "Plex Cond", "Arial Narrow", system-ui, sans-serif;
+
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  max-width: 440px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: max(20px, env(safe-area-inset-top)) 22px max(24px, env(safe-area-inset-bottom));
+  background: var(--jx-bg);
+  color: var(--jx-ink);
+  font-family: var(--cond);
+  font-weight: 500;
+  font-size: 18px;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+}
+.joinx * { box-sizing: border-box; }
+
+/* top strip: where you are, and whether the voice is live */
+.jx-top { display: flex; justify-content: space-between; align-items: center; font: 500 11px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--jx-mute); }
+.jx-live { display: inline-flex; align-items: center; gap: 8px; }
+.jx-live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--jx-mute); }
+.jx-live.live::before { background: var(--jx-green); animation: jx-pulse 2.4s ease-in-out infinite; }
+.jx-live.demo::before { background: var(--jx-amber); }
+
+/* the frequency readout: the one thing to remember */
+.jx-dial { margin-top: 18px; }
+.jx-dial small { display: block; font: 500 11px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--jx-mute); }
+.jx-freq { display: flex; align-items: baseline; gap: 10px; margin: 10px 0 14px; font-family: var(--mono); }
+.jx-freq span { font-weight: 600; font-size: clamp(60px, 21vw, 84px); line-height: 0.9; letter-spacing: -0.05em; font-variant-numeric: tabular-nums; }
+.jx-freq i { font-style: normal; font-weight: 500; font-size: 14px; letter-spacing: 0.1em; color: var(--jx-mute); }
+.jx-ticks { height: 14px; border-bottom: 1px solid var(--jx-line);
+  background:
+    repeating-linear-gradient(90deg, var(--jx-ink) 0 1px, transparent 1px 40px) bottom / 100% 14px no-repeat,
+    repeating-linear-gradient(90deg, var(--jx-line) 0 1px, transparent 1px 8px) bottom / 100% 7px no-repeat; }
+
+.joinx h1 { margin: 6px 0 0; font: 600 27px/1.1 var(--cond); letter-spacing: -0.01em; }
+
+.jx-steps { margin: 0; padding: 0; list-style: none; counter-reset: step; display: grid; gap: 10px; color: var(--jx-ink); }
+.jx-steps li { counter-increment: step; display: grid; grid-template-columns: 26px 1fr; align-items: baseline; }
+.jx-steps li::before { content: counter(step, decimal-leading-zero); font: 500 12px/1 var(--mono); color: var(--jx-mute); }
+.jx-steps b { font-weight: 600; background: linear-gradient(transparent 82%, var(--jx-amber) 82% 92%, transparent 92%); }
+
+/* the form: underlines and switches, no boxes */
+.jx-field { display: grid; gap: 8px; }
+.jx-label { font: 500 11px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--jx-mute); }
+.jx-field input { appearance: none; width: 100%; min-height: 48px; padding: 8px 0; border: 0; border-bottom: 1px solid var(--jx-line); border-radius: 0;
+  background: transparent; color: var(--jx-ink); font: 500 20px/1.2 var(--mono); }
+.jx-field input::placeholder { color: rgba(141, 138, 120, 0.7); }
+.jx-field input:focus { outline: 0; border-bottom-color: var(--jx-amber); }
+
+.jx-seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.jx-seg button { min-height: 40px; padding: 0 12px; border: 1px solid var(--jx-line); border-radius: 4px; background: transparent; color: var(--jx-ink);
+  font: 500 15px/1 var(--cond); }
+.jx-seg button[aria-checked="true"] { background: var(--jx-ink); border-color: var(--jx-ink); color: var(--jx-bg); font-weight: 600; }
+
+.jx-switch { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; min-height: 48px; padding: 0; border: 0; background: none;
+  color: var(--jx-ink); text-align: left; font: 500 16px/1.25 var(--cond); }
+.jx-track { flex: none; position: relative; width: 44px; height: 24px; border: 1px solid var(--jx-line); border-radius: 12px; background: transparent; transition: background 0.15s; }
+.jx-track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--jx-mute); transition: transform 0.15s, background 0.15s; }
+.jx-switch[aria-checked="true"] .jx-track { background: rgba(255, 176, 0, 0.16); border-color: var(--jx-amber); }
+.jx-switch[aria-checked="true"] .jx-track::after { transform: translateX(20px); background: var(--jx-amber); }
+
+/* the action */
+.jx-go { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 58px; padding: 0 20px; border: 0; border-radius: 4px;
+  background: var(--jx-amber); color: #15120a; font: 600 15px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; }
+.jx-go:active:not(:disabled) { transform: translateY(1px); }
+.jx-go:disabled { opacity: 0.45; cursor: default; }
+.jx-go span { font-size: 20px; letter-spacing: 0; }
+
+.jx-spacer { flex: 1; min-height: 4px; }
+.jx-foot { margin: 0; font: 500 12px/1.4 var(--mono); letter-spacing: 0.04em; color: var(--jx-mute); }
+.jx-error { margin: 0; font: 500 14px/1.35 var(--mono); color: #ff7a66; }
+.jx-note { margin: 0; font-size: 16px; color: var(--jx-ink); }
+.jx-warn { margin: 0; font-size: 14px; color: var(--jx-amber); }
+
+.joinx button:focus-visible, .joinx input:focus-visible { outline: 2px solid var(--jx-amber); outline-offset: 3px; }
+
+@keyframes jx-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes jx-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.joinx > * { animation: jx-rise 0.45s ease-out both; }
+.joinx > *:nth-child(2) { animation-delay: 0.04s; } .joinx > *:nth-child(3) { animation-delay: 0.08s; }
+.joinx > *:nth-child(4) { animation-delay: 0.12s; } .joinx > *:nth-child(5) { animation-delay: 0.16s; }
+.joinx > *:nth-child(6) { animation-delay: 0.2s; } .joinx > *:nth-child(7) { animation-delay: 0.24s; }
+@media (prefers-reduced-motion: reduce) { .joinx > *, .jx-live.live::before { animation: none; } .jx-track, .jx-track::after { transition: none; } }
