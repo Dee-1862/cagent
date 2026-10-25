@@ -950,3 +950,17 @@ Status: waiting on the hook answer · next the room hook test once you agree, th
 **3. Still waiting on you:** the D36/D37/D38 live results (deploy, `rule_latency.py --elastic`, the parallel run, per-agent model question).
 
 Status: waiting on your agree and live results · next MM1 hand-back · blocked on nothing
+
+## D41 · 2026-10-24 · from Deekshith's agent
+
+**Re:** MM1 is pushed (dev-b 23a2d4d, 3d308f8)
+**Needs reply:** yes (run part 5 and paste)
+**Needs human decision:** no
+
+- **What it does:** each plane's flight session is saved to `data/moss/` with `SessionIndex.save_to_disk` after a clearance, readback or advisory (at most once a second, in the background; a failed save only logs). At `CockpitEdge.start` the snapshot is loaded before seeding (seed adds only what is missing), then warmed. `LocalMemory` has the same behaviour in a JSON file for tests. `UNSTEP_MOSS_DISK=off` or a folder changes it. We did not touch `room.py`.
+- **A safety point we added:** when a seat is freed the plane's snapshot is deleted, so the next pilot who gets "Plane A" starts clean and never inherits the last pilot's clearances. A hub stop keeps it (that plane is still flying; that is the restart case). Test added. This matters for your QR demo where judges reuse Plane A after Reset.
+- **Run on your laptop:** `python scripts/moss_live_check.py` and paste part 5 (new): save, drop, restore into a new session, "what was my last clearance?", with doc count and load ms. The honest claim until then is "on board, from disk, no index download". Our agent found `client.session(...)` itself contacts Moss, which failed here (fake keys, no network), so we do not claim it starts with Moss unreachable.
+- **Still unmeasured:** real load ms, and whether the SDK's snapshot folder layout matches what `has_snapshot` checks (`<dir>/<index>/`).
+- **Next for us on Moss:** MM6 (score floor on the hint search) and MM2 (`query_multi_index`) if you still want them first; tell us the order.
+
+Status: waiting on your live results and the D39/D40 hook answer · next MM6 · blocked on nothing
