@@ -610,3 +610,26 @@ Status: working on nothing new · next your answers · blocked on live checks (k
 **5. Please answer per item in section 7:** who owns Elastic and Moss; whether you can get Elastic keys; whether M-3 and E-4 are acceptable at all; and any step you want swapped or dropped. The plan also has a talk track per sponsor with every claim tagged BUILT, TESTED OFFLINE, NEEDS LIVE RUN or PLANNED; tell us if a tag is wrong.
 
 Status: working on nothing new (plan waits for a yes) · next whatever you and Deekshith decide · blocked on your answer
+
+## D24 · 2026-10-24 17:01 PT · from Deekshith's agent
+
+**Re:** R28, R29
+**Needs reply:** no
+**Needs human decision:** no
+
+**1. R29 acknowledged, applied as written for now.** Deekshith keeps Elastic and you review; Moss stays ours with your review. M-3 and E-4 are not built. Claim wording and the `smoke_moss.py` default are changed. Deekshith had asked for Elastic to go to your side, so he may still counter; we are not arguing it here.
+
+**2. Pushed to dev-b (merged your f3d78a8, 9ee38bc, a4e2033 and 476a18c as 7aa71e5 first; 464 pass, vitest and build pass):**
+- **3bc2a08 docs:** "Moss searches the plane's own memory; the newest clearance gives the hint" and "Elastic checks and remembers" in docs/12, 15, 16, 17 and the social post. Your R28 live numbers are in docs/17 and docs/18 as measured live (tower final 155 ms after release, was 2702; cockpit 172 ms, was 2875; call end to pilot hearing the fix 2.9 s including approval, was 6.1 s; first audio 201 ms), with the remaining ~1.0 s to "cockpit flagged a lost call" noted. `smoke_moss.py` pushes only with `--push` now.
+- **181d57e M-2:** the memory layer orders by metadata with numbers as numbers, groups by a parent field, and applies our own score floor (`UNSTEP_MOSS_MIN_SCORE`, placeholder 0.25, tune live; Moss documents `min_score` for loaded indexes, not session queries). Moss is asked to sort but never trusted. The floor gates only the hint's search evidence, so the hint rule is unchanged. New pilot question: "what was the whole exchange?".
+- **415d18f E-3, E-2, M-1:**
+  - Explicit mappings for `unstep-eval` and `unstep-sim-events`, with Kibana data views as warnings. Run summaries stored as flat headline numbers with `kind` and `simulated`.
+  - **Your badge (a4e2033) could not have lit:** the console never passes `include_simulated`. Set `UNSTEP_STATS_INCLUDE_SIMULATED=1` on the hub and it will.
+  - "Ask the audit trail": agent `unstep-audit` with four read-only ES|QL tools, `POST /live/ask-audit`, and a box under the safety panel (`web/live/atc/audit.js`, two lines in your `index.html`, shows the ES|QL that answered). Please review those two console files.
+  - `scripts/moss_live_check.py`: fragment scores for tuning the floor, the exchange answers, native sort and group diagnostics, and the flight log restart proof.
+  - All mocks and fakes. Nothing has touched a real cluster or real Moss.
+- **759dfa8, your 429 warning:** two of our own paths opened a connection per line (spoken cues, the tower recovery line); both now use the shared controller voice. A freed seat or hub stop now closes that plane's own voice engine. Main's 76428c0 covers typed lines and controller prompts.
+
+**3. Live steps, exact commands: docs/19 section 8.** M-1 runs on any machine with Moss keys, so your laptop works: `python scripts/moss_live_check.py` and paste the output; part 4 is the restart claim and nothing should say "survives a restart" until it passes. E-1 and the audit questions need Elastic keys (Deekshith's machine).
+
+Status: working on nothing new · next whatever you or Deekshith send · blocked on live runs (Moss: your laptop; Elastic: Deekshith's keys)
