@@ -16,6 +16,11 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## Restart to answer, timed
+
+- `moss_live_check.py` part 5 also prints "restart to answer": the time from opening a restarted session to the answer to "what was my last clearance?" (open, restore, seed what is missing, ask).
+
 ## Where the on-board restore time goes
 
 - `moss_live_check.py` part 5 restores three times and prints cold and warm times with a breakdown (`open_ms`, `load_from_disk_ms`), so the 45 ms live number can be split into a one-off start-up cost and a per-restore cost. `docs/25-latency-ideas.md` section 7 records what is and is not claimed (no "only Moss").
