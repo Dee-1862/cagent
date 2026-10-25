@@ -104,3 +104,58 @@ def test_the_one_agent_workflow_gets_the_paragraph_and_its_answer_is_split_back_
 def test_an_unknown_workflow_name_falls_back_to_the_one_that_has_run_live(monkeypatch):
     monkeypatch.setenv("UNSTEP_BLOCKED_WORKFLOW", "something-else")
     assert ea.blocked_call_workflow() == "unstep-blocked-call"
+
+
+def test_parallel_mode_starts_both_agents_together_and_waits_for_the_slower_one(monkeypatch):
+    monkeypatch.setenv("UNSTEP_BLOCKED_WORKFLOW", "parallel")
+    started, polls = [], {"n": 0}
+
+    async def handler(request):
+        path = request.url.path
+        if path.startswith("/api/workflows/workflow/"):
+            body = json.loads(request.content)["inputs"]
+            started.append((path.split("/")[-2], body))
+            return httpx.Response(200, json={"workflowExecutionId": "exec-" + path.split("/")[-2][-9:]})
+        if path == "/unstep-proposals/_doc/evt-0001:intercept":
+            return httpx.Response(200, json={"found": True, "_source": {"intercept": '{"match": true}'}})
+        if path == "/unstep-proposals/_doc/evt-0001:compliance":
+            polls["n"] += 1
+            if polls["n"] < 4:  # the compliance agent is the slower one
+                return httpx.Response(404, json={"found": False})
+            return httpx.Response(200, json={"found": True, "_source": {
+                "compliance": '{"paragraph": "3-7-4", "restrictive": true}'}})
+        if path == "/unstep-faa/_doc/3-7-4":
+            return httpx.Response(200, json={"found": True, "_source": {"body": "Hold short text"}})
+        return httpx.Response(404, json={})
+
+    p = propose(scenario.anomaly_event(), scenario.tower_transcript())
+    result = asyncio.run(agents(handler).blocked_call(
+        scenario.anomaly_event(), scenario.tower_transcript(), p,
+        rule={"paragraph": "3-7-4", "title": "Runway Proximity"}))
+    names = {n for n, _ in started}
+    assert names == {"unstep-blocked-intercept", "unstep-blocked-compliance"}
+    compliance_in = dict(started)["unstep-blocked-compliance"]
+    assert compliance_in["rule_paragraph"] == "3-7-4" and compliance_in["rule_text"] == "Hold short text"
+    assert "rule_paragraph" not in dict(started)["unstep-blocked-intercept"]
+    assert result.intercept == {"match": True} and result.compliance["paragraph"] == "3-7-4"
+    assert set(result.branches) == {"intercept", "compliance"} and result.citation_checked is True
+    assert result.branches["compliance"] >= result.branches["intercept"]
+
+
+def test_parallel_mode_keeps_one_answer_if_the_other_never_comes(monkeypatch):
+    monkeypatch.setenv("UNSTEP_BLOCKED_WORKFLOW", "parallel")
+
+    def handler(request):
+        path = request.url.path
+        if path.startswith("/api/workflows/workflow/"):
+            return httpx.Response(200, json={"workflowExecutionId": "e"})
+        if path.endswith(":intercept"):
+            return httpx.Response(200, json={"found": True, "_source": {"intercept": '{"match": false}'}})
+        return httpx.Response(404, json={"found": False})
+
+    p = propose(scenario.anomaly_event(), scenario.tower_transcript())
+    a = agents(handler)
+    a.wait_s = 0.1
+    result = asyncio.run(a.blocked_call(scenario.anomaly_event(), scenario.tower_transcript(), p))
+    assert result.intercept == {"match": False} and result.compliance is None and set(result.branches) == {"intercept"}
+    assert ea.merge(p, result).confidence == "low"  # the veto still counts when only Intercept answered

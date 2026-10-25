@@ -417,7 +417,7 @@ class GroundAgents:
                                "agents": ("Elastic Workflow unstep-blocked-call" if agents
                                           else note or "local intercept + compliance"),
                                **({"workflow_execution_id": agents.execution_id,
-                                   "workflow_ms": agents.took_ms,
+                                   "workflow_ms": agents.took_ms, "branches_ms": agents.branches,
                                    "intercept": agents.intercept, "compliance": agents.compliance,
                                    "citation": proposal.rule_citation} if agents else {})})
 

@@ -10,6 +10,11 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## Parallel agents: Intercept and Compliance as two workflows started together
+
+- New `unstep-blocked-intercept` and `unstep-blocked-compliance` workflows with tool-less agents `unstep-intercept-lite` and `unstep-compliance-lite`. With `UNSTEP_BLOCKED_WORKFLOW=parallel` the hub starts both at once and waits for the slower one; each writes its own document so neither overwrites the other, and one missing half does not lose the other. Each branch's time goes into the audit record. Default stays the two-agent workflow that has run live; none of the new pieces has run live.
+
 ## Rules as data: the FAA rule for an instruction by stored query, in milliseconds
 
 - Each rule is stored in Elastic (`unstep-rules`) as a percolator query, the same mechanism that checks readbacks. The hub percolates the proposed instruction and puts the matching rule on the card at once, with Elastic's own time, falling back to the same rules in process if Elastic is slow (`UNSTEP_RULES_WAIT_S`, 0.3 s) or down, and to the hybrid search when no rule matches.

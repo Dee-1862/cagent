@@ -152,6 +152,10 @@ def test_definitions_are_consistent():
     sent = set(json.loads(json.dumps({"event_id": 1, "callsign": 1, "heard_text": 1, "tower_text": 1,
                                       "lost_words": 1, "instruction": 1})))
     assert {i["name"] for i in blocked["triggers"][0]["inputs"]} == sent  # what blocked_call() sends
+    for name, extra in (("unstep-blocked-intercept", {"heard_text", "tower_text", "lost_words"}),
+                        ("unstep-blocked-compliance", {"instruction", "rule_paragraph", "rule_title", "rule_text"})):
+        half = yaml.safe_load((DEFS / "workflows" / f"{name}.yaml").read_text())
+        assert {i["name"] for i in half["triggers"][0]["inputs"]} == {"event_id", "callsign"} | extra
     fast = yaml.safe_load((DEFS / "workflows" / "unstep-blocked-call-fast.yaml").read_text())
     assert {i["name"] for i in fast["triggers"][0]["inputs"]} == sent | {"rule_paragraph", "rule_title", "rule_text"}
 
