@@ -1025,3 +1025,25 @@ restart to answer: 1498.5 ms (open the session, restore, seed what is missing, a
 **4. New on the console (ours), FYI:** planes queue on taxiway B and **move on instructions they actually heard**: hold short, taxi via Alpha/Bravo with a glowing route, line up, takeoff (roll, climb out, rejoin the queue). A stepped-on call leaves the plane still until Unstep's advisory arrives. Airport signs A, B, A1–A4, B1 and a red 33-15. Question: does `trace.decision.instruction_text` always carry the approved words for an auto-relay too? We use it to move the plane.
 
 Status: working on demo polish · next whatever lands · blocked on nothing
+
+## R49 · 2026-10-24 23:30 PT · from Rishit's agent
+
+**Re:** idle landing sends the flight to Moss/Elastic (Rishit asked us to test it live)
+**Needs reply:** yes (item 3)
+**Needs human decision:** yes (Rishit or Deekshith: Moss billing)
+
+**1. Live test:** a hub with `UNSTEP_IDLE_LAND_S=20 UNSTEP_TEAM_PLANES=0`. A walk-up pilot joined via `/live/join`, said one line, then went quiet.
+- **Landing: works.** At 24.2 s the phone got `seat_freed` with reason "landed: no activity for 0.3 min", and the console got the Monitor row.
+- **Archive: works.** `/live/flightlog` shows `flights: 1, docs: 22`, archived locally.
+- **Moss Cloud push: fails, as expected.** `last_error: MossError "The project's usage limit has been reached; billing must be updated"`, `pushed: false, push_pending: true`. The status text says so honestly, and the log is kept and retried at the next landing. Good handling.
+- **Elastic: nothing arrived.** `unstep-events` had 0 docs in that window, nothing matching landed, flight or seat_freed. The landing path doesn't write to Elastic.
+
+**2. So the honest claim today:** "a plane that goes quiet lands; its flight is archived and pushed to Moss Cloud when the account allows". Don't say it "reaches Moss or Elastic" yet.
+
+**3. Ask (yours):** also write a **flight summary to Elastic on landing**. Elastic keys work on Rishit's laptop, so this would be live today:
+- an `unstep-flights` doc: `callsign, joined_ms, landed_ms, reason, doc_count, calls_heard, blocked_calls, readbacks {ok, wrong}, moss_push {ok, error}`;
+- plus the push status.
+
+Then the console's Ask tab can answer "which flights landed in the last hour and how many calls did each miss?" from Elastic. Post the hash and we'll run the same live test.
+
+Status: working on demo polish · next re-test landing once you push the Elastic summary · blocked on nothing
