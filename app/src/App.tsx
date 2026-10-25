@@ -485,17 +485,19 @@ function readbackOf(instruction: string): string {
   return what.charAt(0).toUpperCase() + what.slice(1);
 }
 // The parts of an instruction a pilot must read back: runway number and the action words.
-function keyParts(text: string): { runway: string | null; action: string | null } {
+function keyParts(text: string): { runway: string | null; action: string | null; place: string | null } {
   const t = text.toLowerCase().split(/[^a-z0-9]+/).map((w) => NUMBER_WORDS[w] ?? w).join(" ").replace(/(\d)\s+(?=\d)/g, "$1");
   const rw = t.match(/\brunway\s+(\d{1,2})\b/);
   const action = /\bclear(ed)?\b.{0,16}\btake ?off\b/.test(t) ? "cleared for takeoff" : /\bline ?up\b/.test(t) ? "line up and wait"
     : /\bhold short\b/.test(t) ? "hold short" : /\btaxi\b/.test(t) ? "taxi" : null;
-  return { runway: rw ? rw[1] : null, action };
+  const pl = t.match(/(to|at)\s+(?:taxiway\s+)?(alpha|bravo|a|b)\s?([1-4])/);
+  return { runway: rw ? rw[1] : null, action, place: pl ? `${pl[2][0].toUpperCase()}${pl[3]}` : null };
 }
 function readbackVerdict(told: string, said: string): { ok: boolean; why: string } {
   const want = keyParts(told), got = keyParts(said), wrong: string[] = [];
   if (want.runway && got.runway !== want.runway) wrong.push(`you said ${got.runway ? `runway ${got.runway}` : "no runway"}, the tower said runway ${want.runway}`);
   if (want.action && want.action !== "taxi" && got.action !== want.action) wrong.push(`you didn't say "${want.action}"`);
+  if (want.place && got.place !== want.place) wrong.push(`you said ${got.place ?? "no taxiway"}, the tower said ${want.place}`);
   return { ok: wrong.length === 0, why: wrong.join("; ") };
 }
 function SayGuide({ spoken, trace, lines }: { spoken: string; trace: Trace | null; lines: L.Line[] }) {

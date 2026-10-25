@@ -77,6 +77,12 @@ def aircraft_station(callsign: str, spoken: str, name: str, voice_role: str) -> 
 
 
 FLEET_STATIONS = [aircraft_station(*f) for f in scenario.FLEET]
+# The airport's own words, given to every speech-to-text call as key terms: without the taxiway names a
+# readback like "taxi to A4 via B1" came back as "Flight pseudo A4YOB1".
+AIRPORT_RUNWAYS = ("33", "15")
+AIRPORT_TERMS = dict(runways=AIRPORT_RUNWAYS, taxiways=("A", "B", "A1", "A2", "A3", "A4", "B1", "B2"),
+                     extra=("A1", "A2", "A3", "A4", "B1", "B2", "Alpha", "Bravo", "via", "line up and wait",
+                            "cleared for takeoff", "hold position", "ready for departure"))
 TEAM_STATIONS = {"N123AB", "H456"}  # the team's two planes: never freed or reset (R22)
 DEFAULT_STATIONS = [
     Station("atc", "atc", "Tower controller: human in the loop", "tower"),
@@ -1125,14 +1131,15 @@ class LiveRoom:
         """Cartesia streams for one push-to-talk, or None offline (then the clip path runs as before)."""
         if not (self.live and env("CARTESIA_API_KEY")):
             return None
-        runways = ("33", "28L")
+        runways, taxiways = AIRPORT_RUNWAYS, AIRPORT_TERMS["taxiways"]
         if s.kind == "atc":
             from unstep.ground.tower import TowerStream
 
             planes = [x for x in self.stations.values() if x.kind == "aircraft"]
-            return TowerStream(callsigns=[c for x in planes for c in (x.spoken, x.callsign) if c], runways=runways)
+            return TowerStream(callsigns=[c for x in planes for c in (x.spoken, x.callsign) if c], runways=runways,
+                               taxiways=taxiways)
         return CartesiaManualSTT(keyterms=build_keyterms(callsigns=[s.spoken or s.callsign, s.callsign],
-                                                         runways=runways))
+                                                         **AIRPORT_TERMS))
 
     def _caption_turns_stt(self, s: Station):
         """A turns-endpoint stream for captions only, when UNSTEP_CAPTION_SOURCE=turns; else None."""
@@ -1147,7 +1154,7 @@ class LiveRoom:
         planes = [x for x in self.stations.values() if x.kind == "aircraft"]
         names = [c for x in planes for c in (x.spoken, x.callsign) if c] if s.kind == "atc" \
             else [s.spoken or s.callsign, s.callsign]
-        return CartesiaTurnSTT(keyterms=build_keyterms(callsigns=names, runways=("33", "28L")))
+        return CartesiaTurnSTT(keyterms=build_keyterms(callsigns=names, **AIRPORT_TERMS))
 
     async def mic_frame(self, station: str, pcm: bytes, start_ms: int) -> None:
         """About 100 ms of 16 kHz PCM while the key is held. Goes to Cartesia as it arrives,
@@ -1216,7 +1223,7 @@ class LiveRoom:
     def _mix_stt(self, callsign: str):
         if self.mix_stt_factory is not None:
             return self.mix_stt_factory(callsign)
-        terms = build_keyterms(callsigns=[callsign, scenario.SPOKEN_CALLSIGN], runways=["33", "28L"])
+        terms = build_keyterms(callsigns=[callsign, scenario.SPOKEN_CALLSIGN], **AIRPORT_TERMS)
         return CartesiaManualSTT(keyterms=terms)
 
     def _mix_add(self, key: str, station: str, start_ms: int, samples) -> None:
@@ -1633,7 +1640,7 @@ class LiveRoom:
         elif self.tower_transcriber is not None or (self.live and env("CARTESIA_API_KEY")):
             from unstep.ground.tower import TowerTranscriber
 
-            transcriber = self.tower_transcriber or TowerTranscriber(runways=("33", "28L"),
+            transcriber = self.tower_transcriber or TowerTranscriber(runways=AIRPORT_RUNWAYS, taxiways=AIRPORT_TERMS["taxiways"],
                                                                      realtime=self.realtime_replay)
             asked = now_ms()
             transcript = await transcriber.transcribe(pcm16(tx.pcm), tx.start_ms, tx.end_ms,
@@ -1660,7 +1667,7 @@ class LiveRoom:
             # R27 3a: this cockpit's STT ran while the call was on air; its text is final now
             edge.manual_stt_factory = lambda h=heard_live: FakeManualSTT([h])
         elif self.live and env("CARTESIA_API_KEY"):
-            terms = build_keyterms(callsigns=[callsign, scenario.SPOKEN_CALLSIGN], runways=["33", "28L"])
+            terms = build_keyterms(callsigns=[callsign, scenario.SPOKEN_CALLSIGN], **AIRPORT_TERMS)
             edge.manual_stt_factory = lambda: CartesiaManualSTT(keyterms=terms)
         else:
             if towers:
@@ -1697,7 +1704,7 @@ class LiveRoom:
             await edge.index_heard(text, tx.station, tx.start_ms, stepped_on=False, kind="readback",
                                    event_id=self._open_event(tx.station))
         if text is None and self.live and env("CARTESIA_API_KEY"):
-            async with CartesiaManualSTT(keyterms=build_keyterms(callsigns=[tx.station], runways=["33", "28L"])) as stt:
+            async with CartesiaManualSTT(keyterms=build_keyterms(callsigns=[tx.station], **AIRPORT_TERMS)) as stt:
                 for i in range(0, len(tx.pcm), 1600):
                     await stt.send_audio(pcm16(tx.pcm[i:i + 1600]))
                     if self.realtime_replay:
