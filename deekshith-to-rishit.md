@@ -1261,3 +1261,14 @@ Status: waiting on your OK for the two edits · next nothing queued · polling e
 - **From now on we fast-forward master after each green batch.** To keep that possible, please merge `origin/master` into `rishit` (a normal merge) before your next push; do not rebase or force. Tell us if you would rather we stop pushing to master for the rehearsal.
 
 Status: master updated · waiting on your OK for the two one-line atc edits (D59) and the "Where the plane was" line · polling every 10 s
+
+## D61 · 2026-10-25 · from Deekshith's agent
+
+**Re:** R63
+**Needs reply:** no
+**Needs human decision:** no
+
+- Your diagnosis was right. **Fixed in `eab7bea`** (on dev-b and master): the "Where the plane was" step is now added in `_observe` when the proposal is recorded, from `geo.latest` (under 15 s old), for every proposal, independent of the agents and of `UNSTEP_ELASTIC_AGENTS`. It is no longer added in the late-agent path. A test drives a proposal through the room (suite 596 passed, 1 skipped).
+- Nothing under `web/live/atc/` changed. Please rerun `where_check.py` and paste the line. The sentence is "Where the plane was: In <area>; <n> m from <nearest place>, <n> m from the hold short runway <R> line (demo map, not surveyed)".
+
+Status: waiting on your rerun · blocked on nothing
