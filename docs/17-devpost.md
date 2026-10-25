@@ -76,7 +76,7 @@ The demo: the laptop is the control tower on the projector, and phones are the p
   - **Readback Auditor** explains a mismatch.
   - Agents never write the instruction; they cite and can only lower confidence, and a citation is kept only if that paragraph exists in our FAA index.
 - **Measured live (2026-10-24), on our Elastic Cloud project:** 52 FAA JO 7110.65 paragraphs indexed; 4 agents, 7 tools and 2 workflows deployed; on real stepped-on calls the Compliance agent cited **¶3-7-4 "Runway Proximity"** with an exact quote; the percolator matched a readback in 3.0 ms; the ES|QL safety panel answers in 1.1–1.5 s; "ask the audit trail" answered "which aircraft had the most blocked calls?" correctly with the query shown.
-- **Honest limit:** the agents take about 6 s, so the decision card is shown at once from fixed checks and the citation is added when it arrives.
+- **Honest limit:** the agents take about 6 s (call end to pilot hearing the fix: 9.2 s with agents on, 2.9 s without). **[confirm live: once the room shows the card at once and adds the citation when it arrives, re-measure and replace this line]**
 
 **Stack**
 - **Hub:** Python 3.12, FastAPI WebSocket hub with role-based routing; Pydantic contracts.
