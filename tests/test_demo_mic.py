@@ -25,15 +25,28 @@ def scripted(*texts):
 
 
 async def speak(mic, times=1):
-    """Act as the browser: wait for the prompt, stream frames, release V."""
-    for _ in range(times):
-        while not mic.waiting:
-            await asyncio.sleep(0.01)
-        for frame in tone_frames():
-            mic.feed(frame)
-        mic.end()
-        while mic.waiting:
-            await asyncio.sleep(0.01)
+    """Act as the browser: wait for each prompt, stream frames, release V.
+
+    Counts prompts instead of polling `mic.waiting` for False: with instant fakes the scene finishes one turn and
+    asks the next in the same event-loop pass, so a poll can never see `waiting` drop and the helper used to wait
+    forever for a prompt it had already missed (it only passed where timers are slow, such as Windows)."""
+    prompts = {"n": 1 if mic.waiting else 0}
+    real_expect = mic.expect
+
+    async def counted(role, hint):
+        prompts["n"] += 1
+        await real_expect(role, hint)
+
+    mic.expect = counted
+    try:
+        for i in range(1, times + 1):
+            while prompts["n"] < i:
+                await asyncio.sleep(0.005)
+            for frame in tone_frames():
+                mic.feed(frame)
+            mic.end()
+    finally:
+        mic.expect = real_expect
 
 
 def records(presenter):
