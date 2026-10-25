@@ -24,6 +24,7 @@ from unstep.config import ROOT, allowed_origins, env, gateway_token
 from unstep.gateway.server import create_app, origin_listed, origin_ok
 from unstep.cockpit.translate import LANGUAGES
 from unstep.live.flightplans import FlightPlans, last_tower_call
+from unstep.ground.reports import reports_from_env
 from unstep.live.geo import AREAS, Geo, area_polygon
 from unstep.live.room import LiveRoom
 
@@ -151,14 +152,14 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
         stats_cache[key] = (now, result)
         return result
 
-    from unstep.ground.audit_chat import audit_chat_from_env
+    from unstep.ground.audit_chat import AGENTS, audit_chat_from_env
 
     app.state.audit_chat = audit_chat_from_env() if live else None  # tests may set their own
 
     @app.get("/live/ask-audit")
     async def ask_audit_available():
         """Whether "ask the audit trail" can run here (Elastic and Kibana configured and the room is live)."""
-        return {"available": app.state.audit_chat is not None, "agent": "unstep-audit"}
+        return {"available": app.state.audit_chat is not None, "agent": "unstep-audit", "agents": sorted(AGENTS)}
 
     @app.post("/live/ask-audit")
     async def ask_audit(request: Request):
@@ -170,10 +171,29 @@ def create_live_app(live: bool, sink=None, room: LiveRoom | None = None, warm_st
         if chat is None:
             return {"ok": False, "available": False, "error": "Elastic isn't connected here, so there is no audit trail to ask."}
         try:
-            question = str((await request.json()).get("question", ""))
+            body = await request.json()
+            question, which = str(body.get("question", "")), str(body.get("agent", "audit"))
         except ValueError:
-            question = ""
-        return {"available": True, **(await chat.ask(question))}
+            question, which = "", "audit"
+        return {"available": True, **(await chat.ask(question, which if which in AGENTS else "audit"))}
+
+    app.state.reports = reports_from_env() if live else None  # tests may set their own
+
+    @app.get("/live/reports")
+    async def reports_latest():
+        """The newest shift briefing and nightly review saved by the Elastic workflows, read from their indexes."""
+        if app.state.reports is None:
+            return {"available": False}
+        return {"available": True, **(await app.state.reports.latest())}
+
+    @app.post("/live/reports/run")
+    async def reports_run(request: Request):
+        """Start the briefing or the nightly review now (they also run on a schedule). One at a time; read-only."""
+        if gateway_token() and request.query_params.get("token") != gateway_token():
+            return JSONResponse({"error": "wrong room token"}, status_code=403)
+        if app.state.reports is None:
+            return {"ok": False, "available": False, "error": "Elastic isn't connected here."}
+        return await app.state.reports.run(request.query_params.get("which", "briefing"))
 
     flight_plans = FlightPlans()
 

@@ -22,6 +22,7 @@ from unstep.config import elastic_settings, kibana_url
 log = logging.getLogger("unstep.audit_chat")
 
 AGENT_ID = "unstep-audit"
+AGENTS = {"audit": "unstep-audit", "coach": "unstep-coach"}  # the console may address either; both are read-only
 MAX_QUESTION = 300
 TIMEOUT_S = 25.0
 MIN_GAP_S = 1.5  # at most one question per this many seconds, across all consoles
@@ -78,7 +79,8 @@ class AuditChat:
         self._lock = asyncio.Lock()
         self._last = 0.0
 
-    async def ask(self, question: str) -> dict:
+    async def ask(self, question: str, agent: str = "audit") -> dict:
+        agent_id = AGENTS.get(agent, AGENT_ID)
         question = " ".join((question or "").split())[:MAX_QUESTION]
         if not question:
             return {"ok": False, "error": "Ask a question first."}
@@ -89,7 +91,7 @@ class AuditChat:
             started = time.perf_counter()
             try:
                 r = await self.client.post(f"{self.kibana}/api/agent_builder/converse",
-                                           json={"input": question, "agent_id": AGENT_ID})
+                                           json={"input": question, "agent_id": agent_id})
                 r.raise_for_status()
                 parsed = parse_converse(r.json())
             except (httpx.HTTPError, ValueError) as exc:
@@ -98,7 +100,7 @@ class AuditChat:
             took = round((time.perf_counter() - started) * 1000)
         if not parsed["answer"]:
             return {"ok": False, "error": "Elastic answered, but without text.", "took_ms": took, **parsed}
-        return {"ok": True, "took_ms": took, "agent": AGENT_ID, **parsed}
+        return {"ok": True, "took_ms": took, "agent": agent_id, **parsed}
 
 
 def audit_chat_from_env() -> AuditChat | None:
