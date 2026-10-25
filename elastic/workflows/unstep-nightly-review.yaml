@@ -1,0 +1,32 @@
+# Nightly review (scheduled): the coach agent reads how controllers decided over 30 days and the answer is saved
+# so the console and people can read it later. Nothing here changes a rule or sends an instruction. A scheduled
+# trigger is `type: scheduled` with `with: every:` (Elastic docs; minimum 60 s). It runs without anyone asking,
+# so it costs model calls every day once deployed: delete the workflow in Kibana to stop it.
+version: "1"
+name: unstep-nightly-review
+description: Daily review of how controllers decided on Unstep's proposals
+enabled: true
+triggers:
+  - type: manual
+    inputs:
+      - name: focus
+        type: string
+        required: false
+  - type: scheduled
+    with:
+      every: 1d
+steps:
+  - name: review
+    type: ai.agent
+    agent-id: unstep-coach
+    create-conversation: true
+    with:
+      message: |-
+        Review the controllers' decisions over the last 30 days with your tool and report the trend as instructed. Focus: {{ inputs.focus | default: "all instructions" }}.
+  - name: save_review
+    type: elasticsearch.index
+    with:
+      index: unstep-reviews
+      document:
+        review: "{{ steps.review.output.message }}"
+        execution_id: "{{ execution.id }}"

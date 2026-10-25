@@ -2,6 +2,15 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## Agent Builder depth: scheduled workflows, a coach agent, a trend tool, an MCP client
+
+- New: tool `unstep_trend_decisions` (approved and rejected per day, 30 days, real traffic), agent `unstep-coach` (reads the trend, says "not enough data" under 5 days or 20 decisions, never claims the system learns), workflow `unstep-nightly-review` (scheduled daily, saves to the new `unstep-reviews` index, created by `deploy_elastic.py`).
+- `unstep-briefing` also runs every 8 hours. Scheduled workflows spend model calls on their own once deployed.
+- `scripts/mcp_demo.py`: list and call tools through Agent Builder's MCP server.
+- Not done: the agent-calls-workflow tool (`elastic/proposed/`, API body unverified, not deployed) and per-agent API keys (not checked; the hub makes all calls with one key, so enforced separation would need hub changes).
+- None of this is deployed or run live. Deploying uses `--replace`, which needs Rishit's OK.
+
+
 ## Compliance cache off by default; a stand-in map for geography (D51)
 
 - `UNSTEP_COMPLIANCE_CACHE_S` now defaults to 0. Real questions differ, and a cache hit skips the agent, so it would not credit Elastic. The agents stay on the slow path and are justified against the human baselines (docs/26).
