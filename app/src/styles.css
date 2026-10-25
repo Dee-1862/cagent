@@ -263,3 +263,9 @@ input,.join select { background:var(--raised); border-color:var(--line); border-
 .say-parts { display:flex; flex-wrap:wrap; gap:6px; }
 .say-parts span { display:inline-flex; flex-direction:column; gap:2px; padding:6px 10px; background:var(--raised); border:1px solid var(--line); border-radius:10px; font-size:13px; color:var(--text); }
 .say-parts b { font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+
+.say-guide.wrong { border-left-color: var(--red); }
+.say-guide.right { border-left-color: var(--green); }
+.say-verdict { margin-bottom: 8px; font-size: 15px; font-weight: 700; }
+.say-guide.wrong .say-verdict { color: var(--red); }
+.say-guide.right .say-verdict { color: var(--green); }

@@ -484,6 +484,22 @@ function readbackOf(instruction: string): string {
     .replace(/[.\s]+$/, "");
   return what.charAt(0).toUpperCase() + what.slice(1);
 }
+// The parts of an instruction a pilot must read back: runway number and the action words.
+function keyParts(text: string): { runway: string | null; action: string | null; place: string | null } {
+  const t = text.toLowerCase().split(/[^a-z0-9]+/).map((w) => NUMBER_WORDS[w] ?? w).join(" ").replace(/(\d)\s+(?=\d)/g, "$1");
+  const rw = t.match(/\brunway\s+(\d{1,2})\b/);
+  const action = /\bclear(ed)?\b.{0,16}\btake ?off\b/.test(t) ? "cleared for takeoff" : /\bline ?up\b/.test(t) ? "line up and wait"
+    : /\bhold short\b/.test(t) ? "hold short" : /\btaxi\b/.test(t) ? "taxi" : null;
+  const pl = t.match(/\b(to|at)\s+(?:taxiway\s+)?(alpha|bravo|a|b)\s?([1-4])\b/);
+  return { runway: rw ? rw[1] : null, action, place: pl ? `${pl[2][0].toUpperCase()}${pl[3]}` : null };
+}
+function readbackVerdict(told: string, said: string): { ok: boolean; why: string } {
+  const want = keyParts(told), got = keyParts(said), wrong: string[] = [];
+  if (want.runway && got.runway !== want.runway) wrong.push(`you said ${got.runway ? `runway ${got.runway}` : "no runway"}, the tower said runway ${want.runway}`);
+  if (want.action && want.action !== "taxi" && got.action !== want.action) wrong.push(`you didn't say "${want.action}"`);
+  if (want.place && got.place !== want.place) wrong.push(`you said ${got.place ?? "no taxiway"}, the tower said ${want.place}`);
+  return { ok: wrong.length === 0, why: wrong.join("; ") };
+}
 function SayGuide({ spoken, trace, lines }: { spoken: string; trace: Trace | null; lines: L.Line[] }) {
   const call = spoken || "your callsign", mine = digitsOf(call);
   const delivered = trace && ["delivered", "readback_wrong"].includes(trace.status)
@@ -492,11 +508,16 @@ function SayGuide({ spoken, trace, lines }: { spoken: string; trace: Trace | nul
     && digitsOf(l.words.map((w) => w.text).join(" ")).includes(mine));
   const told = delivered || fromTower?.words.map((w) => w.text).join(" ");
   const toldWhat = told ? readbackOf(told) : "";
+  // The pilot's own call after the tower's instruction is the readback: say whether it was right.
+  const towerAt = fromTower ? lines.indexOf(fromTower) : -1;
+  const mineAfter = told ? lines.slice(towerAt + 1).reverse().find((l) => l.who === "You" && l.final) : undefined;
+  const verdict = mineAfter && told ? readbackVerdict(told, mineAfter.words.map((w) => w.text).join(" ")) : null;
   const parts: [string, string][] = toldWhat
     ? [["What you were told", toldWhat], ["Who you are", call]]
     : [["Who you're calling", "Tower"], ["Who you are", call], ["What you want", "ready for departure, runway 33"]];
   return (
-    <div className="say-guide">
+    <div className={`say-guide ${verdict ? (verdict.ok ? "right" : "wrong") : ""}`}>
+      {verdict && <div className="say-verdict">{verdict.ok ? "✓ Read back correctly" : `✗ Wrong readback: ${verdict.why}. Say it again:`}</div>}
       <div className="say-label">{toldWhat ? "Read it back" : "Say this"}</div>
       <p className="say-line">"{parts.map(([, v]) => v).join(", ")}"</p>
       <div className="say-parts">{parts.map(([k, v]) => <span key={k}><b>{k}</b>{v}</span>)}</div>

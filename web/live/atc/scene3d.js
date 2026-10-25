@@ -3,6 +3,7 @@ import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
 import {OrbitControls} from "three/addons/controls/OrbitControls.js";
 import {mergeGeometries} from "three/addons/utils/BufferGeometryUtils.js";
 import {RoomEnvironment} from "three/addons/environments/RoomEnvironment.js";
+import * as Taxi from "./taxi.js";  // the ground network: one source for drawing and routing
 
 const colors = {blue:0x0a84ff, green:0x30d158, amber:0xffd60a, red:0xff453a, violet:0xbf5af2};
 const models = ["small-plane", "helicopter", "jet", "airliner-747"];
@@ -85,7 +86,7 @@ export function createAirport(container, {quality = "high", followStation} = {})
   majorGrid.material.transparent = true; majorGrid.material.opacity = .1; majorGrid.position.y = -.03; scene.add(majorGrid);
 
   // ---- runway 33/15 (south of the terminal) and taxiway B ----
-  const RWY_Z = 22;
+  const RWY_Z = Taxi.RWY_Z;
   box(76,.04,5.2,0,.005,RWY_Z,matte(0x1b2026));
   box(77,.015,6,0,-.005,RWY_Z,matte(0x2c343c));
   for (let x=-33; x<=33; x+=4.5) mark(1.8,.02,.13,x,.035,RWY_Z,matte(0xd4d9de));
@@ -98,14 +99,18 @@ export function createAirport(container, {quality = "high", followStation} = {})
     mesh.rotation.x=-Math.PI/2; mesh.rotation.z=rotation; mesh.position.set(x,.055,z); scene.add(mesh);
   }
   paint("33",-32,RWY_Z,-Math.PI/2); paint("15",32,RWY_Z,Math.PI/2);
-  const TWY_Z = 14;   // taxiway B, parallel to the runway
+  const TWY_Z = Taxi.TWY_Z;   // taxiway B, parallel to the runway
   mark(80,.035,2.6,-4,.012,TWY_Z,matte(0x20262c));
   for (let x=-43;x<35;x+=2.2) mark(1,.02,.07,x,.04,TWY_Z,matte(0xb7a478));
-  mark(2.6,.035,RWY_Z-TWY_Z,-10,.012,(RWY_Z+TWY_Z)/2,matte(0x20262c));   // connector B1 onto the runway
-  for (let z=TWY_Z+.8;z<RWY_Z-2.6;z+=1.4) mark(.07,.02,.8,-10,.04,z,matte(0xb7a478));
-  const HOLD_Z = RWY_Z-3.4;   // hold-short line on the connector
-  const hold=box(2.7,.025,.14,-10,.065,HOLD_Z,matte(colors.amber,{emissive:colors.amber,emissiveIntensity:.15}));
-  mark(2.7,.025,.14,-10,.065,HOLD_Z-.3,matte(colors.amber));
+  // runway connectors at both ends (B1: runway 33, B2: runway 15), each with its own hold-short line
+  const HOLD_Z = Taxi.HOLD_Z;
+  const holds = {};
+  for (const [, cx, rwy] of Taxi.RUNWAY_CONNECTORS) {
+    mark(2.6,.035,RWY_Z-TWY_Z,cx,.012,(RWY_Z+TWY_Z)/2,matte(0x20262c));
+    for (let z=TWY_Z+.8;z<RWY_Z-2.6;z+=1.4) mark(.07,.02,.8,cx,.04,z,matte(0xb7a478));
+    holds[rwy]=box(2.7,.025,.14,cx,.065,HOLD_Z,matte(colors.amber,{emissive:colors.amber,emissiveIntensity:.15}));
+    mark(2.7,.025,.14,cx,.065,HOLD_Z-.3,matte(colors.amber));
+  }
   const twyLight=new THREE.MeshBasicMaterial({color:0x5fa8ff}), rwyLight=new THREE.MeshBasicMaterial({color:0xf2f4f6});
   for (let x=-43;x<35;x+=3.3) for (const dz of [-1.5,1.5]) { dot(.07,twyLight,x,.07,TWY_Z+dz); }
   for (let x=-36;x<=36;x+=2.4) for (const dz of [-2.9,2.9]) { dot(.06,rwyLight,x,.07,RWY_Z+dz); }
@@ -176,7 +181,7 @@ export function createAirport(container, {quality = "high", followStation} = {})
   } catch(e) { console.warn("Parked aircraft unavailable",e); } });
 
   // ---- taxi routes: every gate -> lead-in line -> taxiway A (pier tips) -> connector -> taxiway B -> hold short -> runway ----
-  const TWYA_Z = SPINE_Z+30.5;
+  const TWYA_Z = Taxi.TWYA_Z;
   const taxiMat=matte(0x20262c), lineMat=matte(0xb7a478,{emissive:0xb7a478,emissiveIntensity:.08});
   mark(84,.035,2.4,0,.012,TWYA_Z,taxiMat);
   for (let x=-41;x<42;x+=2.2) mark(1,.02,.07,x,.04,TWYA_Z,lineMat);
@@ -189,7 +194,7 @@ export function createAirport(container, {quality = "high", followStation} = {})
     mark(.9,.02,.08,spot.x,.04,spot.z,lineMat);                        // stop bar at the stand
   }
   // ---- airport signs, like the real ones: black/yellow location signs, a red holding-position sign ----
-  const CONNECTORS=[["A1",-38],["A2",-17],["A3",6],["A4",30]];
+  const CONNECTORS=Taxi.A_CONNECTORS;
   function sign(text,x,z,{bg="#111418",fg="#FFD60A",border="#FFD60A"}={}) {
     const c=document.createElement("canvas"); c.width=256; c.height=128; const g=c.getContext("2d");
     g.fillStyle=bg; g.fillRect(0,0,256,128); g.strokeStyle=border; g.lineWidth=8; g.strokeRect(6,6,244,116);
@@ -200,8 +205,10 @@ export function createAirport(container, {quality = "high", followStation} = {})
   for (const x of [-30,-2,24]) sign("B",x,TWY_Z-2.4);
   for (const x of [-28,-6,18]) sign("A",x,TWYA_Z-2.2);
   for (const [name,x] of CONNECTORS) sign(name,x+1.9,(TWY_Z+TWYA_Z)/2);
-  sign("B1",-10+2.1,TWY_Z+2.4);
-  sign("33-15",-10+2.4,HOLD_Z,{bg:"#C8102E",fg:"#FFFFFF",border:"#FFFFFF"});
+  for (const [name, cx, rwy] of Taxi.RUNWAY_CONNECTORS) {
+    sign(name,cx+2.1,TWY_Z+2.4);
+    sign(rwy==="33"?"33-15":"15-33",cx+2.4,HOLD_Z,{bg:"#C8102E",fg:"#FFFFFF",border:"#FFFFFF"});
+  }
 
   // ---- control tower, west of the field ----
   const TOWER={x:-46,z:-8};
@@ -219,23 +226,17 @@ export function createAirport(container, {quality = "high", followStation} = {})
   const loader=new GLTFLoader();
   const entries=new Map(); let selected=null, disposed=false, onPick=()=>{};
   const raycaster=new THREE.Raycaster(); const pointer=new THREE.Vector2();
-  // Taxi model: planes queue nose-east on taxiway B toward connector B1, then hold short, line up and
-  // depart on runway 33. Each new plane joins the back of the queue; the queue moves up when one leaves.
-  const CONN_X=-10, HOLD_STOP_Z=HOLD_Z-1.4, QUEUE_X0=-16, QUEUE_GAP=6.5, TAXI=3.2;
-  const queueSpot=i=>new THREE.Vector3(QUEUE_X0-i*QUEUE_GAP,0,TWY_Z);
+  // Taxi model on the shared ground network (taxi.js): planes queue on taxiway B nose-west toward B1, and
+  // each heard instruction becomes a route. Every ground state accepts a new instruction; only an aircraft
+  // that has taken off ignores ground instructions.
+  const TAXI=3.2;
+  const v3=({x,z})=>new THREE.Vector3(x,0,z);
+  const queueSpot=i=>v3(Taxi.queueSpot(i));
   let queueSerial=0;
   const queued=()=>[...entries.values()].filter(e=>e.state==="queue"&&!e.removing).sort((a,b)=>a.queueOrder-b.queueOrder);
   function reflow(){
     queued().forEach((e,i)=>{ const spot=queueSpot(i); const last=e.path.at(-1);
-      if(e.group.position.distanceTo(spot)>.05 && !(last && last.distanceTo(spot)<.05)) { e.path=[spot]; e.speed=TAXI; } });
-  }
-  const toHold=()=>[new THREE.Vector3(CONN_X,0,TWY_Z),new THREE.Vector3(CONN_X,0,HOLD_STOP_Z)];
-  function viaAlpha(from) {
-    // B -> nearest connector up to A -> along A -> the connector nearest B1 back down to B -> B1 -> hold short
-    const xs=CONNECTORS.map(([,x])=>x), up=xs.reduce((a,b)=>Math.abs(b-from.x)<Math.abs(a-from.x)?b:a);
-    const down=xs.filter(x=>x!==up).reduce((a,b)=>Math.abs(b-CONN_X)<Math.abs(a-CONN_X)?b:a);
-    return [new THREE.Vector3(up,0,TWY_Z),new THREE.Vector3(up,0,TWYA_Z),new THREE.Vector3(down,0,TWYA_Z),
-            new THREE.Vector3(down,0,TWY_Z),...toHold()];
+      if(e.group.position.distanceTo(spot)>.05 && !(last && last.distanceTo(spot)<.05)) { e.path=[spot]; e.speed=TAXI; e.targetYaw=Math.PI; } });
   }
   const routeMat=new THREE.LineBasicMaterial({color:colors.blue,transparent:true,opacity:.95});
   function showRoute(e) {
@@ -245,20 +246,29 @@ export function createAirport(container, {quality = "high", followStation} = {})
     const pts=[e.group.position.clone(),...e.path].map(p=>new THREE.Vector3(p.x,.16,p.z));
     e.routeLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),routeMat); scene.add(e.routeLine);
   }
-  const toLineUp=()=>[new THREE.Vector3(CONN_X,0,RWY_Z),new THREE.Vector3(CONN_X+3,0,RWY_Z)];
   function command(id,action,opts={}){
-    // A heard instruction moves the plane. Returns false when it doesn't apply in the plane's current state.
-    const e=entries.get(id); if(!e||e.removing) return false;
-    const airborne=["takeoff","departed"].includes(e.state);
-    const leaveQueue=()=>{ if(e.state==="queue"){ e.state="taxi"; reflow(); } };
-    if(action==="stop"){ if(airborne) return false; e.path=[]; e.after=null; if(e.state!=="queue") e.state="stopped"; return true; }
-    if(action==="hold_short"||action==="taxi"){ if(airborne||["holding","lined_up"].includes(e.state)) return false;
-      leaveQueue(); e.path=(opts.via||[]).includes("A")?viaAlpha(e.group.position):toHold(); e.after="holding"; e.speed=TAXI; showRoute(e); return true; }
-    if(action==="line_up"){ if(airborne||e.state==="lined_up") return false;
-      leaveQueue(); e.path=[...(e.state==="holding"?[]:toHold()),...toLineUp()]; e.after="lined_up"; e.speed=TAXI; showRoute(e); return true; }
-    if(action==="takeoff"){ if(airborne) return false;
-      leaveQueue(); e.path=e.state==="lined_up"?[]:[...(e.state==="holding"?[]:toHold()),...toLineUp()]; e.after="takeoff"; e.speed=TAXI;
-      if(!e.path.length){ e.state="takeoff"; e.after=null; e.v=2; } showRoute(e); return true; }
+    // A heard instruction moves the plane. Returns false when it doesn't apply (unknown plane, already airborne).
+    const e=entries.get(id); if(!e||e.removing||["takeoff","departed"].includes(e.state)) return false;
+    const here={x:e.group.position.x,z:e.group.position.z};
+    const rwy=Taxi.RUNWAYS[opts.runway]?opts.runway:(e.runway&&Taxi.RUNWAYS[e.runway]?e.runway:Taxi.DEFAULT_RUNWAY);
+    const go=(pts,after)=>{ if(e.state==="queue"){ e.state="taxi"; reflow(); }
+      e.path=pts.map(v3); e.after=after; e.speed=TAXI; showRoute(e);
+      if(!e.path.length && after){ e.state=after; e.after=null; if(after==="takeoff") e.v=2; } return true; };
+    if(action==="stop"){ e.path=[]; e.after=null; showRoute(e); if(e.state!=="queue") e.state="stopped"; return true; }
+    if(action==="hold_short"){ e.runway=rwy; return go(Taxi.route(here,Taxi.holdNode(rwy),{via:opts.via}),"holding"); }
+    if(action==="taxi"){
+      const place=Taxi.placeNode(opts.dest);
+      if(place) return go(Taxi.route(here,place,{via:opts.via}),"stopped");
+      e.runway=rwy; return go(Taxi.route(here,Taxi.holdNode(rwy),{via:opts.via}),"holding");
+    }
+    if(action==="line_up"){
+      if(e.state==="lined_up"&&e.runway===rwy) return false;
+      e.runway=rwy; return go(Taxi.lineUpRoute(here,rwy,{via:opts.via}),"lined_up");
+    }
+    if(action==="takeoff"){
+      e.runway=rwy;
+      return go(e.state==="lined_up"&&e.lineRunway===rwy?[]:Taxi.lineUpRoute(here,rwy,{via:opts.via}),"takeoff");
+    }
     return false;
   }
   const turn=(from,to)=>{ let d=to-from; while(d>Math.PI) d-=2*Math.PI; while(d<-Math.PI) d+=2*Math.PI; return d; };
@@ -286,9 +296,9 @@ export function createAirport(container, {quality = "high", followStation} = {})
     aircraft.forEach((s,i)=>{
       if(entries.has(s.id)) {entries.get(s.id).station=s;entries.get(s.id).removing=false;return;}
       const {x,z}=queueSpot(queued().length);                         // join the back of the queue
-      const group=new THREE.Group(); group.position.set(x,0,z); group.rotation.y=0; scene.add(group);
+      const group=new THREE.Group(); group.position.set(x,0,z); group.rotation.y=Math.PI; scene.add(group);
       const e={id:s.id,station:s,group,ring:ring(colors.blue),born:performance.now(),removing:false,opacity:1,flashUntil:0,needs:false,hold:false,
-               state:"queue",queueOrder:queueSerial++,path:[],after:null,speed:TAXI,yaw:0,targetYaw:0,alt:0,pitch:0,fade:1,v:0};
+               state:"queue",queueOrder:queueSerial++,path:[],after:null,speed:TAXI,yaw:Math.PI,targetYaw:Math.PI,alt:0,pitch:0,fade:1,v:0,runway:null,lineRunway:null};
       e.ring.position.set(x,.07,z); entries.set(s.id,e); attachModel(e,modelFor(s,i));
     });
     reflow();
@@ -339,7 +349,7 @@ export function createAirport(container, {quality = "high", followStation} = {})
       camera.position.x=views.overview.position[0]+Math.sin(t/9000)*1.5;
     }
     controls.update();
-    hold.material.emissiveIntensity=[...entries.values()].some(e=>e.hold||e.state==="holding") ? (reduced.matches?.8:.65+.25*Math.sin(t/260)) : .15;
+    for (const [rwy, line] of Object.entries(holds)) line.material.emissiveIntensity=[...entries.values()].some(e=>(e.hold&&(e.runway??Taxi.DEFAULT_RUNWAY)===rwy)||(e.state==="holding"&&e.runway===rwy)) ? (reduced.matches?.8:.65+.25*Math.sin(t/260)) : .15;
     towerRing.visible=keyedIds.has("atc");
     if(towerRing.visible){towerRing.scale.setScalar(reduced.matches?1.1:1+(t%1300)/1300*2);towerRing.material.opacity=reduced.matches?.75:1-(t%1300)/1300;}
     for(let i=beams.length-1;i>=0;i--){const b=beams[i];b.line.material.opacity=Math.max(0,(b.until-t)/2400)*.8;if(t>=b.until){scene.remove(b.line);b.line.geometry.dispose();b.line.material.dispose();beams.splice(i,1);}}
@@ -350,19 +360,21 @@ export function createAirport(container, {quality = "high", followStation} = {})
       if(e.path.length){
         const target=e.path[0], p=e.group.position, dx=target.x-p.x, dz=target.z-p.z, d=Math.hypot(dx,dz), step=e.speed*dt;
         if(d<=step){ p.x=target.x; p.z=target.z; e.path.shift();
-          if(!e.path.length){ showRoute(e); if(e.after){ e.state=e.after; e.after=null; if(e.state==="takeoff") e.v=2; } } }
+          if(!e.path.length){ showRoute(e); if(e.after){ e.state=e.after; e.after=null;
+            if(e.state==="lined_up"||e.state==="takeoff") e.lineRunway=e.runway; if(e.state==="takeoff") e.v=2; } } }
         else { p.x+=dx/d*step; p.z+=dz/d*step; e.targetYaw=Math.atan2(-dz,dx); }
       }
       if(e.state==="takeoff"){                                         // roll, rotate, climb out
-        e.v=Math.min(28,e.v+7*dt); e.group.position.x+=e.v*dt; e.targetYaw=0;
-        if(e.group.position.x>CONN_X+16){ e.alt+=e.v*.24*dt; e.pitch=Math.min(.2,e.pitch+dt*.35); }
-        if(e.group.position.x>60||e.alt>16){ e.state="departed"; e.departedAt=t; }
+        const r=Taxi.RUNWAYS[e.lineRunway]??Taxi.RUNWAYS[Taxi.DEFAULT_RUNWAY], rolled=(e.group.position.x-r.x)*r.dir;
+        e.v=Math.min(28,e.v+7*dt); e.group.position.x+=e.v*r.dir*dt; e.targetYaw=r.dir>0?0:Math.PI;
+        if(rolled>26){ e.alt+=e.v*.24*dt; e.pitch=Math.min(.2,e.pitch+dt*.35); }
+        if(rolled>90||e.alt>16){ e.state="departed"; e.departedAt=t; }
       }
       if(e.state==="departed"){
         e.fade=Math.max(0,e.fade-dt*1.4);
         if(t-e.departedAt>3500){                                       // the circuit ends: rejoin the back of the queue
           const spot=queueSpot(queued().length); e.state="queue"; e.queueOrder=queueSerial++; e.alt=0; e.pitch=0; e.fade=1; e.v=0;
-          e.group.position.set(spot.x,0,spot.z); e.yaw=e.targetYaw=0; e.born=t; reflow();
+          e.group.position.set(spot.x,0,spot.z); e.yaw=e.targetYaw=Math.PI; e.runway=e.lineRunway=null; e.born=t; reflow();
         }
       }
       e.yaw+=turn(e.yaw,e.targetYaw)*Math.min(1,dt*5); e.group.rotation.set(0,e.yaw,e.pitch);
@@ -380,5 +392,7 @@ export function createAirport(container, {quality = "high", followStation} = {})
     if(composer)composer.render();else renderer.render(scene,camera);
   }
   animate();
-  return {setStations,command,keyed,steppedOn,advisory,readback,holdShort,needsYou,setView,setAutoSway,onSelect(callback){onPick=callback;},project,dispose(){disposed=true;cancelAnimationFrame(frame);observer.disconnect();controls.dispose();renderer.domElement.removeEventListener("click",click);for(const b of beams){b.line.geometry.dispose();b.line.material.dispose();}ringGeometry.dispose();towerRing.material.dispose();composer?.dispose();pmrem.dispose();renderer.dispose();container.replaceChildren();}};
+  // Read-only view of each plane (tests and debugging): where it is and what it's doing.
+  const inspect=()=>[...entries.values()].map(e=>({id:e.id,state:e.state,x:+e.group.position.x.toFixed(1),z:+e.group.position.z.toFixed(1),alt:+e.alt.toFixed(1),runway:e.runway}));
+  return {setStations,command,inspect,keyed,steppedOn,advisory,readback,holdShort,needsYou,setView,setAutoSway,onSelect(callback){onPick=callback;},project,dispose(){disposed=true;cancelAnimationFrame(frame);observer.disconnect();controls.dispose();renderer.domElement.removeEventListener("click",click);for(const b of beams){b.line.geometry.dispose();b.line.material.dispose();}ringGeometry.dispose();towerRing.material.dispose();composer?.dispose();pmrem.dispose();renderer.dispose();container.replaceChildren();}};
 }
