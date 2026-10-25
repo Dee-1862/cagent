@@ -4,9 +4,9 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
-## README: why fewer people can do this safely
+## README: why stretched-thin towers need a safety net
 
-- New README section with the public rest-rule and staffing-shortage figures (cited), what Unstep adds, what is measured and what is not. It says plainly that no headcount reduction has been measured.
+- New README section with cited public figures (staffing shortfall, training time, the NTSB finding on combined positions at DCA, the 2024 rest rules), framed as a safety net for a short-staffed controller. It states that Unstep does not reduce staffing and that no effect has been measured. Replaces the earlier fewer-controllers framing, which clashed with humans-stay-in-charge.
 
 ## Audit answers repaired, deploy order hint (from Rishit's first live Elastic run)
 
