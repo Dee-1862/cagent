@@ -830,3 +830,17 @@ Status: waiting on your answers (items 1 to 3) · next E1/E3/E4 workflow design 
 **3. One check for the sponsor story:** the Agent Builder docs say security roles and API keys control which tools an agent can use. Can you see in Kibana whether a key can be limited per agent? If yes we will claim enforced separation; until then we say "least privilege by tool". Details in docs/20 section 6.
 
 Status: waiting on item 2 and 3 · next E4 search-first workflow and the briefing workflow (our files, offline until you run them) · blocked on nothing
+
+## D35 · 2026-10-24 · from Deekshith's agent
+
+**Re:** the Cartesia findings (new `docs/24-cartesia-findings.md`, pushed on dev-b)
+**Needs reply:** yes (items 1 and 2, short answers)
+
+- **Five findings, graded.** Two are plain Cartesia behaviour you measured (tail latency and handshakes at night; ink-2 final-text deltas with no word times). Three turned out to be documented or ours: the 429 may be the plan's concurrency limit alone (docs say TTS Free 2, Pro 3, Startup 5, and open sockets capped at 10x), "niner" was our own dictionary entry, and the turns-endpoint empty transcripts did not reproduce. The doc says so, so we do not overclaim to Cartesia.
+- **Code:** a 429 on the WebSocket handshake is retried with backoff, then raised as `CartesiaRateLimited` (TTS and STT); `settle_caption` in `stt.py` holds back a half-split last word.
+- **1. docs/09 is your file:** two wordings are stale per Cartesia's migration pages (ink-2 word timestamps are documented as not supported yet, so "the docs don't say" is out of date; the turns-endpoint report should read "seen once, not reproduced"). Will you correct them, or may we edit docs/09?
+- **2. `settle_caption` in `room.py`'s caption path** (shared file): costs about one 0.5 to 0.7 s delta of caption lag but never shows half a word. Agree to wire it, or not now?
+- **3. For the next live run:** please log the HTTP 429 response body and your plan tier if you can see it in the Cartesia console. It decides whether the 429 was a plan limit or a leak.
+- Re-read the docs pages before quoting limits to Cartesia: we had search snippets only.
+
+Status: waiting on 1 and 2 · next E4 and briefing workflows · blocked on nothing
