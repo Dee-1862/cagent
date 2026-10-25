@@ -126,6 +126,7 @@ class ElasticAgents:
         self.wait_s, self.poll_s = wait_s, poll_s
         self.client = httpx.AsyncClient(headers={"Authorization": f"ApiKey {api_key}"}, timeout=5.0,
                                         transport=transport)
+        self._compliance_cache: dict[tuple, tuple[float, dict, str | None]] = {}  # key -> (when, answer, run id)
         self.rules_elastic = ElasticRules(es, api_key, transport=transport)
         self.rules_local = LocalRules()
 
@@ -253,6 +254,17 @@ class ElasticAgents:
                         event.event_id, type(exc).__name__)
             return None
 
+    def _cached_compliance(self, key: tuple):
+        ttl = compliance_cache_ttl_s()
+        hit = self._compliance_cache.get(key)
+        if ttl > 0 and hit is not None and time.monotonic() - hit[0] < ttl:
+            return hit[1], hit[2]
+        return None
+
+    def _remember_compliance(self, key: tuple, answer: dict, run_id: str | None) -> None:
+        if compliance_cache_ttl_s() > 0 and answer:
+            self._compliance_cache[key] = (time.monotonic(), answer, run_id)
+
     async def _branch(self, workflow: str, doc_id: str, inputs: dict, started: float, wait_s: float):
         """One of the two parallel agents: start its workflow, wait for its own answer document."""
         execution_id = await self._run(workflow, inputs)
@@ -272,15 +284,26 @@ class ElasticAgents:
         compliance_in = {"event_id": event.event_id, "callsign": event.callsign,
                          "instruction": proposal.instruction_text, "rule_paragraph": rule.get("paragraph") or "",
                          "rule_title": rule.get("title") or "", "rule_text": rule.get("text") or ""}
+        mode = intercept_mode()
+        skip_intercept = mode == "never" or (mode == "auto" and proposal.confidence == "high")
+        cache_key = (proposal.slots.action, proposal.slots.runway, rule.get("paragraph") or "")
+        cached = self._cached_compliance(cache_key) if rule.get("paragraph") else None
+        tasks, names = [], []
+        if not skip_intercept:
+            tasks.append(self._branch(INTERCEPT_WORKFLOW, f"{event.event_id}:intercept", intercept_in, started, wait_s))
+            names.append("intercept")
+        if cached is None:
+            tasks.append(self._branch(COMPLIANCE_WORKFLOW, f"{event.event_id}:compliance", compliance_in, started,
+                                      wait_s))
+            names.append("compliance")
         try:
-            got = await asyncio.gather(
-                self._branch(INTERCEPT_WORKFLOW, f"{event.event_id}:intercept", intercept_in, started, wait_s),
-                self._branch(COMPLIANCE_WORKFLOW, f"{event.event_id}:compliance", compliance_in, started, wait_s),
-                return_exceptions=True)
+            got = await asyncio.gather(*tasks, return_exceptions=True)
         except (httpx.HTTPError, ValueError):
             return None
         parts = {}
-        for name, outcome in zip(("intercept", "compliance"), got):
+        if cached is not None:  # the same instruction against the same paragraph was judged before
+            parts["compliance"] = (cached[0], cached[1], 0.0)
+        for name, outcome in zip(names, got):
             if isinstance(outcome, Exception):
                 log.warning("Elastic %s agent for %s failed (%s)", name, event.event_id, type(outcome).__name__)
                 continue
@@ -295,9 +318,15 @@ class ElasticAgents:
                               compliance=(parts.get("compliance") or (None,))[0],
                               execution_id=next((p[1] for p in parts.values() if p[1]), None),
                               branches={k: v[2] for k, v in parts.items()})
+        if skip_intercept:
+            result.notes.append("Intercept agent skipped: the local match was already high confidence")
+        if cached is not None:
+            result.notes.append("Compliance answer reused from an earlier identical instruction")
         paragraph = str((result.compliance or {}).get("paragraph") or "")
         if paragraph:
             result.citation_checked = await self._paragraph_exists(paragraph)
+            if cached is None and result.citation_checked and paragraph == rule.get("paragraph"):
+                self._remember_compliance(cache_key, result.compliance, parts["compliance"][1])
         result.took_ms = round((time.perf_counter() - started) * 1000, 1)
         return result
 
@@ -327,6 +356,23 @@ def with_stored_rule(proposal: ProposedDirective, hit: RuleHit | None) -> Propos
     return proposal.model_copy(update={
         "rule_citation": text,
         "confidence_method": (proposal.confidence_method or "") + f" + stored rule ({hit.backend})"})
+
+
+def intercept_mode() -> str:
+    """When the hub asks the Intercept agent (UNSTEP_INTERCEPT): `auto` (default) only when the local match is not
+    already high confidence, `always`, or `never`. Live, Intercept is the slow half (10.7 to 22.6 s, R47) and its
+    answer repeats what the local transcript match already decided when confidence is high."""
+    mode = env("UNSTEP_INTERCEPT", default="auto").lower()
+    return mode if mode in ("auto", "always", "never") else "auto"
+
+
+def compliance_cache_ttl_s() -> float:
+    """How long a Compliance answer is reused for the same instruction and paragraph (UNSTEP_COMPLIANCE_CACHE_S,
+    default 3600; 0 turns the cache off)."""
+    try:
+        return max(0.0, float(env("UNSTEP_COMPLIANCE_CACHE_S", default="3600")))
+    except ValueError:
+        return 3600.0
 
 
 def blocked_call_workflow() -> str:

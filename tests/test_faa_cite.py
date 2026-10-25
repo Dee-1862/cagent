@@ -112,6 +112,7 @@ def test_the_default_is_the_parallel_pair_and_an_unknown_name_falls_back_to_it(m
 
 def test_parallel_mode_starts_both_agents_together_and_waits_for_the_slower_one(monkeypatch):
     monkeypatch.setenv("UNSTEP_BLOCKED_WORKFLOW", "parallel")
+    monkeypatch.setenv("UNSTEP_INTERCEPT", "always")
     started, polls = [], {"n": 0}
 
     async def handler(request):
@@ -148,6 +149,7 @@ def test_parallel_mode_starts_both_agents_together_and_waits_for_the_slower_one(
 
 def test_parallel_mode_keeps_one_answer_if_the_other_never_comes(monkeypatch):
     monkeypatch.setenv("UNSTEP_BLOCKED_WORKFLOW", "parallel")
+    monkeypatch.setenv("UNSTEP_INTERCEPT", "always")
 
     def handler(request):
         path = request.url.path
@@ -163,3 +165,61 @@ def test_parallel_mode_keeps_one_answer_if_the_other_never_comes(monkeypatch):
     result = asyncio.run(a.blocked_call(scenario.anomaly_event(), scenario.tower_transcript(), p))
     assert result.intercept == {"match": False} and result.compliance is None and set(result.branches) == {"intercept"}
     assert ea.merge(p, result).confidence == "low"  # the veto still counts when only Intercept answered
+
+
+def parallel_handler(started):
+    def handler(request):
+        path = request.url.path
+        if path.startswith("/api/workflows/workflow/"):
+            started.append(path.split("/")[-2])
+            return httpx.Response(200, json={"workflowExecutionId": "exec-" + str(len(started))})
+        if path.endswith(":intercept"):
+            return httpx.Response(200, json={"found": True, "_source": {"intercept": '{"match": true}'}})
+        if path.endswith(":compliance"):
+            return httpx.Response(200, json={"found": True, "_source": {
+                "compliance": '{"paragraph": "3-7-2", "restrictive": true}'}})
+        if path == "/unstep-faa/_doc/3-7-2":
+            return httpx.Response(200, json={"found": True, "_source": {"body": "Hold short text"}})
+        return httpx.Response(404, json={})
+    return handler
+
+
+def run_call(a, confidence):
+    p = propose(scenario.anomaly_event(), scenario.tower_transcript()).model_copy(update={"confidence": confidence})
+    return asyncio.run(a.blocked_call(scenario.anomaly_event(), scenario.tower_transcript(), p,
+                                      rule={"paragraph": "3-7-2", "title": "Taxi"}))
+
+
+def test_intercept_is_only_asked_when_the_local_match_is_not_already_high_confidence(monkeypatch):
+    monkeypatch.setenv("UNSTEP_BLOCKED_WORKFLOW", "parallel")
+    monkeypatch.delenv("UNSTEP_INTERCEPT", raising=False)
+    started = []
+    high = run_call(agents(parallel_handler(started)), "high")
+    assert started == ["unstep-blocked-compliance"] and high.intercept is None
+    assert any("Intercept agent skipped" in n for n in high.notes)
+    started.clear()
+    run_call(agents(parallel_handler(started)), "medium")
+    assert set(started) == {"unstep-blocked-intercept", "unstep-blocked-compliance"}
+    monkeypatch.setenv("UNSTEP_INTERCEPT", "never")
+    started.clear()
+    run_call(agents(parallel_handler(started)), "medium")
+    assert started == ["unstep-blocked-compliance"]
+    monkeypatch.setenv("UNSTEP_INTERCEPT", "nonsense")
+    assert ea.intercept_mode() == "auto"
+
+
+def test_the_same_instruction_against_the_same_paragraph_reuses_the_compliance_answer(monkeypatch):
+    monkeypatch.setenv("UNSTEP_BLOCKED_WORKFLOW", "parallel")
+    monkeypatch.setenv("UNSTEP_INTERCEPT", "never")
+    started = []
+    a = agents(parallel_handler(started))
+    first = run_call(a, "medium")
+    second = run_call(a, "medium")
+    assert started == ["unstep-blocked-compliance"]  # the second call started nothing
+    assert second.compliance == first.compliance and second.branches["compliance"] == 0.0
+    assert any("reused" in n for n in second.notes) and second.citation_checked is True
+    monkeypatch.setenv("UNSTEP_COMPLIANCE_CACHE_S", "0")
+    run_call(a, "medium")
+    assert started == ["unstep-blocked-compliance", "unstep-blocked-compliance"]  # cache off: asks again
+    other = a._cached_compliance(("hold position", None, "3-7-2"))
+    assert other is None  # a different instruction is never answered from this entry

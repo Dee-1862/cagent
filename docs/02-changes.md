@@ -18,6 +18,14 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## Faster agents: Intercept only when the local match is unsure, and a Compliance answer cache
+
+- `UNSTEP_INTERCEPT=auto` (default) asks the slow Intercept agent only when the hub's own match is not already high confidence; `always` and `never` also work. For a high-confidence call the agent step is compliance-lite alone (5.7 to 7.1 s live).
+- A Compliance answer is reused for the same instruction against the same paragraph (`UNSTEP_COMPLIANCE_CACHE_S`, default 3600, 0 = off): a repeat starts no workflow. Both are tested with fakes; the timing effect is not yet measured live.
+- `docs/25-latency-ideas.md` sections 8 and 9: the research-based ideas (cascades, semantic caching, speculative decoding, prompt compression) with what fits and what does not, and the first live Cartesia and Moss numbers taken from this sandbox (Moss restore 0.5 to 0.9 ms, opening the session 260 to 340 ms; Cartesia first audio about 130 ms; turns endpoint median caption gap 374 ms against 793 ms).
+- Known: `tests/test_demo_mic.py` (two tests) still fails with the network open, and also fails on the commit before the Cartesia work, so it is not a regression from it. Not yet diagnosed.
+
 ## Vercel builds only when `app/` changes
 
 - Vercel's free plan stopped new builds ("Deployment rate limited, retry in 24 hours") after we pushed many commits, each of which built a preview, including mail-only and Python-only ones. `ignoreCommand` in `vercel.json` and `app/vercel.json` now skips a build when the commit changed nothing under `app/` (exit 0 means skip; a missing parent commit makes git fail, which builds as before). The site that is up now is the last successful build; the limit lifts after the 24 hours. Not tested on Vercel from here.

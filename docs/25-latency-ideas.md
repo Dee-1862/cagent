@@ -73,3 +73,45 @@ What can lower it, in the order I would try, each a hypothesis until measured:
 3. Keep snapshots small (a plane holds a handful of documents; the size is not the problem at this scale).
 
 What is honest to say: "after a restart, each plane answers from restored memory with no cloud and no index download; a restore took 45 ms cold on a laptop". Do not say Moss is the only way to do this: any in-process index that can write itself to disk can restore without a network, so the claim is about what we measured, not about exclusivity. What Moss gives us is the same in-process semantic search we already use, with its own snapshot, so we did not build a persistence layer.
+
+## 8. Making the agents faster: what is built, and what the research suggests
+
+Live (Rishit, R47): the parallel pair took 12.2 s, and Intercept is now the slow half (10.7 to 22.6 s, against 5.7 to 7.1 s for compliance-lite). Intercept is also the answer we need least: when the hub's own transcript match is already high confidence, the agent mostly repeats it.
+
+**Built (dev-b, tested with fakes; the timing effect is a hypothesis until a live run):**
+1. **Ask Intercept only when the local match is not already high confidence** (`UNSTEP_INTERCEPT=auto`, the default; `always` or `never` also work). For a high-confidence call the agent pipeline is then compliance-lite alone, which was 5.7 to 7.1 s live. This is a cascade: the cheap deterministic check decides, and the model is asked only where the check is unsure.
+2. **Reuse the Compliance answer for the same instruction against the same paragraph** (`UNSTEP_COMPLIANCE_CACHE_S`, default 3600, 0 turns it off). A repeat (the demo repeats "hold short runway 33") starts no workflow at all and the branch time is 0. The answer is only reused when the cited paragraph matched the stored rule and was found in `unstep-faa`; the notes say it was reused.
+
+Neither changes what the controller sees first (the card is already there at once); they shorten how long the agents' note takes to arrive and how many model calls we pay for.
+
+**Ideas from the research, not built, each a hypothesis for us:**
+
+| Idea | Source (titles from memory, check before quoting) | Fit for Unstep |
+| --- | --- | --- |
+| Model cascades: try a cheap path first and call the large model only when unsure | FrugalGPT (Chen, Zaharia, Zou, 2023); RouteLLM (Ong et al., 2024) | This is what item 1 does by hand; a learned router needs labelled calls we do not have |
+| Semantic caching of model answers | GPTCache (open source library) | Item 2 is the exact-key version, which is safer for a rule check than a fuzzy match |
+| Speculative decoding: a small draft model proposes tokens and the large one verifies them | Leviathan, Kalman, Matias, 2023 | Needs control of the decoding engine; Elastic's hosted agents do not expose it |
+| Shorter prompts by compression | LLMLingua (Jiang et al., 2023) | Our prompts are already about 60 words of output; the saving would be small |
+| Fewer sequential model turns: write the answer in parallel parts | Skeleton-of-Thought (Ning et al., 2023) | Intercept already answers in one short sentence |
+| A faster model for these two agents | Product setting | Agent Builder has no per-agent model field (R47). The default connector for the whole project is set in Kibana; whether switching it to a small fast model helps, and what it does to answer quality, is for Rishit to try. Not claimed |
+| Fine-tune a small classifier for "is this the controller's call" | Standard practice | Needs labelled data from real stepped-on calls; roadmap, not demo |
+
+## 9. Measured live in this sandbox (network opened by Deekshith, 2026-10-25)
+
+Real Cartesia and Moss calls from the development sandbox, not from Rishit's laptop, so the network path differs.
+
+| Check | Result |
+| --- | --- |
+| Moss: restore a plane's session from disk | 0.9 ms the first time and 0.5 to 0.6 ms after (`load_from_disk` itself). Opening the session takes 260 to 340 ms because it contacts Moss; restart to answer was 2,036 ms with that first open included |
+| Rishit's laptop, same check (his message to Deekshith) | 1.4 ms warm, 16 ms cold; the roughly 300 ms he saw was opening the session |
+| Moss: fragment search, last-minute and whole-exchange answers | 1 ms, 0.0 ms and 0.47 ms; the unrelated fragment scored 0.0 and fell below the floor |
+| Moss Cloud push (part 4) | still fails: "usage limit reached; billing must be updated" |
+| Cartesia captions, one clip, three runs | manual endpoint: 6 updates while speaking, median gap 793 ms; turns endpoint: 10 updates, median gap 374 ms, but its last update came 992 ms after the clip ended (manual: 202 ms) |
+| Cartesia turns endpoint, fast versus paced audio | 5 of 5 correct and 0 empty for both: the empty-transcript report did not reproduce again |
+| Cartesia Sonic first audio | 132 ms on the first request, 128 to 146 ms warm |
+| Cartesia 429 probe | none up to 4 concurrent generations (this does not rule out a plan limit above that) |
+| Pronunciation dictionary | `CARTESIA_PRONUNCIATION_DICT_ID` is not set, so only the no-dictionary baseline ran: tree, fife, fower, Unstep, juliett, quebec all heard right 2 of 2; NOTAM 1 of 2; the "niner" control 1 of 2 |
+
+The caption result suggests `UNSTEP_CAPTION_SOURCE=turns` would look smoother (half the gap between updates). It is one clip and three runs, so it is indicative, not a distribution.
+
+What this means for "single-digit ms": restoring a plane's memory from disk is single digit milliseconds (about 1 ms here and 1.4 ms warm on Rishit's laptop). The 260 to 340 ms is opening the session with Moss, which should be done once at hub start, not per restore.
