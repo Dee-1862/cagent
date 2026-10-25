@@ -2,6 +2,16 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## A passcode gate for a hosted hub
+
+- Found by auditing a public deploy: with a room code set, the console page (`/live/atc/`), the recording page, the gateway dashboard and `/live/pilot-link` all put the room code in what they returned, and `/live/ask-audit`, `/live/reports/run` and `/live/geo/positions` would run for a stranger. The room code alone did not protect the site.
+- `unstep/live/passcode.py`: when `UNSTEP_ATC_PASSWORD` is set, those pages and endpoints (`/`, `/live/atc*`, `/live/record*`, `/demo*`, `/live/pilot-link`, `/live/addresses`, `/live/pi-join`, `/live/qr.svg`, `/live/stats`, `/live/ask-audit`, `/live/reports*`, `/live/flightlog`, `/live/clearance-context/*`, `/live/geo/*`) answer 401 with a Basic challenge until the passcode is given (any user name; the passcode may hold colons). Open on purpose: `/health`, `/pilot/`, `/live/static/*`, `/live/stations`, joining (room code) and the sockets. Preflight requests pass. With no password nothing is gated.
+- The hub warns at start-up when it is open to a network without a tower passcode, and `scripts/demo_public.py` refuses to publish without one (`--open` to override).
+- `docs/30-host-with-a-passcode.md`: the two codes, the Render and Vercel settings, what is protected, a no-secrets curl check and the known limits (two prompts, no room-code box on the join screen, no lockout). `render.yaml`: comments only.
+- Tests: `tests/test_passcode.py` (25): every tower path asks, a wrong passcode fails, the room code never reaches a stranger, the open paths stay open, joining still needs only the room code, no password means no gate, and the tunnel refuses to start without one. Full suite: 642 passed.
+- `docs/29`: the simulated 500-call figure is now described as a regression check on our own simulator, not a field accuracy.
+- Not done: deleting the older pages (`/demo/`, the dashboard, the recording page). They are now behind the passcode on a hosted hub; removing them also removes the presenter mode and tests that use them.
+
 ## README pictures and sponsor sections, ready to paste (README untouched)
 
 - `docs/29-readme-additions.md`: part A is a picture section and part B is a section for each sponsor (Cartesia, Moss, Elastic): who they are, what would impress them (from their own feedback in docs/21), what we use, the numbers with their grades and the limits we state, plus a "built in a day" table. The dates come from git: the first commit was 2026-10-23 21:00 PDT, the airport index script landed at hour 3.2, the Elastic deploy at 23.6, the FAA ingest (52 paragraphs) at 24.1 and the 500-call simulator at 26.3; by 33.6 hours there were 339 commits and 618 tests.

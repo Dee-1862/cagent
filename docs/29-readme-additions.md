@@ -147,7 +147,7 @@ By then: **8 Elastic agents, 9 tools and 7 Workflows**, **14 named Elastic index
 ### Why this is credible
 
 - Every number carries a grade, and simulated traffic is always labelled as simulated.
-- Detection on the 500-call simulated run ([docs/18](docs/18-benchmark.md)) is 91.7% of 157 stepped-on calls with 0 false events on 343 clean calls, against 0% today (the FAA found no alerting system for stepped-on calls). That compares us with having no detection at all; it is not a claim about real-world safety.
+- The 500-call run ([docs/18](docs/18-benchmark.md)) is a simulation we generated ourselves, so it tests our detector against our own model of overlap, not against real radio. Its 91.7% of 157 stepped-on calls (0 false events on 343 clean calls) is a regression check. Against 0% today (the FAA found no alerting system for stepped-on calls) it shows the detector works on the cases we model; it is not a field accuracy.
 - We say what is not built or not measured: recorded sessions with real people, real air traffic recordings, and the camera-cover push to talk on the Pi.
 
 ---

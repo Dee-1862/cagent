@@ -62,6 +62,9 @@ def main() -> None:
         tls = {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
         print(f"Self-signed certificate: {cert} (each phone accepts the warning once)")
     scheme = "https" if tls else "http"
+    if (env("UNSTEP_PUBLIC_URL") or args.host not in ("127.0.0.1", "localhost")) and not env("UNSTEP_ATC_PASSWORD"):
+        print("WARNING: no UNSTEP_ATC_PASSWORD. The tower console and its join link are open to anyone who can reach "
+              "this address, and the console page shows the room code. Set UNSTEP_ATC_PASSWORD before hosting it.")
     url = f"{scheme}://127.0.0.1:{args.port}/live/atc/"
     mode = 'LIVE: Cartesia speech' if live else 'offline: fake speech'
     public = env("UNSTEP_PUBLIC_URL")

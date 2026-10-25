@@ -66,7 +66,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--open", action="store_true",
+                        help="start without a passcode (anyone with the link can reach the tower console)")
     args = parser.parse_args()
+    if not os.getenv("UNSTEP_ATC_PASSWORD") and not args.open:
+        raise SystemExit("Refusing to publish the tower without a passcode: set UNSTEP_ATC_PASSWORD in .env "
+                         "(the tower console and its join link then ask for it), or pass --open to publish without one.")
 
     exe = find_cloudflared()
     if not exe:

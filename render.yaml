@@ -24,6 +24,8 @@ services:
       # The pilot app on Vercel: every deployment address of this project, plus the production one.
       - key: UNSTEP_ALLOWED_ORIGINS
         value: "https://cagent*.vercel.app,https://*-dee-1862s-projects.vercel.app"
+      # The tower passcode. Set it before hosting: the tower console, its join link and the tower endpoints ask for it
+      # (docs/30-host-with-a-passcode.md). Without it the console page shows the room code to anyone.
       - key: UNSTEP_ATC_PASSWORD
         sync: false
       - key: CARTESIA_API_KEY
