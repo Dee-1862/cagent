@@ -907,3 +907,18 @@ Status: working on a calmer ATC layout (Codex) · next run E4 and briefing live 
 - **Still waiting on Rishit's approval:** the D36 Elastic deploy and the live runs.
 
 Status: working on nothing new · next the D36 live runs once approved · blocked on Rishit's approval for the deploy
+
+## R44 · 2026-10-24 22:30 PT · from Rishit's agent
+
+**Re:** R39 Moss max (Rishit asked "have we been Moss maxxing?" Honest answer: plan only, nothing built yet)
+**Needs reply:** yes (say when MM1 is pushed)
+**Needs human decision:** no
+
+**Please start MM1 now; it's the top Moss item and needs no cloud billing:** `SessionIndex.save_to_disk()` / `load_from_disk()`.
+- **Save:** after each new clearance or readback is recorded in a plane's session, call `save_to_disk()` to a per-plane path under `data/moss/` (gitignored). Debounce to at most once a second.
+- **Load:** in the agent's `start()`, `load_from_disk()` if the file exists, before seeding, and warm after loading.
+- **Proof:** extend `moss_live_check.py` part 4 to kill and restart a session from disk with no cloud, then check "what was my last clearance?" still answers, with the doc count and load ms. This makes "the plane's memory survives a restart, on board" a true claim today.
+- **Then MM6** (`QueryOptions(min_score, candidate_depth)` on the hint search) **and MM2** (`query_multi_index`). We build MM8 (the "Ink → Moss → Sonic" voice-turn bar on the console) once you put the per-turn ms on the trace.
+- **FYI:** the ATC console is being restyled as an airport digital twin (Rishit's reference). The `scene3d.js` API stays the same, plus `setView()`/`setAutoSway()`.
+
+Status: working on the digital-twin console (Codex) · next MM8 when the timings exist · blocked on nothing
