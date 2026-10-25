@@ -108,6 +108,7 @@ class _DiskSnapshots:
     def _init_disk(self, disk_dir: Optional[str | os.PathLike]) -> None:
         self.disk_dir: Optional[Path] = Path(disk_dir) if disk_dir else None
         self.last_load_ms: Optional[float] = None
+        self.load_breakdown: dict = {}  # where the restore time went: opening the session and loading the files
         self.saves = 0  # snapshots written, for tests and the live check
         self._dirty: set[str] = set()
         self._save_tasks: dict[str, asyncio.Task] = {}
@@ -474,8 +475,13 @@ class MossMemory(_OwnedIndexes, _DiskSnapshots):
     async def _read_snapshot(self, index: str) -> int:
         # SessionIndex.load_from_disk(cache_path) replaces the session's documents and model. The session was
         # opened without downloading the cloud index (see _session), so nothing is fetched here.
-        session = await self._session(index)
-        return await session.load_from_disk(str(self.disk_dir))
+        started = time.perf_counter()
+        session = await self._session(index)  # a no-op if the plane already opened it at start
+        opened = time.perf_counter()
+        count = await session.load_from_disk(str(self.disk_dir))
+        self.load_breakdown = {"open_ms": round((opened - started) * 1000, 2),
+                               "load_from_disk_ms": round((time.perf_counter() - opened) * 1000, 2)}
+        return count
 
     async def _session(self, index: str):
         if index.startswith("airport-"):

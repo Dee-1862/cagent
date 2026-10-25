@@ -143,6 +143,19 @@ async def disk_checks(make_memory, report) -> int:
                f"{len(ids)} after seeding (duplicates: {len(ids) - len(set(ids))})")
         report(f"   what was my last clearance? -> {q.answer[:140]}")
         failures += (len(ids) != len(set(ids))) + ("hold short runway 33" not in q.answer.lower())
+        # Where does the restore time go, and is the first one slower (model start-up)? Restore twice more into
+        # fresh session objects of the same client: the cold and the warm numbers are different claims.
+        runs = [(count, second.last_load_ms, dict(second.load_breakdown))]
+        for _ in range(2):
+            second.drop(flight, keep_snapshot=True)
+            started = time.perf_counter()
+            n = await second.load_snapshot(flight)
+            runs.append((n, round((time.perf_counter() - started) * 1000, 1), dict(second.load_breakdown)))
+        for i, (n, ms, parts) in enumerate(runs, 1):
+            report(f"   restore {i}{' (cold)' if i == 1 else ''}: {n} docs in {ms} ms  {parts}")
+        warm = sorted(ms for _, ms, _ in runs[1:])
+        report(f"   cold {runs[0][1]} ms, warm {warm[0]} to {warm[-1]} ms. "
+               "load_from_disk is the Moss SDK's own time; open_ms is a session the plane already holds.")
         return failures
 
 

@@ -15,6 +15,11 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## Where the on-board restore time goes
+
+- `moss_live_check.py` part 5 restores three times and prints cold and warm times with a breakdown (`open_ms`, `load_from_disk_ms`), so the 45 ms live number can be split into a one-off start-up cost and a per-restore cost. `docs/25-latency-ideas.md` section 7 records what is and is not claimed (no "only Moss").
+
 ## Parallel agents are now the default (live: 12.2 s against 23.4 and 33.8 s)
 
 - Rishit's live runs (R47): the original two-agent workflow took 23.4 s and 33.8 s, the parallel pair 12.2 s, the one-agent version 16.2 s; the tool-using Compliance agent is capped at 10.0 s while compliance-lite takes 5.7 s. `UNSTEP_BLOCKED_WORKFLOW` now defaults to `parallel`; the original is still available by name.

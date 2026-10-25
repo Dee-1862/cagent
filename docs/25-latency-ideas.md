@@ -62,3 +62,14 @@ The agents (Intercept, Compliance, or the one-call `unstep-ground`) explain the 
 2. `python scripts/rule_latency.py --elastic --sizes 7,100,1000,5000`. Paste the table. It uses a temporary `unstep-rules-bench` index with synthetic filler and deletes it.
 3. One stepped-on call with `UNSTEP_ELASTIC_AGENTS=1`. The card's rule line carries the milliseconds Elastic reported.
 4. Read the FAA paragraph for `hold short` in `data/faa` and, if it governs the instruction, change its status to `reviewed`.
+
+## 7. On-board restore time (Moss MM1)
+
+MEASURED LIVE (Rishit, R46): a plane's memory restored from disk with no cloud in 44.9 ms (4 documents). That number is the Moss SDK's `load_from_disk` for the first restore in a process; the session was already open, so it is not the credential check. Whether the 45 ms is a one-off start-up cost (loading the embedding model) or per restore is NOT known. `scripts/moss_live_check.py` part 5 now restores three times and prints each with its breakdown (`open_ms`, `load_from_disk_ms`), so the cold and the warm numbers can be claimed separately.
+
+What can lower it, in the order I would try, each a hypothesis until measured:
+1. If the warm restores are single digit, the first one is a model start-up cost: do the first load at hub start (planes are started then anyway, before any pilot joins), so no pilot waits on it.
+2. Restore the planes in parallel at start instead of one after another.
+3. Keep snapshots small (a plane holds a handful of documents; the size is not the problem at this scale).
+
+What is honest to say: "after a restart, each plane answers from restored memory with no cloud and no index download; a restore took 45 ms cold on a laptop". Do not say Moss is the only way to do this: any in-process index that can write itself to disk can restore without a network, so the claim is about what we measured, not about exclusivity. What Moss gives us is the same in-process semantic search we already use, with its own snapshot, so we did not build a persistence layer.
