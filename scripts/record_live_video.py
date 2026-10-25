@@ -175,7 +175,7 @@ def run_story(page, password: str | None) -> None:
         if password and atc.locator("#auth-form").is_visible():
             atc.locator("#password").fill(password)
             atc.locator("#auth-form button, #auth-form [type=submit]").first.click()
-        expect(atc.locator("#autonomy")).to_be_enabled(timeout=t)
+        expect(atc.locator("#autonomy")).to_be_enabled(timeout=45_000)  # warm start: Moss sessions for six planes
 
     def autonomy_off():
         if atc.locator("#autonomy").is_checked():
