@@ -2,6 +2,20 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## Vercel always builds master, so a new fork or project deploys
+
+- Found on a fork: Vercel cancelled the very first build with "Ignored Build Step returned exit code 0", because the latest commit (a merge of a Python and docs branch) did not touch `app/`. The skip rule assumes an earlier deployment exists; a new project has none, so nothing ever built.
+- `vercel.json` and `app/vercel.json`: the ignore command now exits 1 (build) whenever the branch is `master`. Other branches still skip when `app/` is untouched, which keeps preview builds and the deployment count down.
+- Checked: the rule gives exit 1 for `master` and exit 0 for a branch whose last commit did not touch `app/`; a clean checkout builds with the same commands Vercel runs (`npm ci --prefix app`, `npm run build --prefix app`).
+- A fork needs this commit on its own `master`: sync the fork, then redeploy.
+
+## Keep the free Render hub awake
+
+- `.github/workflows/keep-warm.yml`: pings the hub's `/health` every 10 minutes, so the free Render service no longer sleeps and the first visitor does not wait about a minute for it to wake. `/health` uses no Cartesia, Moss or Elastic calls.
+- The target is the repo variable `UNSTEP_PUBLIC_URL` if set, otherwise `https://unstep.onrender.com`. It also runs on demand from the Actions tab.
+- Scheduled workflows only run from the default branch, so this does nothing until it is merged to `master`.
+- Checked and left alone: the Render 502 seen today was the free plan waking up (it answered 200 after about 70 seconds), not a crash. The red Vercel previews all come from the `agent-mail` branch, which has no `app/` folder for the project's Root Directory; that is a Vercel project setting, not a code fix.
+
 ## "Where the plane was" no longer depends on the agents (R63)
 
 - Rishit's live check found the step never appeared on a high-confidence hold-short call: it was only added in the late-agent path, which does not run then (and does not run at all without `UNSTEP_ELASTIC_AGENTS`). It is now added when the proposal is recorded, from the stored position under 15 s old, for every proposal. Test drives a proposal through the room.
