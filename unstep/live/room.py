@@ -41,6 +41,7 @@ from unstep.cockpit.stt import CartesiaManualSTT, FakeManualSTT, TurnEvent, buil
 from unstep.cockpit.tts import SAMPLE_RATE as TTS_SAMPLE_RATE, FakeTTS, chime
 from unstep.ground.mock_agents import propose
 from unstep.ground.policy import PolicyAgent
+from unstep.monitor import default_team
 from unstep.live.radio import (KeyedSquelch, LiveMix, Mix, Transmission, clusters, heard_text, mix, radio_voice,
                                to_mono16k)
 
@@ -502,6 +503,7 @@ class LiveRoom:
         self.claims: dict[str, float] = {}  # station -> hub time join() handed it out
         self._join_lock = asyncio.Lock()
         self._moss_used = 0
+        self.watchers = None  # unstep.monitor.Team when UNSTEP_WATCHERS=1: four rule watchers feeding the console
         self.last_active: dict[str, float] = {}  # station -> time.monotonic() of its last input
         self._shared_moss = None
         self.reset_at = 0  # hub time of the last presenter reset; /live/stats never counts before it
@@ -622,6 +624,9 @@ class LiveRoom:
             self._spawn(self._scheduler())
             self._spawn(self._ticker())
             self._spawn(self._landing_sweeper())
+            if env("UNSTEP_WATCHERS", default="0").lower() in ("1", "true", "yes", "on"):
+                self.watchers = default_team(self._watcher_row, now_ms)
+                self.watchers.start()
             self._started = True
 
     async def _start_edge(self, s: Station) -> None:
@@ -850,7 +855,13 @@ class LiveRoom:
         n = int(env("UNSTEP_MAX_AIRCRAFT") or len(scenario.FLEET))
         return {f[0] for f in scenario.FLEET[:max(1, n)]}
 
+    async def _watcher_row(self, row: dict) -> None:
+        """A watcher's row for the console's Agents at work feed."""
+        self.send_to({"atc", "observer"}, row)
+
     async def stop(self) -> None:
+        if self.watchers is not None:
+            await self.watchers.stop()
         for task in list(self._tasks):
             task.cancel()
         await self._close_voices()
@@ -1436,6 +1447,8 @@ class LiveRoom:
         clock sync); the gap to now is the one-way delay from that phone.
         """
         received = now_ms()
+        if self.watchers is not None:
+            self.watchers.note("key", station=station, down=down)
         s = self.stations.get(station)
         if s is None or s.kind == "observer":
             return
@@ -1714,6 +1727,8 @@ class LiveRoom:
 
     async def _observe(self, env_, msg) -> None:
         """Every gateway message: animate the graph and build the evidence chain."""
+        if self.watchers is not None:
+            self.watchers.feed(msg)
         self.flow("gateway", "elastic", "stored")
         event_id = getattr(msg, "event_id", None)
         if isinstance(msg, TowerTranscript):

@@ -135,3 +135,43 @@ def test_the_watchers_run_side_by_side_and_one_failing_does_not_stop_the_others(
 def test_the_default_team_has_the_four_watchers():
     team = default_team(lambda row: None, lambda: T0)
     assert [w.name for w in team.watchers] == ["Readback watcher", "Runway watcher", "Tracking watcher", "Flow watcher"]
+
+
+def test_the_room_runs_the_watchers_when_switched_on_and_posts_their_rows_to_the_console(monkeypatch):
+    from tests.test_live_join import FakeBrowser, room as make_join_room
+
+    monkeypatch.setenv("UNSTEP_WATCHERS", "1")
+    r = make_join_room(monkeypatch)
+
+    async def go():
+        await r.start()
+        assert r.watchers is not None
+        r.watchers.tick_s = 0.05
+        next(w for w in r.watchers.watchers if w.name == "Tracking watcher").stuck_ms = 100
+        atc = FakeBrowser()
+        await r.join("atc", atc)
+        r._key("N123AB", True)  # a plane keys up and never lets go
+        await asyncio.sleep(0.5)
+        rows = [m for m in atc.messages if m.get("type") == "agent_action"]
+        assert rows and rows[0]["agent"] == "Tracking watcher" and rows[0]["status"] == "flag"
+        r._key("N123AB", False)
+        await asyncio.sleep(0.2)
+        rows = [m for m in atc.messages if m.get("type") == "agent_action"]
+        assert rows[-1]["status"] == "done" and rows[-1]["id"] == rows[0]["id"]
+        await r.stop()
+
+    asyncio.run(go())
+
+
+def test_the_room_has_no_watchers_by_default(monkeypatch):
+    from tests.test_live_join import room as make_join_room
+
+    monkeypatch.delenv("UNSTEP_WATCHERS", raising=False)
+    r = make_join_room(monkeypatch)
+
+    async def go():
+        await r.start()
+        assert r.watchers is None
+        await r.stop()
+
+    asyncio.run(go())

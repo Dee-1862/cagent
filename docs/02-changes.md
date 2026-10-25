@@ -16,6 +16,10 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 ## A freed seat deletes its on-board Moss copy
 
 - The on-board snapshot (MM1) is deleted when a seat is freed (drop without `keep_snapshot`), so the next pilot who gets that callsign starts clean and never inherits the last pilot's clearances. A hub stop keeps it, because that plane is still flying and the point is that it restarts with its memory. Test added.
+## Watchers connected to the live room (off by default)
+
+- `UNSTEP_WATCHERS=1` starts the four watchers in the room: every gateway message goes to `team.feed`, key down and up to `team.note`, and their rows go to the console's feed (atc and observer). Off by default, so nothing changes until it is switched on; an unmet expectation (a demo pilot who never reads back) would otherwise show amber rows.
+- Three small additions to `room.py`, proposed to Rishit's side as D39; not pushed until he answers.
 
 ## Four watchers side by side (module only)
 
