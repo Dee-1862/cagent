@@ -35,6 +35,7 @@ async function startAirport() {
     if (!document.createElement("canvas").getContext("webgl2") && !document.createElement("canvas").getContext("webgl")) return;
     const {createAirport} = await import("./scene3d.js");
     airport = createAirport($("scene3d"), {quality:(matchMedia("(max-width: 700px)").matches || new URLSearchParams(location.search).get("quality") === "low") ? "low" : "high"});
+    window.unstepAirport = airport;  // read-only handle for tests (inspect())
     airport.onSelect(() => showEvidence());
     document.body.classList.add("has-scene");
     syncScene();
@@ -222,6 +223,8 @@ function receive(message) {
         state.captions.set(message.station, message);
         renderRadio();
       }
+      // A pilot's spoken call, transcribed live: its final text is the readback to check.
+      if (message.final && message.station !== "atc" && message.source !== "tts") pilotSpoke(message.id, message.station, message.text);
       break;
     }
     case "level": {
@@ -473,51 +476,53 @@ function radioSentence(radio) {
 }
 // Instructions move the planes, but only words a plane actually heard, or that Unstep delivered to it.
 // A stepped-on call leaves the plane where it is; Unstep's private advisory then makes it obey.
-const NUMBER_WORDS = {zero:"0", one:"1", two:"2", three:"3", tree:"3", four:"4", fower:"4", five:"5", fife:"5", six:"6", seven:"7", eight:"8", nine:"9", niner:"9"};
-const obeyed = new Set();
-function normalizeCall(text) {
-  return String(text || "").toLowerCase().replace(/[-,.]/g, " ").split(/\s+/).map((w) => NUMBER_WORDS[w] ?? w).join(" ").replace(/(\d)\s+(?=\d)/g, "$1");
-}
-function addressee(text) {
-  const t = normalizeCall(text);
-  return visibleAircraft().find((s) => {
-    const spoken = normalizeCall(s.spoken || s.callsign || ""), type = spoken.split(" ")[0], digits = spoken.replace(/\D/g, "");
-    const name = String(s.name || "").toLowerCase();                     // "Plane A" works too
-    return (digits && t.includes(digits) && (!type || /\d/.test(type) || t.includes(type))) || (name && t.includes(name));
-  });
-}
-function actionFor(text) {
-  const t = normalizeCall(text);
-  // People say "clear for takeoff", "cleared to take off", "line up"...: match the meaning, not one exact phrase.
-  if (/\bclear(ed)?\b.{0,12}\btake ?off\b|\btake ?off\b.{0,12}\bclear(ed)?\b/.test(t)) return "takeoff";
-  if (/\bline up\b|\blineup\b/.test(t)) return "line_up";
-  if (/hold short/.test(t)) return "hold_short";
-  if (/hold position|\bstop\b/.test(t)) return "stop";
-  if (/\btaxi\b/.test(t)) return "taxi";
-  return null;
-}
-function viaFor(text) {
-  // "taxi via alpha", "via bravo", "via a and b": which taxiways the route must use
-  const m = normalizeCall(text).match(/\bvia\b(.*)/);
-  if (!m) return [];
-  return [...m[1].matchAll(/\b(alpha|bravo|a|b)\b/g)].map((x) => x[1][0].toUpperCase());
-}
+// Every instruction a plane hears is then checked against its readback (instructions.js, tested).
+let Words = null;
+import("./instructions.js").then((m) => { Words = m; }).catch((error) => console.warn("Instruction parser", error));
+const obeyed = new Set(), checked = new Set();
+const awaitingReadback = new Map();  // station -> {instruction, text, at}
+const READBACK_WINDOW_MS = 45000;
 function obey(key, stationId, text) {
-  if (obeyed.has(key)) return;
-  const action = actionFor(text);
-  if (!stationId || !action) return;
+  if (!Words || obeyed.has(key) || !stationId) return;
+  const instruction = Words.parseInstruction(text);
+  if (!instruction.action) return;
   obeyed.add(key);
-  sceneCall("command", stationId, action, {via: viaFor(text)});
+  sceneCall("command", stationId, instruction.action, {via: instruction.via, runway: instruction.runway, dest: instruction.dest});
+  if (instruction.action !== "stop") awaitingReadback.set(stationId, {instruction, text, at: now()});
 }
 function obeyIfHeard(tx) {
   // Give the cockpit a moment to report a blocked call; a plane that missed the words doesn't move.
   setTimeout(() => {
+    if (!Words) return;
     const text = tx.text || state.lanes.get("atc")?.text || state.captions.get("atc")?.text;
-    const target = addressee(text);
+    const target = Words.addressee(text, visibleAircraft());
     if (!target) return;
     const missed = [...state.traces.values()].some((tr) => tr.callsign === target.id && (tr.created_ms || 0) >= tx.start_ms - 1000);
     if (!missed) obey(`tx-${tx.start_ms}`, target.id, text);
   }, 1500);
+}
+function pilotSpoke(key, stationId, text) {
+  // The plane's next call after an instruction is its readback: compare it with what the tower said.
+  if (!Words || !text || checked.has(key)) return;
+  const pending = awaitingReadback.get(stationId);
+  if (!pending || now() - pending.at > READBACK_WINDOW_MS) return;
+  checked.add(key); awaitingReadback.delete(stationId);
+  const who = shortName(stationId), result = Words.checkReadback(pending.instruction, text);
+  const id = `readback-${key}`;
+  if (result.ok) {
+    sceneCall("readback", stationId, true);
+    state.actions.set(id, {id, ts: now(), agent: "Readback check", kind: "rule", status: "done", station: stationId,
+      text: `${who} read it back correctly`, sponsor: "Cartesia"});
+  } else {
+    const what = result.problems.map((x) => `said ${x.said}, the tower said ${x.expected}`).join("; ");
+    sceneCall("readback", stationId, false);
+    sceneCall("command", stationId, "stop");  // a plane with a wrong readback doesn't go anywhere
+    state.actions.set(id, {id, ts: now(), agent: "Readback check", kind: "rule", status: "flag", station: stationId,
+      text: `Wrong readback from ${who}: ${what}. ${who} is held until it's corrected.`, sponsor: "Cartesia"});
+    $("happened").textContent = `${who} read back wrong: ${what}. Unstep stopped ${who} until the readback is right.`;
+    notice(`Wrong readback from ${who}. Say the instruction again.`);
+  }
+  renderFeed();
 }
 function radioEvent(radio, announce = true) {
   radio.transmissions.forEach((tx) => {
@@ -527,6 +532,7 @@ function radioEvent(radio, announce = true) {
     const prior = state.lanes.get(tx.station);
     if (!prior || tx.start_ms >= prior.start_ms) state.lanes.set(tx.station, {...tx, blocked});
     if (announce && tx.station === "atc" && !blocked && tx.end_ms) obeyIfHeard(tx);
+    if (announce && tx.station !== "atc" && !blocked && tx.text) pilotSpoke(`tx-${tx.start_ms}`, tx.station, tx.text);
   });
   if (announce) { $("happened").textContent = radioSentence(radio); renderMap(); renderRadio(); }
 }
