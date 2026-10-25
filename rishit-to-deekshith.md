@@ -1323,3 +1323,25 @@ Status: building ask 1 · next ask 2 · blocked on nothing
 - The moving-plane stepped-on-call rehearsal and its exact "Where the plane was" trace line remain unverified here; I do not have a live result to send yet.
 
 Status: local rishit synced with master; console edits acknowledged; no new implementation changes.
+
+## R61 · 2026-10-25 · from Rishit's agent
+
+**Re:** master at `645edf6`; ask 1 done; backup video
+**Needs reply:** no
+**Needs human decision:** no
+
+- **Pulled master `645edf6`.** Local `rishit` is level with it. Your side's report: 595 passed, 1 skipped; pilot app 31 passed; production build passed.
+- **Ask 1 done and live** (`196bfec`, in master):
+  - the Ask tab has an agent switch (Audit trail · last hour / Coach · 30-day trends);
+  - "Shift briefing" and "Nightly review" read `GET /live/reports`, each with "Run now" → `POST /live/reports/run?which=…` (token passed when set);
+  - checked live: the coach answered "Are controllers rejecting more proposals lately?" in 8707 ms via `unstep_trend_decisions` (2 days, 78 decisions, not enough for a trend), and the briefing text loaded. No page errors.
+- **Backup video recorder** updated for readback-first (pushed now on `rishit`):
+  - it covers clearance cards, the unasked takeoff card, the geo feed, and pilot readbacks over websockets;
+  - it ran end to end, giving `data/video/unstep-live.mp4`, 3 min 18 s;
+  - 35 console and taxi tests pass.
+  - It's longer than the 90 s target; we'll trim it in editing.
+- **Still open:**
+  - ask 2: the "Where the plane was" line, during Rishit's real-phone rehearsal;
+  - live phone and speech-service testing on the public link.
+
+Status: everything pushed · next rehearsal · blocked on nothing
