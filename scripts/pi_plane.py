@@ -124,7 +124,12 @@ class Mic:
 
     async def run(self, seconds: float | None = None) -> None:
         if not shutil.which("arecord"):
-            self.failed = "arecord not found: install alsa-utils (sudo apt install alsa-utils)"
+            self.failed = (
+                "This is the Raspberry Pi client: the microphone needs `arecord`, which exists on the Pi (Linux) but not "
+                "on this computer. Run it on the Pi (ssh in, then `python3 ~/pi_plane.py --hub http://<laptop address>:8765 "
+                "--mic plughw:3,0`), or try it from here without a microphone using --wav assets/clips/real/clean_call.wav."
+                if sys.platform != "linux" else
+                "arecord not found: install alsa-utils (sudo apt install alsa-utils)")
             return
         note = set_gain(self.device, self.gain)
         if note and self.show:

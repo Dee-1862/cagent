@@ -2,6 +2,10 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## The Pi client says where to run it when it is started on the wrong computer
+
+- Started on Windows, `scripts/pi_plane.py` printed only "arecord not found". It now says it is the Raspberry Pi client, that `arecord` exists on the Pi, how to run it there, and that `--wav assets/clips/real/clean_call.wav` works from the laptop without a microphone. On Linux the message is still "install alsa-utils".
+
 ## The Pi client sets the microphone gain on every start
 
 - The Logitech's capture level goes back to 100% (+30 dB) every time the camera is unplugged and plugged in, and at 100% a voice close to it clips. Seen on the real Pi: a test at 40% was fine, then after a replug the gain was 100% again and the meter showed CLIPPING.

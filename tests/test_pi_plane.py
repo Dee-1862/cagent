@@ -129,7 +129,8 @@ def test_mic_test_explains_a_missing_microphone_instead_of_staying_quiet(monkeyp
     _fake_mic(monkeypatch, [])  # arecord started but never produced audio
     assert asyncio.run(pi_plane.test_mic("plughw:3,0", 5)) == 1
     assert "No audio from plughw:3,0" in capsys.readouterr().out
-    monkeypatch.setattr(pi_plane.shutil, "which", lambda name: None)  # no arecord at all
+    monkeypatch.setattr(pi_plane.shutil, "which", lambda name: None)  # no arecord at all, on a Linux box
+    monkeypatch.setattr(pi_plane.sys, "platform", "linux")
     assert asyncio.run(pi_plane.test_mic("default", 1)) == 1
     assert "install alsa-utils" in capsys.readouterr().out
 
@@ -174,3 +175,14 @@ def test_the_gain_is_set_on_every_start_because_a_replug_resets_it(monkeypatch):
     assert len(calls) == 1
     monkeypatch.setattr(pi_plane.shutil, "which", lambda name: None)  # no amixer: no failure, just no change
     assert pi_plane.set_gain("plughw:3,0", 25) is None
+
+
+def test_on_a_computer_that_is_not_the_pi_the_mic_error_says_where_to_run_it(monkeypatch, capsys):
+    monkeypatch.setattr(pi_plane.shutil, "which", lambda name: None)
+    monkeypatch.setattr(pi_plane.sys, "platform", "win32")
+    assert asyncio.run(pi_plane.test_mic("default", 1)) == 1
+    out = capsys.readouterr().out
+    assert "Raspberry Pi client" in out and "--wav" in out  # tells you to run it on the Pi, or to try --wav here
+    monkeypatch.setattr(pi_plane.sys, "platform", "linux")
+    assert asyncio.run(pi_plane.test_mic("default", 1)) == 1
+    assert "install alsa-utils" in capsys.readouterr().out  # on Linux the fix is the package
