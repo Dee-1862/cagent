@@ -1,0 +1,220 @@
+{
+ "mode": "live",
+ "backend": "live",
+ "started": "2026-10-25 08:01:19 Pacific Daylight Time",
+ "cartesia_version": "2026-08-14",
+ "models": {
+  "stt": "ink-2",
+  "tts": "sonic-3.6"
+ },
+ "args": {
+  "dry_run": false,
+  "only": [
+   "tts",
+   "caption"
+  ],
+  "runs": 5,
+  "turns_runs": 5,
+  "tts_runs": 30,
+  "dict_runs": 2,
+  "max_sockets": 4,
+  "first_audio_budget_ms": 300.0,
+  "check_timeout": 240.0
+ },
+ "checks": [
+  {
+   "name": "tts",
+   "title": "TTS first audio time",
+   "status": "PASS",
+   "lines": [
+    {
+     "level": "INFO",
+     "text": "first request on the socket 278 ms; warm requests 137, 96, 98, 95, 97, 82, 87, 83, 92, 98, 93, 98, 113, 92, 80, 80, 90, 78, 207, 84, 105, 103, 90, 97, 78, 82, 104, 86, 85 ms (docs/09 REPORTED 88 to 115 ms, one cold 214 ms)"
+    },
+    {
+     "level": "PASS",
+     "text": "p50 92.0 ms against our own demo budget of 300 ms (the budget is ours, not a Cartesia figure)"
+    }
+   ],
+   "data": {
+    "first_audio_ms": [
+     277.8167000069516,
+     136.99829998950008,
+     96.00610000779852,
+     97.64680000080261,
+     94.5742999901995,
+     97.09779999684542,
+     82.15470000868663,
+     87.17590000014752,
+     83.03560000786092,
+     92.00009999040049,
+     98.28220000781585,
+     92.91710000252351,
+     98.33999999682419,
+     112.86169999220874,
+     91.60719999636058,
+     79.58079999662004,
+     80.05750000302214,
+     90.27689999493305,
+     78.11310001125094,
+     207.25300000049174,
+     83.86650000466034,
+     104.94170000310987,
+     102.89330000523478,
+     90.35080000467133,
+     96.62729999399744,
+     77.676100001554,
+     81.69390000693966,
+     103.85569999925792,
+     86.24449999479111,
+     85.42550000129268
+    ],
+    "p50_ms": 92.0
+   }
+  },
+  {
+   "name": "caption",
+   "title": "Caption probe: manual versus turns endpoint",
+   "status": "PASS",
+   "lines": [
+    {
+     "level": "PASS",
+     "text": "manual: text arrived in 5 of 5 runs"
+    },
+    {
+     "level": "INFO",
+     "text": "manual: updates while speaking 6, first text 1819 ms, median gap 784 ms, worst gap 1435 ms, last update 154 ms after the clip ended"
+    },
+    {
+     "level": "PASS",
+     "text": "turns: text arrived in 5 of 5 runs"
+    },
+    {
+     "level": "INFO",
+     "text": "turns: updates while speaking 10, first text 1814 ms, median gap 371 ms, worst gap 1444 ms, last update 938 ms after the clip ended"
+    },
+    {
+     "level": "INFO",
+     "text": "median gap between updates: manual 784 ms, turns 371 ms (smaller means smoother captions; settles UNSTEP_CAPTION_SOURCE)"
+    }
+   ],
+   "data": {
+    "clip_s": 7.08,
+    "manual": {
+     "runs": [
+      {
+       "updates": 8,
+       "updates_while_speaking": 6,
+       "first_text_ms": 1815,
+       "gap_median_ms": 784,
+       "gap_worst_ms": 1391,
+       "words_per_update_median": 1,
+       "last_update_after_end_ms": 215
+      },
+      {
+       "updates": 8,
+       "updates_while_speaking": 6,
+       "first_text_ms": 1826,
+       "gap_median_ms": 753,
+       "gap_worst_ms": 1382,
+       "words_per_update_median": 1,
+       "last_update_after_end_ms": 154
+      },
+      {
+       "updates": 8,
+       "updates_while_speaking": 6,
+       "first_text_ms": 1801,
+       "gap_median_ms": 803,
+       "gap_worst_ms": 1435,
+       "words_per_update_median": 1,
+       "last_update_after_end_ms": 146
+      },
+      {
+       "updates": 8,
+       "updates_while_speaking": 6,
+       "first_text_ms": 1841,
+       "gap_median_ms": 820,
+       "gap_worst_ms": 1368,
+       "words_per_update_median": 1,
+       "last_update_after_end_ms": 183
+      },
+      {
+       "updates": 8,
+       "updates_while_speaking": 6,
+       "first_text_ms": 1819,
+       "gap_median_ms": 783,
+       "gap_worst_ms": 1405,
+       "words_per_update_median": 1,
+       "last_update_after_end_ms": 134
+      }
+     ],
+     "errors": []
+    },
+    "turns": {
+     "runs": [
+      {
+       "updates": 15,
+       "updates_while_speaking": 10,
+       "first_text_ms": 1806,
+       "gap_median_ms": 334,
+       "gap_worst_ms": 1444,
+       "words_per_update_median": 1,
+       "last_update_after_end_ms": 949
+      },
+      {
+       "updates": 15,
+       "updates_while_speaking": 10,
+       "first_text_ms": 2139,
+       "gap_median_ms": 396,
+       "gap_worst_ms": 1188,
+       "words_per_update_median": 1,
+       "last_update_after_end_ms": 944
+      },
+      {
+       "updates": 15,
+       "updates_while_speaking": 10,
+       "first_text_ms": 1814,
+       "gap_median_ms": 381,
+       "gap_worst_ms": 1397,
+       "words_per_update_median": 1,
+       "last_update_after_end_ms": 938
+      },
+      {
+       "updates": 15,
+       "updates_while_speaking": 10,
+       "first_text_ms": 1808,
+       "gap_median_ms": 347,
+       "gap_worst_ms": 1400,
+       "words_per_update_median": 1,
+       "last_update_after_end_ms": 932
+      },
+      {
+       "updates": 15,
+       "updates_while_speaking": 10,
+       "first_text_ms": 1818,
+       "gap_median_ms": 371,
+       "gap_worst_ms": 1412,
+       "words_per_update_median": 1,
+       "last_update_after_end_ms": 926
+      }
+     ],
+     "errors": []
+    }
+   }
+  },
+  {
+   "name": "sockets",
+   "title": "Sockets left open",
+   "status": "PASS",
+   "lines": [
+    {
+     "level": "PASS",
+     "text": "0 socket(s) still open after all checks"
+    }
+   ],
+   "data": {}
+  }
+ ],
+ "rate_limit_events": [],
+ "open_sockets_at_end": 0
+}

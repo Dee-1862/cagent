@@ -65,7 +65,7 @@ function Join({ hub, onSeat }: { hub: Hub; onSeat: (s: Seat) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [full, setFull] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [room, setRoom] = useState<{ live: boolean; stations: Station[]; connected: Record<string, number>; languages?: Record<string, string> } | null>(null);
+  const [room, setRoom] = useState<{ live: boolean; frequency?: string; stations: Station[]; connected: Record<string, number>; languages?: Record<string, string> } | null>(null);
   const [language, setLanguage] = useState<string>(() => { try { return localStorage.getItem("unstep.language") ?? ""; } catch { return ""; } });
   // Recording sessions: only people who type a name and tick the box are recorded.
   const [speakerName, setSpeakerName] = useState<string>(() => { try { return localStorage.getItem("unstep.name") ?? ""; } catch { return ""; } });
@@ -113,27 +113,53 @@ function Join({ hub, onSeat }: { hub: Hub; onSeat: (s: Seat) => void }) {
   const planes = room?.stations.filter((s) => s.kind === "aircraft") ?? [];
   const flying = planes.filter((p) => (room?.connected[p.id] ?? 0) > 0).length;
   return (
-    <main className="join">
-      <h1>Unstep <span>pilot</span></h1>
-      <p className="lead">You are about to fly a plane at a pretend airport. Everyone shares one radio, like real pilots.
-        If two people talk at once, the call gets <b>stepped on</b> and nobody knows. Unstep catches it.</p>
+    <main className="joinx">
+      <header className="jx-top">
+        <span>KUNS tower</span>
+        <span className={`jx-live${room ? (room.live ? " live" : " demo") : ""}`}>{room ? (room.live ? "Live voice" : "Offline voice") : "Searching"}</span>
+      </header>
+
+      <section className="jx-dial" aria-label="Radio frequency">
+        <small>Frequency</small>
+        <p className="jx-freq"><span>{room?.frequency ?? "118.700"}</span><i>MHz</i></p>
+        <div className="jx-ticks" aria-hidden="true" />
+      </section>
+
+      <h1>Join the radio</h1>
+      <ol className="jx-steps">
+        <li><span>Hold the button to talk. Let go to listen.</span></li>
+        <li><span>If two people talk at once, the call is <b>stepped on</b> and nobody knows.</span></li>
+        <li><span>Unstep catches it and tells the pilot privately.</span></li>
+      </ol>
+
       {room?.languages && Object.keys(room.languages).length > 0 && (
-        <label className="small lang">Unstep's private messages: English, then
-          <select value={language} onChange={(e) => setLanguage(e.target.value)}>
-            <option value="">English only</option>
-            {Object.entries(room.languages).map(([code, name]) => <option key={code} value={code}>{name}</option>)}
-          </select>
-        </label>
+        <div className="jx-field" role="radiogroup" aria-label="Language for Unstep's private messages">
+          <span className="jx-label">Private messages in</span>
+          <div className="jx-seg">
+            {[["", "English"], ...Object.entries(room.languages)].map(([code, name]) => (
+              <button key={code || "en"} type="button" role="radio" aria-checked={language === code} onClick={() => setLanguage(code)}>{name}</button>
+            ))}
+          </div>
+        </div>
       )}
-      <label className="small name">Your name (for the dataset credits, optional)
-        <input value={speakerName} onChange={(e) => setSpeakerName(e.target.value)} placeholder="First name" maxLength={60} />
+
+      <label className="jx-field">
+        <span className="jx-label">Your first name, optional</span>
+        <input value={speakerName} onChange={(e) => setSpeakerName(e.target.value)} placeholder="For the dataset credits" maxLength={60} autoComplete="given-name" />
       </label>
-      <label className="small consent"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} /> My voice is recorded for the Unstep dataset</label>
-      <button className="big" onClick={go} disabled={busy || !room}>{busy ? "Getting your plane..." : "Turn on my radio and join"}</button>
-      {error && <p className="error">{error}</p>}
-      {full && <p className="lead full">{full}</p>}
-      <p className="small">{room ? `${flying} of ${planes.length} planes flying · ${room.live ? "live voice" : "offline voice"}` : "Looking for the tower..."}</p>
-      {!Mic.available() && <p className="small warn">This page isn't on https, so your mic is off. You can still talk with the tap-to-say lines.</p>}
+      <button type="button" className="jx-switch" role="switch" aria-checked={consent} onClick={() => setConsent(!consent)}>
+        <span>Record my voice for the Unstep dataset</span>
+        <span className="jx-track" aria-hidden="true" />
+      </button>
+
+      <div className="jx-spacer" />
+      <button type="button" className="jx-go" onClick={go} disabled={busy || !room}>
+        {busy ? "Getting your plane..." : "Join the frequency"}<span aria-hidden="true">&rarr;</span>
+      </button>
+      {error && <p className="jx-error" role="alert">{error}</p>}
+      {full && <p className="jx-note">{full}</p>}
+      <p className="jx-foot">{room ? `${flying} of ${planes.length} planes in the air` : "Looking for the tower..."}</p>
+      {!Mic.available() && <p className="jx-warn">This page isn't on https, so your mic is off. You can still talk with the tap-to-say lines.</p>}
     </main>
   );
 }

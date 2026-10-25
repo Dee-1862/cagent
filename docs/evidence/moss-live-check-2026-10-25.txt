@@ -1,0 +1,22 @@
+1. fragment search on the plane's session (hybrid, alpha 0.5):
+   'Cessna 123, short runway 30': score 1.0 floor 0.25 clears search 0 ms hint restrictive top: Cessna 1-2-3, hold short runway 33
+   'Cessna hold runway': score 0.8704 floor 0.25 clears search 0 ms hint restrictive top: Cessna 1-2-3, hold short runway 33
+   'static and the weather in Paris': score 0.0 floor 0.25 BELOW FLOOR search 0 ms hint restrictive top: (no hit shown)
+2. What did the tower tell me in the last minute? -> 1.0 ms: Advisory. Heard from tower in the last 60 seconds: "Cessna 1-2-3 [static]" at 1449 Zulu (stepped on, words missing).
+2. What was the whole exchange? -> 1.226 ms: Advisory. The whole exchange, in order. heard: "Cessna 1-2-3 [static]"; approved: "Cessna 1-2-3, hold short runway 33"; pilot read back: "Ho
+3. native sort_by and group_by on the session (diagnostic only):
+   sort_by ts descending is numeric: True (6 docs)
+   group_by exchange returned 4 unit(s); first text: 'Cessna 1-2-3 [static]\nCessna 1-2-3, hold short runway 33\nHold short runway 33, Cessna 1-2-3'
+   the push's build job finished in 2244 ms
+4. flight log flightlog-check-1792939748: 2 flights archived, pushed once: {'ok': True, 'job': "PushIndexResult(job_id='efb28d91-f030-4101-9414-acc2b8735d55', index_name='flightlog-check-1792939748', doc_count=2, status='building')", 'job_id': 'efb28d91-f030-4101-9414-acc2b8735d55', 'flights': 2, 'ms': 1684.9, 'at': 1792939753114}
+   after a fresh client: 2 docs back in 1697 ms, callsigns ['H456', 'N123AB']
+   deleted the test index flightlog-check-1792939748
+5. on-board memory: saved 2 snapshot(s) of the plane session under C:\Users\Reddy\AppData\Local\Temp\unstep-moss-disk-2jks_v3v
+   after a restart from disk: 4 docs loaded in 9.9 ms, 4 after seeding (duplicates: 0)
+   what was my last clearance? -> Advisory. Last clearance: Cessna 1-2-3, hold short runway 33, issued 1449 Zulu.
+   restart to answer: 1756.2 ms (open the session, restore, seed what is missing, ask)
+   restore 1 (cold): 4 docs in 9.9 ms  {'open_ms': 0.0, 'load_from_disk_ms': 9.91}
+   restore 2: 4 docs in 357.4 ms  {'open_ms': 355.53, 'load_from_disk_ms': 1.71}
+   restore 3: 4 docs in 357.0 ms  {'open_ms': 355.0, 'load_from_disk_ms': 1.85}
+   cold 9.9 ms, warm 357.0 to 357.4 ms. load_from_disk is the Moss SDK's own time; open_ms is a session the plane already holds.
+ok

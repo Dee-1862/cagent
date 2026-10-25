@@ -24,7 +24,7 @@ Built at Cal Hacks 13.0 with **Cartesia** (the ears and the voice), **Moss** (ea
 6. [**Moss**: each aircraft's memory](#6-moss-each-aircrafts-memory)
 7. [**Elastic**: the agent platform](#7-elastic-the-agent-platform)
 8. [The two screens](#8-the-two-screens)
-9. [Measured results](#9-measured-results)
+9. [Evidence and how to re-run it](#9-evidence-and-how-to-re-run-it)
 10. [Impact and responsible use](#10-impact-and-responsible-use)
 11. [Setup](#setup)
 12. [Testing](#12-testing)
@@ -32,7 +32,7 @@ Built at Cal Hacks 13.0 with **Cartesia** (the ears and the voice), **Moss** (ea
 14. [Repo layout](#14-repo-layout)
 15. [How we built it, and credits](#15-how-we-built-it-and-credits)
 
-Also: [What it looks like](#what-it-looks-like) · [For the sponsors](#for-the-sponsors) · [Built in a day](#built-in-a-day)
+Also: [What it looks like](#what-it-looks-like) · [Built in a day](#built-in-a-day)
 
 ---
 
@@ -110,15 +110,19 @@ One person, one fixed workflow, five agents. The orchestrator is an Elastic Work
 
 | Join | In the air |
 | --- | --- |
-| ![The pilot app join screen](docs/img/readme/pilot-join.png) | ![The pilot app with the hold to talk button](docs/img/readme/pilot-flying.png) |
+| ![The pilot app join screen](docs/img/readme/pilot-join.png) | ![The pilot app after two people talked at once: a private message in the left ear](docs/img/readme/pilot-flying.png) |
 
 Scan the QR, tap once, hold the big button to talk. The card says what to say, so a judge who has never heard a radio call can do it.
 
 #### A Raspberry Pi is a plane too
 
+<img src="docs/img/setup.jpeg" alt="The hardware: a Raspberry Pi 4 with a Grove Base HAT, a Logitech webcam, and a Google Nest Mini" width="320">
+
+The hardware: a Raspberry Pi 4 (with a Grove Base HAT), a Logitech webcam used as the microphone, and a Google Nest Mini. The Pi joins the same room as a pilot (`scripts/pi_plane.py`). Only the Pi's microphone and network are in use today: the Nest Mini is not connected as a speaker yet, and the plane's decisions still run on the hub.
+
 ![The Raspberry Pi microphone test: a live level bar, and a warning when it clips](docs/img/readme/pi-mic-test.png)
 
-A Raspberry Pi 4 with a Logitech webcam microphone joins the same room as a pilot (`scripts/pi_plane.py`). The level bar shows the microphone is on and working, and the tool warns when the signal is too loud. This capture is from before the client began setting the microphone level itself, which is why it reports clipping. Only the Pi's microphone and network are in use today; the plane's decisions still run on the hub.
+The level bar shows the microphone is on and working, and the tool warns when the signal is too loud. This capture is from before the client began setting the microphone level itself, which is why it reports clipping.
 
 ---
 
@@ -154,209 +158,58 @@ flowchart LR
 
 **Measured end to end (live):** from the end of a stepped-on call to the pilot hearing the fix, **2.9 s**, with the controller's approval included.
 
-## For the sponsors
-
-Who each sponsor is, what we think would impress them, and the numbers behind it. The detail for each is in sections 5 to 7.
-
-### Built in a day
-
-Every dataset and index below was created from scratch during the hackathon. First commit: **2026-10-23 21:00 PDT**.
-
-| What landed | When (PDT) | Hours after the first commit |
-| --- | --- | --- |
-| Airport index script (Moss reference data, 8 documents) | 2026-10-24 00:12 | 3.2 |
-| Elastic deploy script (agents, tools, workflows) | 2026-10-24 20:36 | 23.6 |
-| FAA rulebook ingest (52 JO 7110.65 paragraphs) | 2026-10-24 21:07 | 24.1 |
-| Traffic simulator: 500 labelled calls, 157 stepped on (simulated) | 2026-10-24 23:15 | 26.3 |
-| **State at 2026-10-25 06:38** | 339 commits, 618 tests | 33.6 |
-
-By then: **8 Elastic agents, 9 tools and 7 Workflows**, **14 named Elastic indexes** (listed in section 7), **7 stored rules** as percolator queries (one, paragraph 3-7-2, reviewed by a person; the others are marked candidate or needs review), **6 per-aircraft Moss sessions** plus an airport index and a flight-log index. The rulebook is 52 paragraphs, not all of JO 7110.65, and only one stored rule has been reviewed by a person so far.
-
----
-
-### Cartesia: the ears and the voice
-
-**What they are.** A real-time voice AI company: Sonic (text to speech) and Ink (speech to text), built for low-latency agents. [Cartesia changelog 2026](https://docs.cartesia.ai/changelog/2026).
-
-**What would impress them** (our reading of their feedback in [docs/21](docs/21-sponsor-features.md); they asked for a list of the features they are proud of and how we use each):
-- Their models working under a hard condition: shared-radio noise, callsigns, runway numbers, and a person's safety riding on the words.
-- Measured gains from their own features, not just "we used it".
-- Honest findings handed back to their team ([docs/09](docs/09-cartesia-feedback.md), [docs/24](docs/24-cartesia-findings.md)), including bugs that turned out to be ours.
-
-**What we use:** Ink-2 streaming speech to text, key-term prompting, streaming captions, Sonic streaming speech, the same voice across languages, speed control, pronunciation dictionaries, and interrupting speech when the pilot keys the mic.
-
-| Number | Value | Grade |
-| --- | --- | --- |
-| Tower transcript final after release | **155 ms** (was 2,702 ms) | LIVE |
-| Cockpit transcript final after release | **172 ms** | LIVE |
-| Sonic first audio | **85 to 201 ms** | LIVE |
-| Key terms in heavy radio noise (200 lines) | callsign **62.5% to 95.5%**, runway **81.6% to 98.5%**, word error **0.191 to 0.009** | LIVE |
-| Speech to text and back, 40 ATC lines | **100%** callsign, action and runway; every wrong readback caught | LIVE |
-| Languages checked for the private advisory | Spanish, Hindi, French | LIVE |
-
-**Limits we state.** Ink-2 sends no word timestamps and no interim results. Cartesia has an on-device Sonic in private beta ([Cartesia on-device](https://cartesia.ai/blog/on-device)); we use the cloud API and are not on it yet.
-
----
-
-### Moss: each aircraft's memory
-
-**What they are.** Real-time semantic search that runs inside an agent's own process, built for the speech, retrieval, language model, speech loop of voice agents. [Moss voice agents](https://www.moss.dev/use-cases/voice-agents).
-
-**What would impress them** (from their feedback in [docs/21](docs/21-sponsor-features.md): they liked the startup angle, "a whole ecosystem", and wanted Moss-specific features and how Moss helps the voice side made explicit):
-- An agent per aircraft with a memory per agent: a real ecosystem, not one demo query.
-- Moss sitting inside every voice turn: Ink hears, Moss searches the plane's memory, Sonic speaks, with no audible delay.
-- Many Moss features used for real reasons, each with a number.
-
-**What we use:** one local session per aircraft, hybrid search, metadata filters and sorting, save to disk and load on restart, a cloud flight log pushed once when a plane lands, an airport reference index, and Moss Inference for translating the advisory.
-
-| Number | Value | Grade |
-| --- | --- | --- |
-| A plane's last tower call | **0.29 to 0.56 ms** | LIVE |
-| Search over 6 sessions | **0 to 1 ms** | LIVE |
-| Right clearance vs unrelated speech (hybrid score) | **1.0** vs **0.0** | LIVE |
-| Restart from disk | **21.1 ms** (4 documents, no duplicates) | LIVE |
-| Flight log read back from Moss Cloud | about **1.2 to 1.5 s** (2 documents) | LIVE |
-| Moss Inference, first token | about **165 ms** warm | LIVE |
-
-**Limits we state.** The first lookup on a cold session was 783 ms against 0.2 to 0.4 ms warm, so we warm the planes before a demo. Opening a session contacts Moss's cloud, and we have not confirmed search keeps working with the network cut after the index loads.
-
----
-
-### Elastic: the agent platform
-
-**What they are.** The Elasticsearch company; Elastic Agent Builder, Workflows and ES|QL turn a search index into agents and automations. [Agent Builder](https://www.elastic.co/elasticsearch/agent-builder), [ES|QL for search](https://www.elastic.co/docs/solutions/search/esql-for-search).
-
-**What would impress them** (from their feedback in [docs/21](docs/21-sponsor-features.md): ingesting a rulebook is "okay", but "not the greatest use of their products"; they want flagship features):
-- Agent Builder used for real jobs with limits: each agent can only call its own fixed queries, so "least privilege by tool".
-- Workflows doing the sequencing, including scheduled ones, so the agents are not a black box.
-- ES|QL, percolator, geo and hybrid search each solving a tower task, not a document dump.
-- A person approving every decision, with every event in the audit trail.
-
-**What we use:** 8 Agent Builder agents and 9 tools; 7 Workflows (event-driven and scheduled); ES|QL with `INLINESTATS`; the percolator for readback matching; `geo_shape` and `geo_point` for where each plane is; hybrid search with a Jina reranker for the FAA citation; an MCP server for our tools; 14 indexes.
-
-| Number | Value | Grade |
-| --- | --- | --- |
-| Percolator readback match | **3.0 ms** | LIVE |
-| `geo_shape` area lookup | **0 to 1 ms** | LIVE |
-| Reranked FAA citation | about **1.1 s** | LIVE |
-| ES|QL safety panel | **1.1 to 1.5 s** | LIVE |
-| End-to-end taxi and readback suite | **28 of 28** live checks | LIVE |
-| FAA JO 7110.65 paragraphs indexed | **52** | LIVE |
-
-**Limits we state.** An Agent Builder call takes about 5 to 10 s whatever the answer, so agents stay off the pilot's critical path: the decision card goes out at once and the citation is added when it arrives.
-
----
-
-### Why this is credible
-
-- Every number carries a grade, and simulated traffic is always labelled as simulated.
-- The 500-call run ([docs/18](docs/18-benchmark.md)) is a simulation we generated ourselves, so it tests our detector against our own model of overlap, not against real radio. Its 91.7% of 157 stepped-on calls (0 false events on 343 clean calls) is a regression check. Against 0% today (the FAA found no alerting system for stepped-on calls) it shows the detector works on the cases we model; it is not a field accuracy.
-- We say what is not built or not measured: recorded sessions with real people, real air traffic recordings, and the camera-cover push to talk on the Pi.
-
----
-
 ## 5. Cartesia: the ears and the voice
 
-On a radio, everything is voice. Cartesia hears the whole frequency in real time and speaks privately to exactly the right person, in their language. Code: [`unstep/cockpit/stt.py`](unstep/cockpit/stt.py), [`unstep/cockpit/tts.py`](unstep/cockpit/tts.py), [`unstep/ground/tower.py`](unstep/ground/tower.py), [`unstep/live/room.py`](unstep/live/room.py).
+Real-time voice AI: Sonic turns text into speech and Ink turns speech into text ([Cartesia changelog](https://docs.cartesia.ai/changelog/2026)). On a radio everything is voice, and a wrong word is a wrong runway.
 
-### Every Cartesia feature we use
+| Feature | What it does in Unstep | Measured |
+| --- | --- | --- |
+| **Ink-2 streaming speech-to-text** | Transcribes the tower and every cockpit while they talk | final words 141 ms after release (median; 95th percentile 298 ms, n=30) |
+| **Key-term prompting** | 29 aviation terms per cockpit, 39 for the tower: callsigns, runways, taxiways, "niner", "hold short" | heavy noise: callsigns 61.5% to 93.5%, runways 78.7% to 99.3% (200 lines, 136 with a runway) |
+| **Sonic text-to-speech** | Speaks the recovered call to one pilot, left ear only | first audio 92.9 ms median, 207 ms at the 95th percentile (n=30) |
+| **Same voice, other languages** | The advisory repeated in Spanish, Hindi or French | checked live |
+| **Pronunciation dictionary and speed** | ATC words said the ATC way; corrections spoken slower | 0.85x for corrections (a setting) |
+| **Live captions and interruption** | Captions on every screen; the advisory stops when the pilot keys the mic | final caption 154 ms after release (median of 5 runs, worst 215 ms); while speaking, a caption update about every 0.8 s |
 
-| Cartesia feature | How Unstep uses it | Where | Measured (live) |
-| --- | --- | --- | --- |
-| **Ink-2 streaming speech-to-text** | Every transmission is transcribed *while the key is held*, for the tower and for what each cockpit hears (each cockpit gets its own live mix of the frequency) | `CartesiaManualSTT`, `TowerStream` | Tower transcript final **155 ms** after release (was 2,702 ms before streaming); cockpit **172 ms** |
-| **Manual finalize** | The transcript is finalized the moment the transmitter is released | `CartesiaManualSTT.finalize` | 0 of 15 over 800 ms in a repro run |
-| **Key-term prompting** | **39 aviation terms per cockpit**, most important first, within Cartesia's limits (100 terms, 1,200 characters): the aircraft's callsigns, critical phrases ("hold short", "line up and wait", "cleared for takeoff", "go around"), runways, taxiways, ATC words ("niner", "tree", "fife", "squawk", "NOTAM") | `build_keyterms` | Heavy radio noise: callsign **62.5% → 95.5%**, runway **81.6% → 98.5%**, word error rate **0.191 → 0.009** |
-| **Streaming text during speech** | Live captions on the projector and on every phone, with key words marked (callsign, action, runway) and the lag shown | `on_text`, `settle_caption` | Captions arrive before release; final **97 ms** after; the phone shows "Cartesia live caption · ~100 ms behind speech" |
-| **ink-whisper word timestamps** | A second paced stream gives word times, so the console strikes out exactly the tower words lost in the overlap | `TowerTranscriber` | |
-| **Turns endpoint** (`turn.start` / `turn.end`) | Readbacks and pilot questions; `turn.start` interrupts the advisory | `CartesiaTurnSTT` | |
-| **Sonic-3.6 text-to-speech, streamed** | The private advisory, streamed to the phone from the first chunk; the tower's typed instructions spoken on the frequency; the controller's audio prompt ("Needs you… Approve?") | `CartesiaTTS` | First audio **85–201 ms** |
-| **Same voice, other languages** | The advisory repeated in **Spanish, Hindi or French** in the same voice, for pilots who choose a language | `unstep/cockpit/translate.py` | Checked live (es, hi, fr) |
-| **Pronunciation dictionary** | ATC words said the ATC way ("tree", "fife"), uploaded once ([`assets/pronunciation/atc.json`](assets/pronunciation/atc.json)) | `scripts/upload_pronunciation_dict.py` | Every entry passed a speech-to-text round trip (below) |
-| **Speed control** | "Readback incorrect" corrections are spoken slower | 0.85× | |
-| **Context cancel / interruption** | The advisory stops the moment the pilot keys the mic, and replays cleanly from the start | `CartesiaTTS.cancel` | |
-| **Word timestamps on TTS** (`add_timestamps`) | Collected per word, for word-by-word display | `CartesiaTTS.speak` | |
-| **Left-ear output** | Advisories play in the left ear only, so they never sound like the radio | `to_left_stereo` | |
+*Evidence:* `docs/evidence/cartesia-*.json` (the raw results of `scripts/eval_bench.py`, `scripts/cartesia_repro.py` and `scripts/cartesia_live_check.py`, summed up by `scripts/evidence_cartesia.py`). Streaming the audio while the key is held finalizes in 141.25 ms (median), against 876.25 ms when the whole clip is sent at once; that is why the room streams. Of the three voices the pilot's is the hardest (callsign 80.6% with key terms). The 200 test lines are synthetic Cartesia voices sent through our simulated VHF radio channel at several noise levels, so these numbers compare with and without key terms on the same audio; they are not an accuracy figure for real controllers. Sonic's cloud API is what we use; Cartesia's on-device Sonic is in private beta and we are not on it.
 
-### How we tuned and tested it (we did not train Cartesia's models)
+**The loop caught our own mistake.** We had respelled "niner" as "NY-ner" in the pronunciation dictionary; Sonic then said something Ink-2 heard as "N1er", and runway accuracy was 85%. Speaking the dictionary back through speech-to-text found it, and the fix took it to 100%.
 
-- **A 200-transmission live benchmark** through a simulated VHF radio channel, three voices, several noise levels, with 95% confidence intervals (`scripts/eval_bench.py --live`). Results are in the table above and [docs/18-benchmark.md](docs/18-benchmark.md).
-  - Clean audio: callsign 100%, runway 100%.
-  - Heavy noise (radio-5): callsign 94.5%, runway 98.5%.
-  - Stepped-on detection: **100% caught, 0 false alarms** on clean audio, 380 ms.
-- **A TTS → STT closed loop over 40 ATC lines:** every line Sonic says goes back through Ink-2. **Live: callsign, action and runway 100%, every wrong readback caught, zero false alarms.**
-- **The loop caught our own mistake.** We had respelled "niner" as "NY-ner" in the pronunciation dictionary. Sonic then said something like "N-one-er", and Ink-2 heard "N1er" or "and liner". Runway accuracy was 85% with the entry and 100% without it. We removed it, and now **every dictionary entry must pass a round trip**. "fower", "juliett" and "NOTAM" were rejected the same way ([`assets/pronunciation/rejected.json`](assets/pronunciation/rejected.json)).
-- **Cartesia feedback:** what we found, what we worked around, and what we can truthfully report ([docs/09-cartesia-feedback.md](docs/09-cartesia-feedback.md), [docs/24-cartesia-findings.md](docs/24-cartesia-findings.md)).
+---
 
 ## 6. Moss: each aircraft's memory
 
-The cockpit already heard half the call. Moss finds the rest in the aircraft's own memory, in under a millisecond, without leaving the plane. Each cockpit agent's loop is **Cartesia Ink hears → Moss searches the plane's memory → Cartesia Sonic speaks**. Moss sits in the middle of every voice turn and adds no audible delay. Code: [`unstep/cockpit/memory.py`](unstep/cockpit/memory.py), [`unstep/cockpit/hint.py`](unstep/cockpit/hint.py), [`unstep/cockpit/queries.py`](unstep/cockpit/queries.py), [`unstep/live/flightplans.py`](unstep/live/flightplans.py).
+Real-time semantic search that runs inside an agent's own process ([Moss for voice agents](https://www.moss.dev/use-cases/voice-agents)). Each cockpit agent's loop is Cartesia Ink hears, Moss searches the plane's memory, Cartesia Sonic speaks.
 
-| Moss feature | How Unstep uses it | Measured (live) |
+| Feature | What it does in Unstep | Measured |
 | --- | --- | --- |
-| **One local, in-process session per aircraft** (`flight-<callsign>`) | Every clearance, call heard and readback is indexed in that aircraft's own memory, on board, with no cloud index | 6 sessions; reads **0.2–0.4 ms** warm; search over 6 sessions 0–1 ms |
-| **Hybrid search** (`alpha`, meaning + exact words) | The garbled fragment the cockpit heard ("Cessna 123, short runway 30") finds the right clearance | Right clearance scores **1.0**, unrelated speech **0.0** (below our floor) |
-| **Metadata filters and sorting** | Only this aircraft, only tower calls, newest first: the Clearance agent's "last tower call", skipping calls to other aircraft | **0.29–0.56 ms** |
-| **Answers from memory in the voice loop** | A pilot asks "Unstep, what was my last clearance?" or "what did the tower tell me in the last minute?"; Moss answers and Sonic speaks it | Under **1 ms** |
-| **Save to disk and load on restart** (`save_to_disk`, `load_from_disk`) | An aircraft's memory survives a restart with no download | 4 docs restored in **21.1 ms**, no duplicates; correct answer after restart |
-| **Moss Cloud sync** (`flightlog-<frequency>`) | When a plane goes quiet it lands, and its flight log is pushed once to Moss Cloud; a fresh client reads it back | 2 docs back in about **1.2–1.5 s**; survives restarts |
-| **Persistent cloud index** (`airport-KUNS`) | Airport reference data, created once (`scripts/ingest_airport.py`) and loaded at start | |
-| **Moss Inference** | Translates the private advisory; a translation is used only if every digit survives, otherwise English only | ~165 ms to first token, warm |
+| **One in-process session per aircraft** | Every clearance and call a plane hears is indexed in its own memory, on board | 6 sessions, reads 0.358 ms median, 0.619 ms at the 95th percentile (n=300) |
+| **Hybrid search** | The scrap the pilot did hear finds the full instruction, by meaning and by exact words | right clearance 1.0, a weaker fragment 0.87, unrelated speech 0.0 |
+| **Metadata filters and sorting** | Only this aircraft, only tower calls, newest first: the Clearance agent's "last call" | 0.358 ms median (the same 300 reads as the first row) |
+| **Ask your memory, by voice** | "What was my last clearance?" answered from Moss and spoken by Sonic | Moss's part 0.301 ms median, 0.64 ms at the 95th percentile (n=25); our wall clock around a text query is about 5 ms |
+| **Save to disk and load on restart** | The memory survives a restart without downloading anything | 4 documents restored in 9.9 ms; a whole restart to the first answer takes 1.8 s, because opening a session contacts Moss |
+| **Moss Cloud sync** | Each finished flight's log is pushed to the cloud once | survives a restart: a fresh client read 2 documents back in 1.7 s (the index builds in 2.2 s) |
 
-**Safety rules on Moss hints:** a hint only ever says stop or wait (hold short, go around), never "cleared". An older clearance can never come back ahead of a newer one. No source record means no hint. The newest clearance gives the hint, and Moss's search result is shown as the evidence, with its score and time.
+*Evidence:* `docs/evidence/moss-*.json` (written by `scripts/evidence_moss.py`: real Moss, six sessions, the sample counts shown) and `docs/evidence/moss-live-check-*.txt` (the output of `scripts/moss_live_check.py`, which also proves the disk restore and the cloud sync). The speed figures are the milliseconds Moss itself reports. A hint only ever says stop or wait, only with a source record, and an older clearance never comes back ahead of a newer one.
 
-Verify with `python scripts/moss_live_check.py` (prints `ok`). Deeper notes: [docs/23-moss-max.md](docs/23-moss-max.md).
+---
 
 ## 7. Elastic: the agent platform
 
-The rulebook, the flight plans, the airport map and every decision live in one place, and the agents act on them. Everything runs on an **Elastic Serverless** project, deployed from code with `python scripts/deploy_elastic.py`. Definitions: [`elastic/`](elastic/). Code: [`unstep/ground/`](unstep/ground/).
+Search, ES|QL, Agent Builder and Workflows on one Serverless project, deployed from code with `python scripts/deploy_elastic.py` ([Agent Builder](https://www.elastic.co/elasticsearch/agent-builder)). Each agent can only call its own fixed queries, and no agent writes to the audit trail.
 
-### Agent Builder: 8 agents (configured over our own indexes, not trained)
-
-| Agent | Job | Tools it can call |
+| Feature | What it does in Unstep | Measured |
 | --- | --- | --- |
-| `unstep-intercept` | Confirms the tower really said the lost words | `unstep_recent_blocked_calls` |
-| `unstep-compliance` | Cites the FAA JO 7110.65 paragraph and says whether the instruction is restrictive | `unstep_faa_search` |
-| `unstep-intercept-lite`, `unstep-compliance-lite` | Fast variants that take the pre-fetched rule as input (no tool calls), used in the parallel workflow | none |
-| `unstep-ground` | One-call version of both jobs | none |
-| `unstep-readback-auditor` | Explains why a readback did not match, with the paragraph | `unstep_faa_search`, `unstep_readback_history` |
-| `unstep-audit` | Answers the controller's questions about the shift from the audit trail ("which aircraft had the most blocked calls?"), showing its ES\|QL | 5 audit tools |
-| `unstep-coach` | Reports how controllers decided on proposals over 30 days, and only claims a trend with enough data | `unstep_trend_decisions` |
+| **Agent Builder** | 8 agents: Intercept, Compliance, Ground, Readback Auditor, Audit, Coach and two fast variants | 8 agents and 9 tools counted on our project |
+| **Workflows** | Agents run in parallel on every stepped-on call; a shift briefing every 8 hours; a nightly review | 7 workflows on the project, event-driven and scheduled (run by hand; the clock firing is not yet observed) |
+| **Percolator rules** | Each instruction and readback is matched to its FAA rule (JO 7110.65, the controller's rulebook) | Elastic's own time 1.0 ms; about 88 ms round trip from our laptop; 7 stored rules, one reviewed by a person |
+| **Hybrid search and Jina rerank** | Finds the exact FAA paragraph to cite on every decision card | 0.89 s median, 1 s at the 95th percentile, reranked 30 of 30 (n=30), over 52 paragraphs |
+| **geo_shape, flight plans and the airport map** | "Is the runway clear?" from live positions; the Clearance agent's plan; incursions flagged | Elastic's own time 0 ms, 85 ms round trip (n=30); 7,770 positions, 5 areas, 2 flight plans stored |
+| **ES\|QL and MCP** | Safety analytics and the audit trail, asked in plain English; our tools exposed over MCP | 1,493 events from 6 planes stored; ES\|QL answers in 89 ms round trip; 9 of our tools exposed over MCP |
 
-**Least privilege by tool.** Every tool is a stored ES\|QL query or index search with a fixed shape: an agent fills in parameters (a callsign, an event id) and cannot run a free-form query. Agents never write to the audit trail.
+*Evidence:* `docs/evidence/elastic-*.json` (written by `scripts/evidence_elastic.py`: it counts the agents, tools and workflows from Kibana itself, then times the calls) and `docs/evidence/elastic-percolator-*.txt` (`scripts/rule_latency.py --elastic`). "Elastic's own time" is the server's `took`; the round trip adds the network from our laptop. At 7 rules a plain in-memory scan is faster than Elastic; the reason for percolating is that rules are data an editor changes without a deploy. An Agent Builder call takes about 5 to 10 s whatever the answer, so the agents stay off the pilot's critical path: the decision card goes out first and the citation is added when it arrives. The hold-short rule (paragraph 3-7-2) was reviewed by a person; the other stored rules are marked candidate or needs review.
 
-### 9 tools
-
-`unstep_faa_search`, `unstep_recent_blocked_calls`, `unstep_readback_history`, `unstep_trend_decisions` (ES\|QL with `INLINESTATS`), `unstep_audit_blocked_by_callsign`, `unstep_audit_blocked_per_minute`, `unstep_audit_readback_outcomes`, `unstep_audit_auto_resends`, `unstep_audit_landed_flights`.
-
-### 7 Workflows (event-driven and scheduled)
-
-| Workflow | Trigger | What it does |
-| --- | --- | --- |
-| `unstep-blocked-call` | Every stepped-on call | Runs Intercept and Compliance agents in **parallel** (the default path), stores the result |
-| `unstep-blocked-intercept`, `unstep-blocked-compliance` | Parallel branches | One agent each, writing its own answer document |
-| `unstep-blocked-call-fast` | Alternative | One agent call, given the pre-fetched rule |
-| `unstep-readback-audit` | Every wrong readback | The Readback Auditor explains the mismatch; findings saved to `unstep-findings` |
-| `unstep-briefing` | **Scheduled every 8 h**, and on demand | Shift handoff briefing from the last hour of the audit trail, saved to `unstep-briefings` |
-| `unstep-nightly-review` | **Scheduled daily**, and on demand | The coach agent reviews 30 days of controller decisions, saved to `unstep-reviews` |
-
-The console's **Shift briefing** and **Nightly review** buttons show the newest report and can run one now.
-
-### Search, rules, geo, analytics
-
-| Elastic feature | How Unstep uses it | Measured (live) |
-| --- | --- | --- |
-| **Percolator** (`unstep-rules`) | Each rule is a stored query: an instruction or readback is matched to its rule in one call | Readback matched in **3.0 ms**; rule lookup flat at 1–2 ms up to 5,000 rules |
-| **Hybrid search + Jina reranker** (`unstep-faa`) | Finds the exact FAA JO 7110.65 paragraph to cite on every decision card, labelled as a search result | Reranked citation in about **1.1 s** |
-| **`geo_shape` + `geo_point`** (`unstep-airport`, `unstep-positions`) | The airport's runway, hold-short areas and taxiways are shapes; every aircraft's position is a point, posted once a second. One `_msearch` says which area each plane is in; the Clearance agent asks "is the runway clear?"; the console flags a **runway incursion** | Elastic `took` **0–1 ms**; runway check 4–5 ms round trip |
-| **Flight plans** (`unstep-flightplans`) | The Clearance agent reads each aircraft's plan (runway, route) | 0.23–2.0 s uncached |
-| **Kibana Maps** | A live map of the airport shapes and plane tracks, coloured by aircraft | Deployed via the saved-objects import API (works on Serverless) |
-| **ES\|QL** | Live safety analytics on the console (blocked calls, readback errors caught, auto-resent calls) and every audit tool | Panel answers in 1.1–1.5 s |
-| **MCP server** (`/api/agent_builder/mcp`) | Our tools are callable from any MCP client (`scripts/mcp_demo.py`) | Lists the tools; `unstep_trend_decisions` returned real rows (24 Oct: 43 approved, 2 rejected) |
-| **Every event stored** (`unstep-events`, `unstep-proposals`, `unstep-clearances`, `unstep-policy`, `unstep-flights`) | The audit trail of every call, proposal, decision and landed flight; simulated traffic goes to `unstep-sim-events`, labelled | |
-
-**The hold-short rule was reviewed by a person**, not just picked by search: FAA JO 7110.65 **¶3-7-2** holds the requirement Unstep enforces: *"Request a read back of runway hold short instructions when it is not received from the pilot."* ¶3-7-4 is recorded as related.
-
-**Agents stay off the pilot's critical path.** An Agent Builder call takes about 5 or 10 s whatever the answer length (measured over 13 calls), so the decision card goes out at once from the local check, and the agents' citation is added to the open card when it arrives (about 10–11.5 s). The instruction never changes, and confidence can only go down. Deeper notes: [docs/19-elastic-moss-plan.md](docs/19-elastic-moss-plan.md), [docs/25-latency-ideas.md](docs/25-latency-ideas.md).
+---
 
 ## 8. The two screens
 
@@ -378,24 +231,36 @@ The console's **Shift briefing** and **Nightly review** buttons show the newest 
 - **Live captions**, private advisories marked **"Only you · left ear"**, and a language choice.
 - **Rejoins the same aircraft** after the phone sleeps.
 
-## 9. Measured results
+## 9. Evidence and how to re-run it
 
-All live, on our own services and laptop. Simulated traffic is always labelled as such.
+Every number in the three tables above is read from a file in [`docs/evidence/`](docs/evidence/) by `python scripts/readme_tables.py`, so the README cannot say something the data does not. To re-measure:
 
-| What | Result |
-| --- | --- |
-| Call end → pilot hears the fix (controller approval included) | **2.9 s** |
-| Tower transcript final after release (Cartesia Ink-2, streaming) | **155 ms** (was 2,702 ms) |
-| Cockpit transcript final after release | **172 ms** |
-| Sonic first audio | **85–201 ms** |
-| Key terms in heavy radio noise | Callsign 62.5% → **95.5%**, runway 81.6% → **98.5%**, WER 0.191 → **0.009** |
-| Stepped-on detection (benchmark) | **100%** caught, **0** false alarms on clean audio |
-| TTS → STT loop, 40 ATC lines | **100%** callsign, action, runway; every wrong readback caught |
-| Moss: aircraft's last tower call | **0.29–0.56 ms** |
-| Moss: restart from disk | **21.1 ms** |
-| Elastic: percolator readback match | **3.0 ms** |
-| Elastic: `geo_shape` area lookup | **0–1 ms** (took) |
-| End-to-end taxi and readback suite (`scripts/e2e_taxi.py`) | **28/28** live checks |
+```
+python scripts/eval_bench.py --live --n 200 --conditions clean,radio-10 --stepped 0   # Cartesia key terms (uses credits)
+python scripts/cartesia_repro.py --runs 30 --only manual_pacing                        # streaming against burst finalize
+python scripts/cartesia_live_check.py --only tts caption --tts-runs 30 --runs 5        # Sonic first audio, caption timing
+python scripts/evidence_cartesia.py                                                    # summarise the three Cartesia runs
+python scripts/evidence_moss.py                                                       # six Moss sessions
+python scripts/moss_live_check.py                                                     # disk restore and cloud sync
+python scripts/evidence_elastic.py                                                    # agents, tools, workflows, citation, geo, audit
+python scripts/rule_latency.py --elastic                                              # percolator
+python scripts/readme_tables.py                                                       # rewrite the tables from the files
+```
+
+All of it ran on one laptop against our own cloud projects. Speech is synthetic, sent through a simulated radio channel. Simulated traffic is always labelled as such.
+
+### Built in a day
+
+First commit: **2026-10-23 21:00 PDT**.
+
+| What landed | When (PDT) | Hours after the first commit |
+| --- | --- | --- |
+| Airport index script (Moss reference data) | 2026-10-24 00:12 | 3.2 |
+| Elastic deploy script (agents, tools, workflows) | 2026-10-24 20:36 | 23.6 |
+| FAA rulebook ingest (52 JO 7110.65 paragraphs) | 2026-10-24 21:07 | 24.1 |
+| Traffic simulator (500 labelled calls, simulated) | 2026-10-24 23:15 | 26.3 |
+
+---
 
 ## 10. Impact and responsible use
 

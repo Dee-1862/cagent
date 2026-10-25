@@ -1,0 +1,63 @@
+{
+ "run_at": "2026-10-25T14:48:35+00:00",
+ "backend": "moss",
+ "sessions": 6,
+ "runs_per_session": 50,
+ "open_and_seed_six_sessions_s": 9.55,
+ "fetch_last_tower_call_filter_and_sort": {
+  "moss_reported_ms": {
+   "n": 300,
+   "p50": 0.358,
+   "p95": 0.619,
+   "mean": 0.387,
+   "max": 2.286
+  },
+  "wall_ms": {
+   "n": 300,
+   "p50": 0.372,
+   "p95": 0.633,
+   "mean": 0.401,
+   "max": 2.322
+  }
+ },
+ "hybrid_query_on_a_fragment": {
+  "moss_reported_ms": {
+   "n": 300,
+   "p50": 0,
+   "p95": 1,
+   "mean": 0.1,
+   "max": 1
+  },
+  "wall_ms": {
+   "n": 300,
+   "p50": 5.343,
+   "p95": 6.36,
+   "mean": 5.37,
+   "max": 8.579
+  }
+ },
+ "hybrid_scores": {
+  "right clearance": {
+   "fragment": "Cessna 123, short runway 30",
+   "score": 1.0,
+   "floor": 0.25,
+   "below_floor": false,
+   "hint": "restrictive"
+  },
+  "unrelated speech": {
+   "fragment": "static and the weather in Paris",
+   "score": 0.0,
+   "floor": 0.25,
+   "below_floor": true,
+   "hint": "restrictive"
+  }
+ },
+ "ask_last_clearance_moss_part_ms": {
+  "n": 25,
+  "p50": 0.301,
+  "p95": 0.64,
+  "mean": 0.338,
+  "max": 1.014
+ },
+ "disk_and_cloud_sync": "measured by scripts/moss_live_check.py (sections 4 and 5), its output is saved next to this file"
+}

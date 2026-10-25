@@ -1,0 +1,4 @@
+IBM Plex Mono and IBM Plex Sans Condensed
+Copyright 2017 IBM Corp. with Reserved Font Name "Plex".
+Licensed under the SIL Open Font License, Version 1.1: https://openfontlicense.org
+Files from the @fontsource packages (version 5.0.8): https://fontsource.org

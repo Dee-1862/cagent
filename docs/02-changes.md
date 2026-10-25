@@ -2,6 +2,32 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## Deployment fix, the join screen in the app's own colours, new README phone images
+
+- Vercel and Render builds: `app/package.json` and its lockfile had been bumped to Vite 8 and Vitest 5 by accident (they need a newer Node than the Render image and Vercel project use). Restored the pinned Vite 5.4.11 and Vitest 2.1.8 lockfile; `npm ci`, `npm run build` and the 33 app tests pass. Removed a stray `Untitled` file.
+- The join screen now takes the pilot app's own colours (black, white, the app's grey, green and red) in place of its warm cream-on-brown palette, so it blends with the screens after it. The amber button stays.
+- README: "A phone is a plane" now shows the new join screen and the live capture of the private advisory.
+- `scripts/devpost_images.py` reads its sources from `docs/img/src/` and writes the gallery to `docs/img/devpost/`.
+
+## The submission copy now quotes the measured numbers
+
+- `docs/28-submission-copy.md` (the Devpost and YouTube text) still had earlier figures. Corrected to the values in `docs/evidence/`: callsigns 61.5% to 93.5% and runways 78.7% to 99.3% (was 62.5% to 95.5%), Sonic first audio a median 93 ms (was 130 to 140 ms), memory restore 9.9 ms with 1.8 s to the first answer after a restart (was 1.5 ms and 21 ms), percolator 1 ms on Elastic or about 88 ms round trip (was 3 ms), geo 0 to 1 ms or about 85 ms round trip (was 4 to 5 ms).
+- Not changed, and still to check before submitting: "91.7%" and "100% caught with no false alarm on clean audio" (two different checks, the first on our own simulator), and "about 3 s from the end of a stepped-on call to the pilot hearing the fix" (one live run).
+
+## The join screen redesigned: a radio panel instead of stacked boxes
+
+- The old phone join screen (a paragraph, a system dropdown, a native checkbox, a blue button) read as generated. New direction: industrial, night-cockpit. The 118.700 frequency is the hero in a bundled IBM Plex Mono (open licence, `app/src/fonts/`, so it looks the same offline on a phone), the explanation is three numbered lines with "stepped on" underlined in amber, the language choice is a segmented control, the checkbox is a switch, the name field is an underline, and the one action is an amber button, "Join the frequency". The status dot is green for live voice and amber for offline voice.
+- Same state and same `go()`: nothing about joining changed. `app/src/join.css` (new, scoped to `.joinx`) and the markup of `Join` in `App.tsx`; `styles.css` is untouched. The app's 33 tests pass, and a browser click-through (Spanish, the voice switch, then join) lands on Plane A.
+- Seen on a live run with real Cartesia speech and a recorded pilot call as the phone's microphone: the tower's words arrive as captions while it talks, the pilot's own words appear while the button is held (about 40 to 110 ms behind the voice), and when two calls overlap the pilot hears, privately, "Your last call was blocked. Say again."
+
+## README tables from measured evidence, and the hardware photo
+
+- `README.md` sections 5 to 7 are now three tables in the demo film's format (Feature, What it does in Unstep, Measured), and the other data tables are gone (the old "Measured results" is now "Evidence and how to re-run it", with the built-in-a-day table). The tables are written by `scripts/readme_tables.py` from `docs/evidence/`, so every number traces to a file; `tests/test_readme_tables.py` checks the format and that no cell is empty.
+- Measured today (full list in `docs/evidence/README.md`): Cartesia key terms on 200 synthetic lines at 10 dB noise: callsigns 61.5% to 93.5%, runways 78.7% to 99.3%; final words a median 141 ms after release when streaming (876 ms when the clip is sent whole); Sonic first audio median 93 ms. Moss, six real sessions: 0.36 ms median reads (n=300). Elastic: 8 agents, 9 tools and 7 workflows counted from Kibana, a reranked FAA citation at a median 0.89 s (n=30).
+- Where today's figure differs from the demo film: the film says 39 key terms per cockpit (the code gives 29 for a cockpit, 39 for the tower with six planes); Elastic's percolator and geo figures in the film are the server's own time, the round trip from the laptop is about 88 ms; restoring from disk is 9.9 ms but a whole restart to the first answer is 1.8 s. The README states the measured values.
+- Open: `unstep-policy` returned HTTP 404 on the project, though the README lists it among the indexes; the Kibana map could not be counted through the API.
+- `docs/img/setup.jpeg` (the hardware photo, no metadata) is in the README's Raspberry Pi section.
+
 ## The README now shows the system and the three sponsors
 
 - Applied `docs/29-readme-additions.md` to `README.md` at the owner's request (asked twice): a "What it looks like" part in section 3 with six real screenshots (console, a stepped-on call, the team strip, the phone join and in-air views, the Raspberry Pi microphone test), and a "For the sponsors" section before section 5 with Cartesia, Moss and Elastic: who they are, what would impress them (from their own feedback), the numbers with their grades and limits, and a built-in-a-day table from git timestamps. Additive only: no existing line was changed. The contents list gets one extra line.
