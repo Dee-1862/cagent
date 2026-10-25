@@ -36,6 +36,13 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 - Intercept-lite instructions shortened (a match flag and a sentence under 20 words), since Intercept is now the slow branch. Redeploy with `--replace` to push it; untested live.
 - Rule lookup measured live: Elastic `took` 2.0 ms at 7 rules and 1.0 ms at 100, 1,000 and 5,000 (wall about 75 ms from the laptop). Hold-short now points at 3-7-2 (candidate), per Rishit's reading of the FAA text.
 - The audit record names the workflow that actually ran.
+## Cartesia: one live-check command, 429 evidence logging, and drafts for the shared files
+
+- **`scripts/cartesia_live_check.py`**: the whole live-access to-do list of docs/24 in one command for a laptop that can reach Cartesia. It reuses `caption_probe.py` (manual and turns endpoints) and `cartesia_repro.py` (turns fast versus paced), times Sonic first audio, round-trips every entry of `assets/pronunciation/atc.json` through TTS then STT with and without the dictionary, and probes for a 429 with 1 to N sockets (default 4, never above 6). PASS, FAIL and INFO lines, JSON in `data/cartesia-live/`. `--dry-run` uses fakes and passes offline; without `CARTESIA_API_KEY` it prints "skipped" and exits 0; every socket is closed and a leftover socket fails the run. Tests: `tests/test_cartesia_live_check.py`. Not yet run against the real API.
+- **429 evidence**: `unstep/cockpit/cartesia_errors.py` now logs every 429 (handshake or error event, TTS or STT) with status, response body (500 characters at most, key and Bearer tokens removed, never headers) and the number of sockets this process holds. `CartesiaTTS`, `CartesiaManualSTT` and `CartesiaTurnSTT` keep that count. `CartesiaRateLimited` carries `status`, `body` and `open_sockets`. A STT error event with status 429 now raises it too. `scripts/eval_bench.py` keeps every 429 in `rate_limits` in its result and prints the first. This settles "plan limit or our leak" the next time one happens; nothing about the cause is claimed yet.
+- **Drafts, not applied**: `docs/cartesia-docs09-corrections.patch.md` (exact wording for the two stale lines in docs/09, Rishit's file) and `docs/cartesia-settle-caption-proposal.md` (the diff to wire `settle_caption` into `room.py`, a shared file, plus a test; checked on a scratch copy only).
+- docs/24 to-do list now points at the command and says what each result settles.
+- Unverified: the real 429 body, the plan tier of our key, the script's behaviour against the live API.
 
 ## Watchers: Tracking and Flow merged, and an Open-call watcher added
 
