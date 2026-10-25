@@ -13,6 +13,12 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## Watchers: Tracking and Flow merged, and an Open-call watcher added
+
+- The Tracking watcher (stuck key, repeated stepped-on aircraft) and the Flow watcher (busy frequency) are one **Frequency watcher**: they were all about who is blocking whom.
+- New **Open-call watcher**: a stepped-on call with no decision after 15 s is flagged ("they may have missed part of the instruction") and clears when it is approved or rejected. It watches the core job, a lost instruction nobody has dealt with, which the other watchers did not. The 15 s is our own early warning.
+
 ## A freed seat deletes its on-board Moss copy
 
 - The on-board snapshot (MM1) is deleted when a seat is freed (drop without `keep_snapshot`), so the next pilot who gets that callsign starts clean and never inherits the last pilot's clearances. A hub stop keeps it, because that plane is still flying and the point is that it restarts with its memory. Test added.

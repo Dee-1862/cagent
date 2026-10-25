@@ -5,7 +5,7 @@ import asyncio
 from unstep import scenario
 from unstep.contracts import ApprovedDirective, ReadbackResult, Slots
 from unstep.monitor import Team, default_team
-from unstep.monitor.watchers import FlowWatcher, ReadbackWatcher, RunwayWatcher, TrackingWatcher, Watcher
+from unstep.monitor.watchers import FrequencyWatcher, OpenCallWatcher, ReadbackWatcher, RunwayWatcher, Watcher
 
 T0 = 1_000_000
 
@@ -58,7 +58,7 @@ def test_a_runway_clearance_stops_counting_after_it_expires_and_the_same_aircraf
 
 
 def test_a_stuck_key_is_flagged_and_clears_on_release():
-    w = TrackingWatcher()
+    w = FrequencyWatcher()
     w.on_note("key", {"station": "N123AB", "down": True}, T0)
     assert w.tick(T0 + 5000) == []
     flag = w.tick(T0 + 16_000)
@@ -70,7 +70,7 @@ def test_a_stuck_key_is_flagged_and_clears_on_release():
 
 
 def test_the_same_aircraft_stepped_on_again_is_noticed():
-    w = TrackingWatcher()
+    w = FrequencyWatcher()
     assert w.on_message(blocked("N123AB", 1), T0) == []
     out = w.on_message(blocked("N123AB", 2), T0 + 60_000)
     assert out[0]["status"] == "flag" and "2 times" in out[0]["text"]
@@ -78,7 +78,7 @@ def test_the_same_aircraft_stepped_on_again_is_noticed():
 
 
 def test_a_busy_frequency_is_flagged_and_clears():
-    w = FlowWatcher()
+    w = FrequencyWatcher()
     assert w.on_message(blocked("A", 1), T0) == [] and w.on_message(blocked("B", 2), T0 + 1000) == []
     flag = w.on_message(blocked("C", 3), T0 + 2000)
     assert flag[0]["status"] == "flag" and "busy" in flag[0]["text"]
@@ -112,7 +112,7 @@ def test_the_watchers_run_side_by_side_and_one_failing_does_not_stop_the_others(
         async def emit(row):
             rows.append(row)
 
-        team = Team([Boom(), ReadbackWatcher(), RunwayWatcher(), TrackingWatcher(), FlowWatcher()], emit,
+        team = Team([Boom(), ReadbackWatcher(), RunwayWatcher(), FrequencyWatcher(), OpenCallWatcher()], emit,
                     lambda: clock["now"], tick_s=0.02)
         team.start()
         team.feed(approved("e1", "N123AB", "cleared to land", "33", T0))
@@ -127,14 +127,14 @@ def test_the_watchers_run_side_by_side_and_one_failing_does_not_stop_the_others(
 
     team, items = asyncio.run(go())
     agents = {r["agent"] for r in rows}
-    assert {"Runway watcher", "Readback watcher", "Tracking watcher"} <= agents  # three kinds of notice, side by side
+    assert {"Runway watcher", "Readback watcher", "Frequency watcher"} <= agents  # three kinds of notice, side by side
     assert team.errors["Boom"] >= 1 and "Boom" not in agents
     assert items
 
 
 def test_the_default_team_has_the_four_watchers():
     team = default_team(lambda row: None, lambda: T0)
-    assert [w.name for w in team.watchers] == ["Readback watcher", "Runway watcher", "Tracking watcher", "Flow watcher"]
+    assert [w.name for w in team.watchers] == ["Readback watcher", "Runway watcher", "Frequency watcher", "Open-call watcher"]
 
 
 def test_the_room_runs_the_watchers_when_switched_on_and_posts_their_rows_to_the_console(monkeypatch):
@@ -147,13 +147,13 @@ def test_the_room_runs_the_watchers_when_switched_on_and_posts_their_rows_to_the
         await r.start()
         assert r.watchers is not None
         r.watchers.tick_s = 0.05
-        next(w for w in r.watchers.watchers if w.name == "Tracking watcher").stuck_ms = 100
+        next(w for w in r.watchers.watchers if w.name == "Frequency watcher").stuck_ms = 100
         atc = FakeBrowser()
         await r.join("atc", atc)
         r._key("N123AB", True)  # a plane keys up and never lets go
         await asyncio.sleep(0.5)
         rows = [m for m in atc.messages if m.get("type") == "agent_action"]
-        assert rows and rows[0]["agent"] == "Tracking watcher" and rows[0]["status"] == "flag"
+        assert rows and rows[0]["agent"] == "Frequency watcher" and rows[0]["status"] == "flag"
         r._key("N123AB", False)
         await asyncio.sleep(0.2)
         rows = [m for m in atc.messages if m.get("type") == "agent_action"]
@@ -186,3 +186,26 @@ def test_the_readback_wait_is_configurable_for_slow_demo_pilots(monkeypatch):
     assert default_team(lambda r: None, lambda: T0).watchers[0].wait_ms == 45_000
     monkeypatch.setenv("UNSTEP_READBACK_WAIT_S", "soon")
     assert readback_wait_s() == 20
+
+
+def test_a_stepped_on_call_nobody_decides_is_flagged_and_clears_when_someone_does():
+    from unstep.contracts import RejectedDirective
+
+    w = OpenCallWatcher()
+    assert w.on_message(blocked("N123AB", 1), T0) == [] and w.tick(T0 + 5000) == []
+    flag = w.tick(T0 + 16_000)
+    assert flag[0]["status"] == "flag" and "nobody has decided" in flag[0]["text"] and flag[0]["station"] == "N123AB"
+    assert w.tick(T0 + 30_000) == [] and len(w.open_items()) == 1
+    done = w.on_message(approved("evt-b1", "N123AB"), T0 + 31_000)
+    assert done[0]["status"] == "done" and done[0]["id"] == flag[0]["id"] and "approved" in done[0]["text"]
+    assert w.open_items() == []
+    w.on_message(blocked("H456", 2), T0)
+    w.tick(T0 + 20_000)
+    gone = w.on_message(RejectedDirective(event_id="evt-b2", rejected_by="atc", rejected_via="click"), T0 + 21_000)
+    assert gone[0]["status"] == "done" and "rejected" in gone[0]["text"]
+
+
+def test_a_decision_before_the_wait_leaves_no_trace():
+    w = OpenCallWatcher()
+    w.on_message(blocked("N123AB", 1), T0)
+    assert w.on_message(approved("evt-b1", "N123AB"), T0 + 4000) == [] and w.tick(T0 + 20_000) == []

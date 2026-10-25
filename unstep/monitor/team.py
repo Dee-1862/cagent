@@ -8,8 +8,8 @@ import logging
 from typing import Awaitable, Callable
 
 from unstep.config import env
-from unstep.monitor.watchers import (READBACK_WAIT_S, FlowWatcher, ReadbackWatcher, RunwayWatcher, TrackingWatcher,
-                                     Watcher)
+from unstep.monitor.watchers import (READBACK_WAIT_S, FrequencyWatcher, OpenCallWatcher, ReadbackWatcher,
+                                     RunwayWatcher, Watcher)
 
 log = logging.getLogger("unstep.monitor")
 
@@ -85,5 +85,5 @@ def readback_wait_s() -> float:
 
 
 def default_team(emit, clock) -> Team:
-    return Team([ReadbackWatcher(wait_ms=int(readback_wait_s() * 1000)), RunwayWatcher(), TrackingWatcher(),
-                 FlowWatcher()], emit, clock)
+    return Team([ReadbackWatcher(wait_ms=int(readback_wait_s() * 1000)), RunwayWatcher(), FrequencyWatcher(),
+                 OpenCallWatcher()], emit, clock)

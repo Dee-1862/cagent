@@ -138,8 +138,8 @@ Separate from the per-call parallelism in section 7, there is parallelism across
 | --- | --- | --- |
 | Readback watcher | Every approved clearance and its readback | No readback after 20 s; a readback that does not match (and clears when it does) |
 | Runway watcher | Landing, takeoff and line-up clearances | Two aircraft cleared into one runway while the first is still open (90 s). Flag only, it never proposes an order |
-| Tracking watcher | Keys and stepped-on calls per aircraft | A key held over 15 s; the same aircraft stepped on twice in 5 min |
-| Flow watcher | The frequency as a whole | Three stepped-on calls in 60 s (busy), and clears when quiet |
+| Frequency watcher | Keys, stepped-on calls per aircraft, and the frequency as a whole | A key held over 15 s; the same aircraft stepped on twice in 5 min; three stepped-on calls in 60 s means the frequency is busy (clears when quiet) |
+| Open-call watcher | Every stepped-on call and whether anyone has decided it | A stepped-on call with no decision after 15 s ("they may have missed part of the instruction"); clears when it is approved or rejected |
 
 They are fixed rules, not language models: they answer in microseconds, same input same output, and the thresholds are our own early warnings, not FAA procedures. An Elastic agent can be asked to explain a row afterwards, off this path. `team.open_items()` lists what is still waiting, which is what the shift handoff briefing needs.
 
