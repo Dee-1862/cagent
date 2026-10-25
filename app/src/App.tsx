@@ -11,7 +11,8 @@ import { ASK_LINES, sayLines } from "./phrases";
 
 type Station = { id: string; kind: string; label: string; callsign?: string; spoken?: string; name?: string };
 type Line = { ts: number; party: string; text: string; latency: Record<string, number> };
-type Trace = { event_id: string; callsign: string; status: string; readbacks: { readback_text: string; match: boolean }[] };
+type Trace = { event_id: string; callsign: string; status: string; readbacks: { readback_text: string; match: boolean }[];
+  decision?: { instruction_text?: string }; proposal?: { instruction_text?: string } };
 type Alert = { stations: string[]; uplink_ms: number; at: number };
 
 const PLANE_COLORS: Record<string, string> = { A: "#2dd4bf", B: "#fb923c", C: "#a78bfa", D: "#f472b6", E: "#facc15", F: "#60a5fa" };
@@ -391,6 +392,8 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
         </button>
       </div>
 
+      {!onAir && <SayGuide spoken={me?.spoken ?? station} trace={trace} lines={lyrics.lines} />}
+
       <div className="lyrics" ref={card} aria-live="polite">
         {lyrics.lines.length === 0 && <p className="line quiet">{hubLive
           ? "What anyone says on the radio appears here as they speak."
@@ -466,6 +469,38 @@ function Fly({ hub, station, onLeave }: { hub: Hub; station: string; onLeave: ()
       )}
       {toast && <div className="toast">{toast}</div>}
     </main>
+  );
+}
+
+// "Say this": judges don't know radio phrasing, so the phone shows the next line to say, built from this
+// plane's own callsign and labelled by part. After the tower gives this plane an instruction it becomes the
+// readback; otherwise it is a request to call the tower.
+const NUMBER_WORDS: Record<string, string> = { zero: "0", one: "1", two: "2", three: "3", tree: "3", four: "4", fower: "4",
+  five: "5", fife: "5", six: "6", seven: "7", eight: "8", nine: "9", niner: "9" };
+const digitsOf = (text: string) => text.toLowerCase().split(/[^a-z0-9]+/).map((w) => NUMBER_WORDS[w] ?? w.replace(/\D/g, "")).join("");
+function readbackOf(instruction: string): string {
+  const what = instruction
+    .replace(/^\s*[a-z]+[\s,]+((zero|one|two|three|tree|four|fower|five|fife|six|seven|eight|nine|niner|\d)[\s,-]*)+/i, "")
+    .replace(/[.\s]+$/, "");
+  return what.charAt(0).toUpperCase() + what.slice(1);
+}
+function SayGuide({ spoken, trace, lines }: { spoken: string; trace: Trace | null; lines: L.Line[] }) {
+  const call = spoken || "your callsign", mine = digitsOf(call);
+  const delivered = trace && ["delivered", "readback_wrong"].includes(trace.status)
+    ? trace.decision?.instruction_text || trace.proposal?.instruction_text : undefined;
+  const fromTower = [...lines].reverse().find((l) => l.who === "Tower" && l.kind === "radio" && l.final
+    && digitsOf(l.words.map((w) => w.text).join(" ")).includes(mine));
+  const told = delivered || fromTower?.words.map((w) => w.text).join(" ");
+  const toldWhat = told ? readbackOf(told) : "";
+  const parts: [string, string][] = toldWhat
+    ? [["What you were told", toldWhat], ["Who you are", call]]
+    : [["Who you're calling", "Tower"], ["Who you are", call], ["What you want", "ready for departure, runway 33"]];
+  return (
+    <div className="say-guide">
+      <div className="say-label">{toldWhat ? "Read it back" : "Say this"}</div>
+      <p className="say-line">"{parts.map(([, v]) => v).join(", ")}"</p>
+      <div className="say-parts">{parts.map(([k, v]) => <span key={k}><b>{k}</b>{v}</span>)}</div>
+    </div>
   );
 }
 

@@ -188,6 +188,21 @@ export function createAirport(container, {quality = "high", followStation} = {})
     const len=TWYA_Z-spot.z; mark(.08,.02,len,spot.x,.04,spot.z+len/2,lineMat);
     mark(.9,.02,.08,spot.x,.04,spot.z,lineMat);                        // stop bar at the stand
   }
+  // ---- airport signs, like the real ones: black/yellow location signs, a red holding-position sign ----
+  const CONNECTORS=[["A1",-38],["A2",-17],["A3",6],["A4",30]];
+  function sign(text,x,z,{bg="#111418",fg="#FFD60A",border="#FFD60A"}={}) {
+    const c=document.createElement("canvas"); c.width=256; c.height=128; const g=c.getContext("2d");
+    g.fillStyle=bg; g.fillRect(0,0,256,128); g.strokeStyle=border; g.lineWidth=8; g.strokeRect(6,6,244,116);
+    g.fillStyle=fg; g.font="bold 78px Arial"; g.textAlign="center"; g.textBaseline="middle"; g.fillText(text,128,68);
+    const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthWrite:false}));
+    sp.scale.set(2.2,1.1,1); sp.position.set(x,1.3,z); scene.add(sp); return sp;
+  }
+  for (const x of [-30,-2,24]) sign("B",x,TWY_Z-2.4);
+  for (const x of [-28,-6,18]) sign("A",x,TWYA_Z-2.2);
+  for (const [name,x] of CONNECTORS) sign(name,x+1.9,(TWY_Z+TWYA_Z)/2);
+  sign("B1",-10+2.1,TWY_Z+2.4);
+  sign("33-15",-10+2.4,HOLD_Z,{bg:"#C8102E",fg:"#FFFFFF",border:"#FFFFFF"});
+
   // ---- control tower, west of the field ----
   const TOWER={x:-46,z:-8};
   const shaft=new THREE.Mesh(new THREE.CylinderGeometry(.45,.7,9,20),roofMat); shaft.position.set(TOWER.x,4.5,TOWER.z); shaft.castShadow=quality==="high"; scene.add(shaft);
@@ -215,20 +230,35 @@ export function createAirport(container, {quality = "high", followStation} = {})
       if(e.group.position.distanceTo(spot)>.05 && !(last && last.distanceTo(spot)<.05)) { e.path=[spot]; e.speed=TAXI; } });
   }
   const toHold=()=>[new THREE.Vector3(CONN_X,0,TWY_Z),new THREE.Vector3(CONN_X,0,HOLD_STOP_Z)];
+  function viaAlpha(from) {
+    // B -> nearest connector up to A -> along A -> the connector nearest B1 back down to B -> B1 -> hold short
+    const xs=CONNECTORS.map(([,x])=>x), up=xs.reduce((a,b)=>Math.abs(b-from.x)<Math.abs(a-from.x)?b:a);
+    const down=xs.filter(x=>x!==up).reduce((a,b)=>Math.abs(b-CONN_X)<Math.abs(a-CONN_X)?b:a);
+    return [new THREE.Vector3(up,0,TWY_Z),new THREE.Vector3(up,0,TWYA_Z),new THREE.Vector3(down,0,TWYA_Z),
+            new THREE.Vector3(down,0,TWY_Z),...toHold()];
+  }
+  const routeMat=new THREE.LineBasicMaterial({color:colors.blue,transparent:true,opacity:.95});
+  function showRoute(e) {
+    // The cleared route glows on the ground while the plane follows it.
+    if(e.routeLine){ scene.remove(e.routeLine); e.routeLine.geometry.dispose(); e.routeLine=null; }
+    if(!e.path.length) return;
+    const pts=[e.group.position.clone(),...e.path].map(p=>new THREE.Vector3(p.x,.16,p.z));
+    e.routeLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),routeMat); scene.add(e.routeLine);
+  }
   const toLineUp=()=>[new THREE.Vector3(CONN_X,0,RWY_Z),new THREE.Vector3(CONN_X+3,0,RWY_Z)];
-  function command(id,action){
+  function command(id,action,opts={}){
     // A heard instruction moves the plane. Returns false when it doesn't apply in the plane's current state.
     const e=entries.get(id); if(!e||e.removing) return false;
     const airborne=["takeoff","departed"].includes(e.state);
     const leaveQueue=()=>{ if(e.state==="queue"){ e.state="taxi"; reflow(); } };
     if(action==="stop"){ if(airborne) return false; e.path=[]; e.after=null; if(e.state!=="queue") e.state="stopped"; return true; }
-    if(action==="hold_short"){ if(airborne||["holding","lined_up"].includes(e.state)) return false;
-      leaveQueue(); e.path=toHold(); e.after="holding"; e.speed=TAXI; return true; }
+    if(action==="hold_short"||action==="taxi"){ if(airborne||["holding","lined_up"].includes(e.state)) return false;
+      leaveQueue(); e.path=(opts.via||[]).includes("A")?viaAlpha(e.group.position):toHold(); e.after="holding"; e.speed=TAXI; showRoute(e); return true; }
     if(action==="line_up"){ if(airborne||e.state==="lined_up") return false;
-      leaveQueue(); e.path=[...(e.state==="holding"?[]:toHold()),...toLineUp()]; e.after="lined_up"; e.speed=TAXI; return true; }
+      leaveQueue(); e.path=[...(e.state==="holding"?[]:toHold()),...toLineUp()]; e.after="lined_up"; e.speed=TAXI; showRoute(e); return true; }
     if(action==="takeoff"){ if(airborne) return false;
       leaveQueue(); e.path=e.state==="lined_up"?[]:[...(e.state==="holding"?[]:toHold()),...toLineUp()]; e.after="takeoff"; e.speed=TAXI;
-      if(!e.path.length){ e.state="takeoff"; e.after=null; e.v=2; } return true; }
+      if(!e.path.length){ e.state="takeoff"; e.after=null; e.v=2; } showRoute(e); return true; }
     return false;
   }
   const turn=(from,to)=>{ let d=to-from; while(d>Math.PI) d-=2*Math.PI; while(d<-Math.PI) d+=2*Math.PI; return d; };
@@ -320,7 +350,7 @@ export function createAirport(container, {quality = "high", followStation} = {})
       if(e.path.length){
         const target=e.path[0], p=e.group.position, dx=target.x-p.x, dz=target.z-p.z, d=Math.hypot(dx,dz), step=e.speed*dt;
         if(d<=step){ p.x=target.x; p.z=target.z; e.path.shift();
-          if(!e.path.length&&e.after){ e.state=e.after; e.after=null; if(e.state==="takeoff") e.v=2; } }
+          if(!e.path.length){ showRoute(e); if(e.after){ e.state=e.after; e.after=null; if(e.state==="takeoff") e.v=2; } } }
         else { p.x+=dx/d*step; p.z+=dz/d*step; e.targetYaw=Math.atan2(-dz,dx); }
       }
       if(e.state==="takeoff"){                                         // roll, rotate, climb out
@@ -345,7 +375,7 @@ export function createAirport(container, {quality = "high", followStation} = {})
       const pulse=keyedIds.has(id)&&!reduced.matches?1+(t%1300)/1300*2:1.15;
       e.ring.scale.setScalar(pulse);
       e.ring.material.opacity=e.opacity*(reduced.matches?.75:keyedIds.has(id)?1-(t%1300)/1300:.7);
-      if(e.removing&&e.opacity===0){scene.remove(e.group,e.ring);e.ring.material.dispose();entries.delete(id);reflow();}
+      if(e.removing&&e.opacity===0){if(e.routeLine)scene.remove(e.routeLine);scene.remove(e.group,e.ring);e.ring.material.dispose();entries.delete(id);reflow();}
     }
     if(composer)composer.render();else renderer.render(scene,camera);
   }
