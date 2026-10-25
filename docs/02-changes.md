@@ -2,6 +2,20 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## README pictures and sponsor sections, ready to paste (README untouched)
+
+- `docs/29-readme-additions.md`: part A is a picture section and part B is a section for each sponsor (Cartesia, Moss, Elastic): who they are, what would impress them (from their own feedback in docs/21), what we use, the numbers with their grades and the limits we state, plus a "built in a day" table. The dates come from git: the first commit was 2026-10-23 21:00 PDT, the airport index script landed at hour 3.2, the Elastic deploy at 23.6, the FAA ingest (52 paragraphs) at 24.1 and the 500-call simulator at 26.3; by 33.6 hours there were 339 commits and 618 tests.
+- `docs/img/readme/`: seven real screenshots from our offline demo build (console idle, a stepped-on call with the agents' work, the team strip, the phone join and in-air views, and the Raspberry Pi microphone test as rendered terminal text from a real run).
+- Corrected before writing it down: only one of the 7 stored percolator rules is marked reviewed (paragraph 3-7-2); the others are candidates or need review.
+- `README.md` was not edited: it is Rishit's file. The doc says where each part goes.
+
+## A reliable public link for the QR, and a console that tells you how to get it
+
+- A wifi address is fragile: a venue network can isolate devices from each other, and both of this laptop's connections are set to the Public type. The reliable link is the public https tunnel, `python scripts/demo_public.py` (a free Cloudflare quick tunnel; it also gives phones the https they need for the microphone). Checked with a test tunnel: the health check, the pilot app and the QR image all answered through it, and `/live/pilot-link` returned the tunnel address.
+- Found by that test and fixed: seen through the tunnel, `/live/addresses` listed this laptop's wifi addresses with port 443. The hub now remembers its real port and scheme (`app.state.bind_port`, `scheme`), and seen through the public link it offers only the public link. The "Change link" popover lists the public link first and, when none exists, shows the command to get one and a reminder to set `UNSTEP_ATC_PASSWORD`, because anyone with the public link can reach the tower console.
+- The Pi's join command prefers the public address, so a Raspberry Pi joins the same way from any network.
+- Tests: the real port and scheme, only the public link when seen through it, and the console told when there is no public link.
+
 ## The Pi client says where to run it when it is started on the wrong computer
 
 - Started on Windows, `scripts/pi_plane.py` printed only "arecord not found". It now says it is the Raspberry Pi client, that `arecord` exists on the Pi, how to run it there, and that `--wav assets/clips/real/clean_call.wav` works from the laptop without a microphone. On Linux the message is still "install alsa-utils".
