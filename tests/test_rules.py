@@ -22,7 +22,7 @@ def test_the_rule_file_is_honest_about_what_has_been_reviewed():
 def test_local_rules_match_spoken_forms_and_return_microsecond_timings():
     local = LocalRules()
     hits = local.match("Cessna one two three, hold short runway three three")
-    assert [h.rule_id for h in hits] == ["hold-short"] and hits[0].paragraph == "3-7-4"
+    assert [h.rule_id for h in hits] == ["hold-short"] and hits[0].paragraph == "3-7-2"
     assert [h.rule_id for h in local.match("Tower says we are holding short")] == ["hold-short"]
     assert local.match("N123AB cleared for takeoff")[0].paragraph is None  # a rule with no paragraph claims none
     assert local.match("nothing to see here") == []
@@ -76,7 +76,7 @@ def test_the_hub_uses_elastics_rule_and_falls_back_to_its_own_copy():
     got = asyncio.run(agents(lambda r: httpx.Response(200, json=elastic_hit)).rule_for("hold short runway 33"))
     assert got.paragraph == "3-7-9" and got.backend == "elastic"  # a rule edited in the index wins: no deploy
     down = asyncio.run(agents(lambda r: httpx.Response(500)).rule_for("hold short runway 33"))
-    assert down.paragraph == "3-7-4" and down.backend == "local"
+    assert down.paragraph == "3-7-2" and down.backend == "local"
 
 
 def test_a_slow_percolate_does_not_hold_the_card():
