@@ -105,7 +105,8 @@ class FlightLog:
                                     "at": int(time.time() * 1000)})
                 return None
             self.push_pending = False
-            entry = {"ok": True, "job": str(job) if job is not None else None, "flights": len(self.flights),
+            entry = {"ok": True, "job": str(job) if job is not None else None,
+                     "job_id": getattr(job, "job_id", None), "flights": len(self.flights),
                      "ms": round((time.perf_counter() - started) * 1000, 1), "at": int(time.time() * 1000)}
             self.pushes.append(entry)
             log.info("flight log %s pushed: %s", self.index, entry)

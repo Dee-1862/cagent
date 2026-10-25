@@ -115,11 +115,20 @@ class _DiskSnapshots:
         self._last_save: dict[str, float] = {}
         self._write_locks: dict[str, asyncio.Lock] = {}  # one snapshot write per index at a time
 
+    @staticmethod
+    def _snapshotted(index: str) -> bool:
+        """Only a plane's own flight session ("flight-<callsign>") is kept on board. The shared flight log
+        ("flightlog-<frequency>") must not be: a local copy would make the session open without downloading the
+        cloud index, so after a restart it would come up empty and the next push would replace the cloud flight log
+        with only the new flights."""
+        return index.startswith("flight-")
+
     def has_snapshot(self, index: str) -> bool:
-        return getattr(self, "disk_dir", None) is not None and not index.startswith("airport-") and self._snapshot_exists(index)
+        return (getattr(self, "disk_dir", None) is not None and self._snapshotted(index)
+                and self._snapshot_exists(index))
 
     def _note_added(self, index: str, docs: list[Doc]) -> None:
-        if getattr(self, "disk_dir", None) is None or index.startswith("airport-"):
+        if getattr(self, "disk_dir", None) is None or not self._snapshotted(index):
             return
         if not any(str(d.metadata.get("type", "")) in self.SAVED_TYPES for d in docs):
             return
@@ -162,7 +171,7 @@ class _DiskSnapshots:
     def forget_snapshot(self, index: str) -> None:
         """The flight is over and its seat goes to someone else: delete the on-board copy, so the next pilot who
         gets this callsign starts clean and never sees a previous pilot's clearances."""
-        if getattr(self, "disk_dir", None) is None or index.startswith("airport-"):
+        if getattr(self, "disk_dir", None) is None or not self._snapshotted(index):
             return
         task = self._save_tasks.pop(index, None)
         if task is not None and not task.done():

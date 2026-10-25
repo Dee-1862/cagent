@@ -96,6 +96,16 @@ async def flight_log_checks(factory, report, keep: bool) -> int:
         await mem.add_docs(index, [Doc("clr-1", text, {"callsign": callsign, "type": "clearance", "ts": now_ms()})], COCKPIT)
         await log.archive(callsign, mem, index, "live check")
     pushed = await log.push()
+    job_id = (pushed or {}).get("job_id")
+    if job_id and getattr(mem, "client", None) is not None:
+        # The push starts a build job. A fresh client that searches before it finishes sees an empty index, which is
+        # what an earlier run of this check read as "the flight log did not survive".
+        waited = time.perf_counter()
+        try:
+            await mem.client.wait_for_job(job_id, poll_interval_seconds=0.5, timeout_seconds=90)
+            report(f"   the push's build job finished in {round((time.perf_counter() - waited) * 1000)} ms")
+        except Exception as exc:
+            report(f"   the push's build job did not finish cleanly ({type(exc).__name__}: {str(exc)[:80]})")
     report(f"4. flight log {log.index}: {len(log.flights)} flights archived, pushed once: {pushed}")
     failures = 0 if pushed and pushed.get("ok") else 1
     mem2 = factory()  # a restart: a new client (a dry run hands back the same memory, so it proves nothing there)

@@ -1,5 +1,5 @@
 {
-  "_note": "Human air traffic control timings used in docs/26 and scripts/task_latency_report.py. kind SOURCED = a published figure whose full text was read; MODELLED = our own arithmetic from stated assumptions, with no citation; NOT_MEASURED = no figure found, so no comparison is made. Nothing here is a measurement of Unstep's users.",
+  "_note": "Human air traffic control timings used in docs/26 and scripts/task_latency_report.py. kind SOURCED = a published figure about air traffic control whose full text was read; DERIVED = arithmetic from a SOURCED figure; CROSS_DOMAIN = a published figure from another field (conversation, typing, driving), used only as a rough bracket and never as the ATC figure; MODELLED = our own arithmetic with stated assumptions and no citation; NOT_MEASURED = no figure found, so no comparison is made. Nothing here is a measurement of Unstep's users.",
   "items": [
     {
       "id": "pilot_readback_latency",
@@ -22,20 +22,21 @@
     {
       "id": "say_again_cycle",
       "task": "Recover a lost instruction by saying again",
-      "seconds": 5.85,
-      "kind": "MODELLED",
-      "source": "none. Our own arithmetic in docs/18-benchmark.md: pilot reaction 1.5 s and 250 ms per word are assumptions with no citation, plus 300 ms gaps; median over 157 simulated stepped-on calls",
+      "seconds": 5.6,
+      "kind": "DERIVED",
+      "source": "Derived: 1.5 s for the pilot to notice and key up (CROSS_DOMAIN, Green 2000, driver response to a surprise, see below) + the request 'Tower, Cessna one two three, say again' (10 syllables, 1.6 s at 6.1 syllables per second) + the controller's repeat (13 syllables, 2.1 s) + two 0.3 s gaps (our assumption). The 1.5 s is not an aviation figure",
       "note": "Only if someone noticed the garble",
-      "verified": "not a cited figure"
+      "verified": "components cited as noted; the total is our arithmetic"
     },
     {
       "id": "spoken_clearance",
       "task": "Speak a clearance on the radio",
       "seconds_per_word": 0.25,
-      "kind": "MODELLED",
-      "source": "none for the 250 ms per word (our assumption). Context that is cited: Prinzo and McClellan (2005) found an average transmission on the five busiest TRACONs lasted 2568 ms of voice streaming (2849 ms with setup, pause and propagation), over all messages, so it is not like for like with one clearance",
+      "kind": "DERIVED",
+      "source": "Derived from the 6.1 syllables per second above: 'Cessna one two three, cleared for takeoff runway three three' is 13 syllables, so about 2.1 s. The earlier 250 ms per word was our assumption and is dropped. Cited context: Prinzo and McClellan (2005) found an average transmission at the five busiest TRACONs lasted 2568 ms of voice, over all messages",
       "note": "Parity expected: speaking takes as long as the words take to say",
-      "verified": "the 2568 ms figure read in the full text 2026-10-25; the per-word figure is not cited"
+      "verified": "derived from a source whose abstract was read; the 2568 ms figure read in the full CAMI text",
+      "seconds_per_syllable": 0.164
     },
     {
       "id": "rule_lookup",
@@ -54,6 +55,51 @@
       "source": "none verified. Only search snippets mentioned EUROCONTROL and FAA material on readback and hearback errors; nothing was read in full, so no claim is made",
       "note": "A rate problem, not a speed problem",
       "verified": "not verified"
+    },
+    {
+      "id": "atc_speech_rate",
+      "task": "How fast US controllers speak",
+      "syllables_per_second": 6.1,
+      "kind": "SOURCED",
+      "source": "Nitta, H., Okazaki, H. and Klinger, W. (2011), 'An Analysis of U.S. Air Traffic Controllers' Speech Speed Rates', University of Shiga Prefecture (https://www.usp.ac.jp/user/usp/english/kenkyusha/ronbun/2011/2011-I-Klinger.pdf): median 6.1 syllables per second for controllers talking to pilots at three American international airports; the same paper cites 5.1 in movies and 4.7 in news, and that non-native listeners missed 21.2% of words at 6 syllables per second and 32.7% at 7",
+      "verified": "full text of the abstract read 2026-10-25; the body was not read",
+      "note": "Controllers only; one study, three airports"
+    },
+    {
+      "id": "unexpected_response_time",
+      "task": "A person's response time to an unexpected event",
+      "seconds": 1.5,
+      "kind": "CROSS_DOMAIN",
+      "source": "Green, M. (2000), 'How Long Does It Take to Stop? Methodological Analysis of Driver Perception-Brake Times', Transportation Human Factors 2(3), 195-216 (https://doi.org/10.1207/STHF0203_1): about 0.7 s when the signal is expected, about 1.25 s for an unexpected but common signal, about 1.5 s for a surprise. Driving, not aviation",
+      "verified": "abstract only, seen through search results of the publisher page; full text not read (the publisher page returned 403)",
+      "note": "Used only as a bracket for the pilot's reaction in the say-again cycle"
+    },
+    {
+      "id": "conversational_speech_rate",
+      "task": "Everyday speaking rate",
+      "words_per_minute": 196,
+      "kind": "CROSS_DOMAIN",
+      "source": "Yuan, J., Liberman, M. and Cieri, C. (2006), 'Towards an Integrated Understanding of Speaking Rate in Conversation', Interspeech 2006 (https://www.ldc.upenn.edu/sites/default/files/interspeech2006-towards-integrated-understanding.pdf): overall average 196 words per minute in English conversational telephone speech (individual conversations 111 to 291)",
+      "verified": "full text read 2026-10-25",
+      "note": "Telephone conversation, not radio"
+    },
+    {
+      "id": "typing_rate",
+      "task": "Everyday typing rate",
+      "words_per_minute": 51.56,
+      "kind": "CROSS_DOMAIN",
+      "source": "Dhakal, V., Feit, A. M., Kristensson, P. O. and Oulasvirta, A. (2018), 'Observations on Typing from 136 Million Keystrokes', CHI 2018 (https://doi.org/10.1145/3173574.3174220): average 51.56 words per minute (SD 20.2) across 168,000 volunteers",
+      "verified": "full text read 2026-10-25",
+      "note": "General typists; says nothing about controllers"
+    },
+    {
+      "id": "explain_or_brief",
+      "task": "Write or say a short explanation",
+      "seconds": null,
+      "kind": "NOT_MEASURED",
+      "source": "no ATC figure. A bracket from other fields only: a 60-word note takes about 70 s to type at 51.56 words per minute and about 18 s to say at 196 words per minute (both CROSS_DOMAIN, above)",
+      "verified": "arithmetic from two cross-domain figures",
+      "note": "Not a measurement of how long a controller takes"
     }
   ]
 }

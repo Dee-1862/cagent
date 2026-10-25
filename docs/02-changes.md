@@ -2,6 +2,13 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## Cross-domain human baselines, and the flight log survives a restart in the cloud
+
+- `assets/human_baselines.json`: added the controller speech rate (6.1 syllables per second, Nitta, Okazaki and Klinger 2011), a driving reaction time to unexpected events (Green 2000, abstract only), conversational speech rate (196 wpm) and typing rate (51.56 wpm). Say-again (about 5.6 s) and speaking a clearance (about 2.1 s) are now DERIVED, not modelled. The explain row is a cross-domain bracket (about 70 s typed, about 18 s spoken), labelled as not a controller figure.
+- `docs/26`: table and source list updated. Unstep speaks a clearance about 40% slower than a median controller; the doc says so.
+- Moss: MM1 no longer saves the shared `flightlog-<freq>` session to disk (plane sessions only). Before, a restart opened the flight log empty and the next push would have replaced the cloud copy. The live check now waits for the push's build job; result: 2 docs back after a fresh client, 1467 ms. Test added in `tests/test_moss_disk.py`.
+
+
 
 
 

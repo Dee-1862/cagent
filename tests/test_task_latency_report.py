@@ -10,13 +10,14 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def test_every_human_baseline_has_a_kind_and_a_source_and_no_invented_figure():
     items = json.loads((ROOT / "assets" / "human_baselines.json").read_text())["items"]
-    assert {i["kind"] for i in items} <= {"SOURCED", "MODELLED", "NOT_MEASURED"}
+    assert {i["kind"] for i in items} <= {"SOURCED", "DERIVED", "CROSS_DOMAIN", "MODELLED", "NOT_MEASURED"}
     for i in items:
         assert i["source"] and i["task"]
         if i["kind"] == "NOT_MEASURED":
             assert i.get("seconds") is None and i.get("seconds_per_word") is None  # no number where none was found
         else:
-            assert i.get("seconds") or i.get("seconds_per_word")
+            assert any(i.get(k) for k in ("seconds", "seconds_per_word", "seconds_per_syllable",
+                                          "syllables_per_second", "words_per_minute"))
 
 
 def test_the_table_lists_six_jobs_and_does_not_claim_a_win_where_the_human_side_is_unmeasured():
@@ -40,5 +41,9 @@ def test_a_sourced_baseline_says_what_was_read_and_a_modelled_one_admits_it_has_
     items = {i["id"]: i for i in json.loads((ROOT / "assets" / "human_baselines.json").read_text())["items"]}
     assert items["pilot_readback_latency"]["verified"].startswith("full text read")
     assert "NTRS 20220007116" in items["pilot_readback_latency"]["source"] and items["pilot_readback_latency"]["seconds"] == 0.639
-    assert items["say_again_cycle"]["source"].startswith("none") and items["spoken_clearance"]["source"].startswith("none")
+    assert items["atc_speech_rate"]["syllables_per_second"] == 6.1 and items["atc_speech_rate"]["kind"] == "SOURCED"
+    assert items["say_again_cycle"]["kind"] == "DERIVED" and "not an aviation figure" in items["say_again_cycle"]["source"]
+    assert all(items[k]["kind"] == "CROSS_DOMAIN" for k in ("conversational_speech_rate", "typing_rate",
+                                                             "unexpected_response_time"))
+    assert items["unexpected_response_time"]["verified"].startswith("abstract only")
     assert items["hearback_catch"]["verified"] == "not verified" and items["hearback_catch"].get("seconds") is None

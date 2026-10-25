@@ -90,14 +90,15 @@ async def measure_speech() -> dict:
 
 def table(offline: dict, speech: dict | None, human: dict) -> list[tuple]:
     say_again = human["say_again_cycle"]["seconds"]
-    per_word = human["spoken_clearance"]["seconds_per_word"]
+    syllables = 13  # "Cessna one two three, cleared for takeoff runway three three"
+    spoken_s = round(syllables / human["atc_speech_rate"]["syllables_per_second"], 1)
     rows = [
         ("Notice a stepped-on call",
          "no automatic detection (FAA CAMI 2005); noticed through consequences, time not measured",
          "key overlap known within one network hop; call end to cockpit flagged about 1.0 s (Rishit, live)",
          "Unstep: the only one that detects it. Detection rate 91.7% is on simulated calls"),
         ("Recover the lost instruction",
-         f"say again and retransmit: about {say_again} s, MODELLED, only if someone noticed",
+         f"say again and retransmit: about {say_again} s, DERIVED from the cited controller speech rate plus a 1.5 s reaction taken from a driving study, only if someone noticed",
          "2.9 s call end to the pilot hearing the fix, including the controller's approval (Rishit, live)",
          "Unstep faster; most of its 2.9 s is the human approving"),
         ("Check a readback",
@@ -109,13 +110,12 @@ def table(offline: dict, speech: dict | None, human: dict) -> list[tuple]:
          f"{offline['rule_lookup_ms']} ms from the hub's stored rules (measured here); about 700 ms by hybrid search when no rule is stored",
          "no human figure, so no comparison"),
         ("Speak a clearance",
-         f"about {round(per_word * (speech['words'] if speech else 10), 1)} s for {speech['words'] if speech else 10} words (MODELLED at {per_word} s per word, an assumption)",
+         f"about {spoken_s} s for a {syllables}-syllable clearance at the median controller rate of 6.1 syllables per second (Nitta, Okazaki and Klinger 2011)",
          (f"first audio {speech['first_audio_ms']} ms, whole phrase {speech['spoken_s']} s (Cartesia, measured here, {speech['n']} calls)"
           if speech else "first audio about 140 ms, whole phrase about 3.9 s (run with --live to measure)"),
-         "Unstep starts within about 140 ms but its phrase runs longer than the modelled person. Sonic's speed setting trims "
-         "about 8% at 1.5 and then mishears a word (\"holds short\"); 1.3 was clean on two phrases"),
+         "Unstep starts within about 140 ms but its phrase takes about 3.7 s of speech (3.5 syllables per second) against about 2.1 s at the median controller rate. Sonic's top speed setting (1.5) reaches about 4.1 syllables per second and mishears a word; slower speech is also easier for non-native listeners (21.2% of words missed at 6 syllables per second)"),
         ("Explain why, or write a handoff briefing",
-         "a person writes or says it, not measured",
+         "not measured for controllers; a bracket from other fields: a 60-word note takes about 70 s to type (51.56 wpm) or about 18 s to say (196 wpm)",
          "5 to 12 s through an Elastic agent (live), 0 to 6 s for the cached or skipped cases",
          "Unstep slower; this runs after the card is on screen, off the path a pilot waits on"),
     ]

@@ -291,3 +291,22 @@ def test_a_save_cancelled_by_stop_cannot_overwrite_the_final_one(tmp_path):
         return await LocalMemory(disk_dir=str(tmp_path)).load_snapshot("flight-X")
 
     assert asyncio.run(go()) == 2
+
+
+def test_only_a_plane_session_is_kept_on_board_never_the_shared_flight_log(tmp_path):
+    """A local copy of the flight log would make its session open without downloading the cloud index, so after a
+    restart it came up empty and the next push replaced the cloud flight log with only the new flights."""
+    import asyncio
+
+    from unstep.cockpit.memory import Doc, LocalMemory
+
+    async def go():
+        mem = LocalMemory(disk_dir=str(tmp_path))
+        mem.save_interval_s = 0
+        for index in ("flight-N123AB", "flightlog-118.700", "freq-118.700"):
+            mem.register_index(index, "cockpit")
+            await mem.add_docs(index, [Doc("c1", "hold short", {"type": "clearance"})], "cockpit")
+        await mem.flush_saves()
+        return mem.has_snapshot("flight-N123AB"), mem.has_snapshot("flightlog-118.700"), mem.has_snapshot("freq-118.700")
+
+    assert asyncio.run(go()) == (True, False, False)
