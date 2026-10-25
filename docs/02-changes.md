@@ -19,6 +19,17 @@ What changed and why, in a few lines.
 
 ---
 
+## 2026-10-24: No more speech connection per line from cues, recovery lines or freed seats
+
+**Type:** Fixed
+**Area:** Audio
+
+- Rishit's benchmark hit HTTP 429 from Cartesia because a connection was opened per line and never closed (R29), and asked us to check the hub. Main's 76428c0 fixed the typed-line and controller paths. Two of our own paths had the same fault: the spoken eyes-free cues and the tower's "was blocked" recovery line each built a fresh live voice per call. Both now use the shared controller voice.
+- A walk-up plane's own cockpit voice connection was never closed when its seat was freed or the hub stopped. It is now (`_close_engine`), so seat churn at the demo can't pile up sockets.
+- Checked: 2 tests (cues and recovery share one connection; a freed seat closes its cockpit engine). The 429 itself needs a live run with six phones to be sure.
+
+**Related:** agent mail R29
+
 ## 2026-10-24: Audit trail and benchmark in Elastic, "ask the audit trail", and a Moss live check (E-3, E-2, M-1)
 
 **Type:** Added

@@ -482,6 +482,23 @@ class LiveRoom:
             self._controller_voice = SerialTTS(self._advisory_tts())
         return self._controller_voice
 
+    @staticmethod
+    async def _close_engine(edge) -> None:
+        """Close the speech connection a cockpit agent opened for itself (walk-up planes come and go, and
+        every one that leaves must hand its connection back or Cartesia answers HTTP 429 later)."""
+        engine = getattr(edge, "tts", None)
+        for _ in range(4):  # TimedTTS -> StreamingTTS -> engine
+            inner = getattr(engine, "engine", None)
+            if inner is None:
+                break
+            engine = inner
+        close = getattr(engine, "close", None)
+        if close is not None:
+            try:
+                await close()
+            except Exception:
+                log.debug("closing a cockpit speech connection failed", exc_info=True)
+
     async def _close_voices(self) -> None:
         """Close every Cartesia speech connection the hub opened (on stop)."""
         engines = [t.engine for t in self._voice_tts.values()]
@@ -624,7 +641,7 @@ class LiveRoom:
         audio = self._cue_cache.get(key)
         if audio is None:
             try:
-                speech = await self._advisory_tts().speak(text)
+                speech = await self._controller_tts().speak(text)
             except Exception:
                 log.exception("cue speech failed for %s", station)
                 return None
@@ -800,6 +817,7 @@ class LiveRoom:
             except Exception:
                 log.warning("flight log push at stop did not finish; the log stays local")
         for edge in self.edges.values():
+            await self._close_engine(edge)
             await edge.stop()
         for link in self.links.values():
             await link.close()
@@ -880,6 +898,7 @@ class LiveRoom:
             if push:
                 self._spawn(self._push_flight_log())
         if edge is not None:
+            await self._close_engine(edge)
             try:
                 await edge.stop()
             except Exception:
@@ -1496,7 +1515,7 @@ class LiveRoom:
                 continue
             audio = None
             try:
-                speech = await self._advisory_tts().speak("Advisory. " + text)
+                speech = await self._controller_tts().speak("Advisory. " + text)
                 audio = wav_b64(to_mono16k(speech.pcm, speech.sample_rate), SAMPLE_RATE) if speech.pcm else None
             except Exception:
                 log.exception("tower recovery speech failed; sending text only")

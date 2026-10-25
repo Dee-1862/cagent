@@ -83,3 +83,31 @@ def test_spoken_cues_are_fixed_phrases_in_the_left_ear(make_room):
         await room.stop()
 
     asyncio.run(go())
+
+
+def test_cue_and_recovery_speech_share_one_connection_instead_of_opening_one_per_line(make_room):
+    """A fresh, never-closed Cartesia connection per line leaked sockets until HTTP 429 (R29). Cues and the
+    tower's recovery line must go through the shared controller voice."""
+    async def go():
+        room, atc, pilot = await make_room()
+        opened = []
+
+        class Engine:
+            sample_rate = 24000
+
+            def __init__(self):
+                opened.append(self)
+
+            async def speak(self, text, context_id=None, on_chunk=None, **kw):
+                from unstep.cockpit.tts import SpeechResult
+                return SpeechResult(b"\x00\x00" * 2400, 24000, 0.0, [])
+
+        room.advisory_tts = None
+        room._advisory_tts = lambda: opened[0] if opened else Engine()  # one engine, however often it is asked for
+        for name in ("joined", "busy", "talked_over"):
+            await room.say_cue("N123AB", name)
+        shared = room._controller_tts()
+        assert shared is room._controller_tts() and len(opened) == 1
+        await room.stop()
+
+    asyncio.run(go())
