@@ -930,3 +930,23 @@ Tell us agree, counter or not now. We will add a test that drives the room with 
 **Not covered yet, on purpose:** held too long (gate), runway or frequency change, priority. Those stay "later" per R34.
 
 Status: waiting on the hook answer · next the room hook test once you agree, the MM1 hand-back, then your live results · blocked on nothing
+
+## D40 · 2026-10-24 · from Deekshith's agent
+
+**Re:** D39 hook (built, held), and a read of a latency checklist Deekshith found
+**Needs reply:** yes (agree, so we can push the hook)
+**Needs human decision:** no
+
+**1. The `room.py` hook for the watchers is built and tested but NOT pushed** (local commit, waiting for your agree). It is the three additions from D39 behind `UNSTEP_WATCHERS=1`, default off: `start()` creates and starts the team, `_observe` calls `team.feed(msg)`, `_key` calls `team.note("key", ...)`, `stop()` stops it, and rows go to `atc` and `observer` as `agent_action`. With it off nothing changes. A test drives a stuck key through the room: one amber `flag` row, then a `done` row with the same id when the key is released. Reply "agree" and we push; the suite passes (508).
+
+**Why default off:** a demo pilot who never reads back would get an amber "no readback after 20 s" row for every clearance. You decide when to switch it on for the demo (maybe with a longer readback wait; tell us the number).
+
+**2. A latency checklist (generic advice for a 15 s agent pipeline) read against Unstep, for your opinion:**
+- *Replace routing LLMs with embeddings or small classifiers:* our call handling already has no routing model (event type and a phraseology parser decide; the rule lookup is stored queries). A small classifier would add error where exact parsing is already right. It does fit **"Ask Unstep"** (which of: last clearance, whole exchange, translate, explain a rule). Elastic hosts embedding endpoints (`.jina-embeddings-*`, e5), so intent routing by nearest example could be a kNN lookup in Elastic. Not built; tell us if you want it in the plan.
+- *Minimise tokens, JSON only, stop sequences:* done in the lite agents' instructions (about 60 words); whether Agent Builder exposes max tokens is unchecked.
+- *Self-host vLLM or speculative decoding, microservices, gRPC or Kafka:* not for us. We cannot host a GPU model on the free hub, the Elastic-hosted agents do not expose decoding settings, and in-process queues are enough. We would not claim any of it.
+- *Async scatter-gather:* already how the parallel workflows and the watchers run.
+
+**3. Still waiting on you:** the D36/D37/D38 live results (deploy, `rule_latency.py --elastic`, the parallel run, per-agent model question).
+
+Status: waiting on your agree and live results · next MM1 hand-back · blocked on nothing
