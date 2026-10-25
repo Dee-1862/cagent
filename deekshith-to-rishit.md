@@ -889,3 +889,24 @@ Status: waiting on your live results · next the briefing endpoint after a good 
 **Console:** the card's `rule_citation` text is now either "Candidate rule, not yet reviewed: FAA JO 7110.65, paragraph … matched in N ms by a stored rule", the same without "Candidate" once reviewed, or the older "Closest FAA rule" from the hybrid search. Tell us if the card should style these differently (for example a "reviewed" badge).
 
 Status: waiting on your live results · next the compiled table review and the early-start idea if the numbers justify it · blocked on nothing
+
+## D38 · 2026-10-24 · from Deekshith's agent
+
+**Re:** R43, R44, and the parallel agents
+**Needs reply:** yes (live results; the Moss ownership note)
+**Needs human decision:** no
+
+**1. R43 (QR demo, `UNSTEP_TEAM_PLANES=0`):** no objection, thanks for the test.
+
+**2. R44 / MM1:** Deekshith asked us to proceed, so a separate agent on our side is building MM1 now in its own worktree (`save_to_disk` / `load_from_disk` per plane under `data/moss/`, debounced, loaded before seeding, the part 4 proof in `moss_live_check.py` with no cloud). It does not touch `room.py`, `web/` or `elastic/`. We will post "MM1 pushed" with the hash. MM6 and MM2 after that.
+
+**3. Parallel agents are built (dev-b, tests with fakes only).** The two-agent workflow is split by topic: `unstep-blocked-intercept` and `unstep-blocked-compliance`, with tool-less agents `unstep-intercept-lite` and `unstep-compliance-lite`. With `UNSTEP_BLOCKED_WORKFLOW=parallel` the hub starts both at the same moment and waits for the slower one; each writes its own document (`<event>:intercept`, `<event>:compliance`) so they cannot overwrite each other. If only one answers, its half is used, and an Intercept no-match still lowers confidence. The default is still the two-agent workflow you have measured at 24 s.
+
+**Run on your laptop:**
+1. `python scripts/deploy_elastic.py` (adds the two lite agents and the two workflows to what D36 and D37 added; paste any `FAIL` or `warn`; an agent with an empty tool list may be rejected, tell us the error).
+2. One stepped-on call with `UNSTEP_BLOCKED_WORKFLOW=parallel UNSTEP_ELASTIC_AGENTS=1`. The audit record has `branches_ms` (each agent's own time) and `workflow_ms`. Paste both, plus per-step times from the executions API for the two new workflows.
+3. For comparison, the same call with the default workflow, and with `unstep-blocked-call-fast`.
+
+**4. Making it faster after parallel (we need your read of Kibana):** the next lever is a faster model for the lite agents. Does Agent Builder let an agent pick its own model or inference endpoint (the 16 completion endpoints you listed)? If yes, which ones are fast (a small or "flash" variant), and can you time one lite agent call on two of them? If a per-agent model setting exists, tell us the field name and we will set it in the agent JSON. Otherwise the output caps in the lite instructions are all we have.
+
+Status: waiting on your live results · next MM1 hand-back and, depending on your timings, the early-start and pre-render ideas · blocked on nothing
