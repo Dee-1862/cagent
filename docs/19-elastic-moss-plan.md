@@ -6,7 +6,7 @@ A plan, not a build. Nothing in section 5 or 6 is started. It exists so Deekshit
 | --- | --- |
 | Status | v0.2. Decided in R29 (2026-10-24): M-1, M-2, E-1, E-2, E-3 agreed and the not-now list agreed; M-3 and E-4 are not to be built before the demo. M-2, E-2 and E-3 are built and tested offline; M-1 and E-1 need keys (section 8) |
 | Written by | Deekshith's side (agent), for review by Rishit's side |
-| Related | [16-sponsor-depth.md](16-sponsor-depth.md), [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md), [10-agentic-architecture.md](10-agentic-architecture.md), [18-benchmark.md](18-benchmark.md) |
+| Related | [20-agent-map.md](20-agent-map.md), [16-sponsor-depth.md](16-sponsor-depth.md), [15-pilot-app-and-sponsor-plan.md](15-pilot-app-and-sponsor-plan.md), [10-agentic-architecture.md](10-agentic-architecture.md), [18-benchmark.md](18-benchmark.md) |
 
 Step ids (M-1 to M-4, E-1 to E-4) belong to this plan. They are not the M1 to M6 and E1 to E3 items in docs/16 (for example docs/16's E3 is the CHANGE_POINT idea, which is still not now).
 
@@ -223,6 +223,7 @@ Order as agreed: M-1 and E-1 first, in parallel, since both are live proofs and 
 | M-2 | Ordering, grouping and our own score floor in `unstep/cockpit/memory.py`; "what was the whole exchange" answer; floor on the hint's search evidence only (the hint rule is unchanged) | 7 tests, including a fake Moss session that refuses `sort_by` | The right floor value (`UNSTEP_MOSS_MIN_SCORE`, placeholder 0.25) and whether Moss's own sort and grouping behave (step M-1, part 3). Moss documents `min_score` for loaded indexes, not session queries, so the floor is ours |
 | E-3 | `unstep-eval` and `unstep-sim-events` indexes with explicit mappings, run summaries stored with flat headline numbers (`kind` benchmark or simulation, simulated runs labelled), Kibana data views in the deploy script, `UNSTEP_STATS_INCLUDE_SIMULATED=1` so the console's "Simulated traffic" badge lights | Mocked Elastic: document shape against the strict mapping, fake runs never stored, real stats exclude simulated records, dry-run lists every request | The data view API path (the deploy script treats a failure as a warning), the dashboard itself (built by hand in Kibana, section 8.3), real mappings accepted |
 | E-2 | Agent `unstep-audit` and four read-only ES\|QL tools (blocked per callsign, readback outcomes, blocked per minute, auto-resends), `POST /live/ask-audit`, a console box that shows the ES\|QL that answered | Mocked converse API: tolerant parsing, timeouts, limits, route off without Elastic; headless browser check of the box | The real converse response shape (the parser guesses from search summaries; pin it with a test after the first live answer), the agent's answers, ES\|QL syntax and `BUCKET` on the cluster |
+| M-1 follow-ups | Each plane's flight session is warmed at join (one empty fetch and one tiny search, `MossMemory.warm`); a Moss client that cannot be created falls back to local memory; a failed flight-log push records its reason and the status line shows it | 3 tests with fakes | Whether warming brings the first hint from about 783 ms (live, R31) down to the warm 0.2 to 0.4 ms |
 
 `LOOKUP JOIN` is not used: the command reference still labelled it preview, and the four tools need only `STATS`, `BUCKET` and `CASE`.
 
@@ -236,7 +237,8 @@ Order as agreed: M-1 and E-1 first, in parallel, since both are live proofs and 
    - part 3, whether Moss's own `sort_by` is numeric and what `group_by` returns (diagnostics, never failures);
    - part 4, the test flight log `flightlog-check-<time>`: two flights, one push, then a brand new client and how many docs came back and how fast. That is the restart claim.
 4. The test index is deleted at the end (`--keep` keeps it). It never touches `flightlog-<frequency>` or any `flight-*` index.
-5. Paste the whole output to Rishit's side or the main session. Until the part 4 line shows the docs back after a fresh client, do not say the flight log survives a restart.
+5. Known blocker (R31): part 4 failed on Rishit's Moss project with `The project's usage limit has been reached; billing must be updated`. Moss Inference still worked. Run part 4 on a project with room for a cloud index; the hub now shows this reason in the flight log status instead of looking healthy.
+6. Paste the whole output to Rishit's side or the main session. Until the part 4 line shows the docs back after a fresh client, do not say the flight log survives a restart.
 
 ### 8.3 E-1: one real Elastic loop (needs the Elastic keys, so Deekshith's machine)
 

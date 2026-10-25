@@ -4,6 +4,14 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## Moss connection checklist and an agent map
+
+- A plane's flight session is warmed at join (`MossMemory.warm`), so the first hint in a live room is not the slow one (Rishit measured 783 ms against 0.2 to 0.4 ms warm; the effect of warming is still to be measured).
+- A Moss client that fails at creation now falls back to local memory instead of stopping the room.
+- A failed flight-log push records the Moss error text, and the flight log status line says why the cloud copy is behind (for example a project usage limit).
+- New `docs/20-agent-map.md`: one sentence end to end, which agent reads what, the widened jobs agreed in R34, and the ideas not agreed (triage ranker, routing between people), each tagged built, measured or proposed.
+
 ## README: why stretched-thin towers need a safety net
 
 - New README section with cited public figures (staffing shortfall, training time, the NTSB finding on combined positions at DCA, the 2024 rest rules), framed as a safety net for a short-staffed controller. It states that Unstep does not reduce staffing and that no effect has been measured. Replaces the earlier fewer-controllers framing, which clashed with humans-stay-in-charge.
