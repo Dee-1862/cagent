@@ -19,6 +19,12 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## Planes start in parallel, and a snapshot race fixed
+
+- `LiveRoom.start` starts every plane at once instead of one after another. Opening a Moss session contacts Moss, and a real test here took 6.3 s for six sessions one after another against 3.2 s all at once (about 2 times, not 6 times; the cause of the gap is not known). The sessions stay open for the life of the hub, so a restore is the only per-plane cost afterwards.
+- Snapshot writes are now serialized per plane and shielded from cancellation. Stopping a plane cancels the pending save, but the write already running in its thread kept going and could finish after the final one, leaving the older snapshot on disk (Rishit saw 3 documents instead of 4 on Windows). A test with a slow earlier write fails without the change and passes with it. This is a plausible cause, not a confirmed one on his machine.
+
 ## Faster agents: Intercept only when the local match is unsure, and a Compliance answer cache
 
 - `UNSTEP_INTERCEPT=auto` (default) asks the slow Intercept agent only when the hub's own match is not already high confidence; `always` and `never` also work. For a high-confidence call the agent step is compliance-lite alone (5.7 to 7.1 s live).

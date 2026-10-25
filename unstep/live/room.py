@@ -620,9 +620,10 @@ class LiveRoom:
             for link in self.links.values():
                 await link.connect()
 
-            for s in list(self.stations.values()):
-                if s.kind == "aircraft":
-                    await self._start_edge(s)
+            # Start every plane at once: opening a Moss session contacts Moss (about 300 ms each), so one after
+            # another a full fleet waits for the sum. The sessions stay open for the life of the hub.
+            await asyncio.gather(*(self._start_edge(s) for s in list(self.stations.values())
+                                   if s.kind == "aircraft"))
             self._spawn(self._scheduler())
             self._spawn(self._ticker())
             self._spawn(self._landing_sweeper())

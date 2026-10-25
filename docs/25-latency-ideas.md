@@ -115,3 +115,5 @@ Real Cartesia and Moss calls from the development sandbox, not from Rishit's lap
 The caption result suggests `UNSTEP_CAPTION_SOURCE=turns` would look smoother (half the gap between updates). It is one clip and three runs, so it is indicative, not a distribution.
 
 What this means for "single-digit ms": restoring a plane's memory from disk is single digit milliseconds (about 1 ms here and 1.4 ms warm on Rishit's laptop). The 260 to 340 ms is opening the session with Moss, which should be done once at hub start, not per restore.
+
+Opening sessions: with a real Moss project from this sandbox, six sessions took 6.3 s one after another and 3.2 s opened at once. The hub now starts planes at once. The remaining time per session is Moss's own and is spent once at hub start.

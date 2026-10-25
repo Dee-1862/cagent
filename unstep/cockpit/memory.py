@@ -113,6 +113,7 @@ class _DiskSnapshots:
         self._dirty: set[str] = set()
         self._save_tasks: dict[str, asyncio.Task] = {}
         self._last_save: dict[str, float] = {}
+        self._write_locks: dict[str, asyncio.Lock] = {}  # one snapshot write per index at a time
 
     def has_snapshot(self, index: str) -> bool:
         return getattr(self, "disk_dir", None) is not None and not index.startswith("airport-") and self._snapshot_exists(index)
@@ -138,11 +139,19 @@ class _DiskSnapshots:
                 await asyncio.sleep(wait)
             await self._save_now(index)
 
+    async def _locked_write(self, index: str) -> None:
+        locks = self.__dict__.setdefault("_write_locks", {})
+        lock = locks.setdefault(index, asyncio.Lock())
+        async with lock:
+            await self._write_snapshot(index)
+
     async def _save_now(self, index: str) -> bool:
         self._dirty.discard(index)
         self._last_save[index] = time.monotonic()
         try:
-            await self._write_snapshot(index)
+            # Shielded and serialized: stopping a plane cancels the pending save, and a cancelled write must not
+            # race the final one (the older snapshot could land last and the latest clearance would be lost).
+            await asyncio.shield(self._locked_write(index))
             self.saves += 1
             return True
         except Exception:
@@ -173,6 +182,9 @@ class _DiskSnapshots:
                 task.cancel()
         for index in list(self._dirty):
             await self._save_now(index)
+        for lock in list(self.__dict__.get("_write_locks", {}).values()):
+            async with lock:  # a write that was already running has finished before we return
+                pass
 
     async def load_snapshot(self, index: str) -> Optional[int]:
         """Restore a plane's session from disk. Returns the document count, or None if there was nothing

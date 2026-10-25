@@ -248,3 +248,46 @@ def test_a_freed_seat_deletes_the_on_board_copy_but_a_hub_stop_keeps_it(tmp_path
 
     assert asyncio.run(go("hub stopped")) is True  # the plane is still flying: it restarts with its memory
     assert asyncio.run(go("phone gone for 20 s")) is False  # the next pilot starts clean
+
+
+def test_a_save_cancelled_by_stop_cannot_overwrite_the_final_one(tmp_path):
+    """A slow earlier write whose thread finishes after the final one must not win (seen as 3 docs instead of 4 on
+    Windows). The earlier write runs in a thread, which a cancelled await does not stop."""
+    import asyncio
+    import json
+    import os
+    import time
+
+    from unstep.cockpit.memory import Doc, LocalMemory
+
+    async def go():
+        mem = LocalMemory(disk_dir=str(tmp_path))
+        mem.save_interval_s = 0
+        mem.register_index("flight-X", "cockpit")
+        calls = {"n": 0}
+
+        async def threaded_write(index):
+            calls["n"] += 1
+            slow = calls["n"] == 1
+            docs = [{"id": d.id, "text": d.text, "metadata": d.metadata} for d in mem.indexes[index].values()]
+            path = mem._snapshot_path(index)
+
+            def write():
+                if slow:
+                    time.sleep(0.3)  # finishes after the final write has been issued
+                path.parent.mkdir(parents=True, exist_ok=True)
+                tmp = path.with_suffix(f".{calls['n']}.tmp")
+                tmp.write_text(json.dumps({"index": index, "docs": docs}), encoding="utf-8")
+                os.replace(tmp, path)
+
+            await asyncio.to_thread(write)
+
+        mem._write_snapshot = threaded_write
+        await mem.add_docs("flight-X", [Doc("a", "one", {"type": "clearance"})], "cockpit")
+        await asyncio.sleep(0.05)  # the first (slow) write is under way in its thread
+        await mem.add_docs("flight-X", [Doc("b", "two", {"type": "clearance"})], "cockpit")
+        await mem.flush_saves()
+        await asyncio.sleep(0.4)  # let any stray thread finish, as a late one would on a slow disk
+        return await LocalMemory(disk_dir=str(tmp_path)).load_snapshot("flight-X")
+
+    assert asyncio.run(go()) == 2
