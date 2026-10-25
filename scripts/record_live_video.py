@@ -209,10 +209,13 @@ def run_story(page, password: str | None) -> None:
          lambda: expect(atc.get_by_text("was blocked").first).to_be_visible(timeout=t))
     page.wait_for_timeout(3000)
 
-    def panels():
-        atc.locator("#steps").scroll_into_view_if_needed(timeout=t)
+    def panels():  # the calm console keeps these behind the evidence sheet and the Safety tab
+        atc.get_by_role("button", name="Show how Unstep handled it").click(timeout=t)
         expect(atc.locator(".waterfall").first).to_be_visible(timeout=t)
-        atc.locator("#stats-source").scroll_into_view_if_needed(timeout=t)
+        page.wait_for_timeout(3000)
+        atc.locator("#close-evidence").click(timeout=t)
+        atc.locator('.side-tabs [data-tab="safety"]').click(timeout=t)
+        expect(atc.locator("#stats-source")).to_be_visible(timeout=t)
     step("waterfall and Elastic panel on screen", panels)
     page.wait_for_timeout(5000)
 

@@ -15,7 +15,7 @@ export function createAirport(container, {quality = "high", followStation} = {})
   scene.background = new THREE.Color(0x0b0d10);
   scene.fog = new THREE.Fog(0x0b0d10, 42, 95);
   const camera = new THREE.PerspectiveCamera(40, 1, .1, 160);
-  camera.position.set(23, 24, 27);
+  camera.position.set(23, 30, 32);
   const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = quality === "high";
@@ -28,10 +28,14 @@ export function createAirport(container, {quality = "high", followStation} = {})
   controls.minDistance = 17; controls.maxDistance = 65;
   controls.maxPolarAngle = Math.PI * .46;
   controls.minPolarAngle = Math.PI * .16;
-  controls.autoRotate = !reduced.matches;
-  controls.autoRotateSpeed = .25;
+  const homeAngle = Math.atan2(23, 32);
+  controls.minAzimuthAngle = homeAngle - THREE.MathUtils.degToRad(8);
+  controls.maxAzimuthAngle = homeAngle + THREE.MathUtils.degToRad(8);
+  controls.autoRotate = false;
   controls.update();
-  renderer.domElement.addEventListener("dblclick", () => {camera.position.set(23,24,27); controls.target.set(0,0,0); controls.update();});
+  let idle = true;
+  renderer.domElement.addEventListener("pointerdown", () => { idle = false; });
+  renderer.domElement.addEventListener("dblclick", () => {idle = true; size(); controls.target.set(0,0,0); controls.update();});
   scene.add(new THREE.HemisphereLight(0xb9d8ff, 0x20232a, 2.2));
   const sun = new THREE.DirectionalLight(0xffe9d0, 2.5);
   sun.position.set(-12, 25, 14); sun.castShadow = quality === "high";
@@ -130,14 +134,28 @@ export function createAirport(container, {quality = "high", followStation} = {})
     if(hits.length){let o=hits[0].object;while(o.parent && ![...entries.values()].some(e=>e.group===o))o=o.parent;const e=[...entries.values()].find(e=>e.group===o);if(e){selected=e.id;onPick(e.id);}}
   }
   renderer.domElement.addEventListener("click",click);
-  const size=()=>{if(!container.clientWidth||!container.clientHeight)return;camera.aspect=container.clientWidth/container.clientHeight;camera.updateProjectionMatrix();renderer.setSize(container.clientWidth,container.clientHeight);};
+  const size=()=>{
+    const w=container.clientWidth,h=container.clientHeight;
+    if(!w||!h)return;
+    const column=Math.min(360,Math.max(0,w-700));
+    const distance=56*Math.max(1,900/h);
+    camera.position.set(Math.sin(homeAngle)*distance*.62,distance*.68,Math.cos(homeAngle)*distance*.62);
+    camera.aspect=w/h;
+    camera.setViewOffset(w+column,h,column,0,w,h);
+    camera.updateProjectionMatrix();renderer.setSize(w,h);
+  };
   const observer=new ResizeObserver(size);observer.observe(container);size();
   const clock=new THREE.Clock();let frame=0;
   function animate() {
     if(disposed)return; frame=requestAnimationFrame(animate);
     if(document.hidden)return;
     const t=performance.now(), dt=clock.getDelta();
-    controls.autoRotate=!reduced.matches && !followStation; controls.update();
+    if (idle && !reduced.matches && !followStation) {
+      const a=homeAngle+THREE.MathUtils.degToRad(8)*Math.sin(t/9000);
+      const radius=Math.hypot(camera.position.x,camera.position.z);
+      camera.position.x=Math.sin(a)*radius; camera.position.z=Math.cos(a)*radius;
+    }
+    controls.update();
     hold.material.emissiveIntensity=[...entries.values()].some(e=>e.hold) ? (reduced.matches?.8:.65+.25*Math.sin(t/260)) : .15;
     towerRing.visible=keyedIds.has("atc");
     if(towerRing.visible){towerRing.scale.setScalar(reduced.matches?1.1:1+(t%1300)/1300*2);towerRing.material.opacity=reduced.matches?.75:1-(t%1300)/1300;}

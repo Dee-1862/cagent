@@ -134,3 +134,23 @@ def test_idle_landing_can_be_switched_off(monkeypatch):
     assert idle_land_s() == 600
     monkeypatch.delenv("UNSTEP_IDLE_LAND_S")
     assert idle_land_s() == 600
+
+
+def test_qr_demo_mode_reset_frees_every_plane_and_the_next_judge_is_plane_a(monkeypatch):
+    monkeypatch.setenv("UNSTEP_TEAM_PLANES", "0")
+    r = make_join_room(monkeypatch)
+
+    async def go():
+        await r.start()
+        first = await r.claim_aircraft()
+        phone, atc = FakeBrowser(), FakeBrowser()
+        await r.join(first.id, phone)
+        await r.join("atc", atc)
+        await r.handle("atc", {"type": "reset"})
+        assert first.id not in r.stations
+        assert any(m["type"] == "seat_freed" for m in phone.messages)
+        again = await r.claim_aircraft()
+        assert again is not None and again.id == first.id  # the next group starts at the same plane
+        await r.stop()
+
+    asyncio.run(go())

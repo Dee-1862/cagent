@@ -58,6 +58,22 @@ function el(tag, text, className) {
 $("show-evidence").addEventListener("click", () => showEvidence(!$("evidence-sheet").classList.contains("open")));
 $("close-evidence").addEventListener("click", () => showEvidence(false));
 $("feed").addEventListener("click", (event) => { if (event.target.closest(".feed-row")) showEvidence(); });
+function selectTab(name) {
+  if (!document.querySelectorAll) return;
+  document.querySelectorAll(".side-tabs [data-tab]").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.tab === name)));
+  document.querySelectorAll(".tab-pane").forEach((pane) => { pane.hidden = pane.dataset.pane !== name; });
+}
+// Tabs and the Ask pane are layout only: if the page can't set them up, the console still works.
+try {
+  document.querySelectorAll(".side-tabs [data-tab]").forEach((button) => button.addEventListener("click", () => selectTab(button.dataset.tab)));
+  const askPane = document.querySelector('[data-pane="ask"]');
+  const moveAudit = () => {
+    const audit = document.querySelector("section.panel.audit");
+    if (audit && askPane && audit.parentElement !== askPane) askPane.append(audit);
+  };
+  new MutationObserver(moveAudit).observe(document.body, {childList:true, subtree:true});
+  moveAudit();
+} catch (error) { console.warn("Side panel tabs", error); }
 function notice(text) { $("notice").textContent = text; }
 function send(message) {
   if (!state.ready || state.ws?.readyState !== WebSocket.OPEN) { notice("Connection lost. Nothing was sent."); return false; }
@@ -390,6 +406,7 @@ function towerWords(trace) {
 function renderInbox() {
   const waiting = tracesNewestFirst().filter((t) => t.status === "needs_you" && t.proposal).reverse();
   $("decision-count").textContent = waiting.length;
+  if (waiting.length) selectTab("agents");
   if (!waiting.length) {
     const empty = el("div", undefined, "empty");
     empty.append(el("strong", "Nothing needs you right now."), el("p", state.autonomy ? "Routine stop-type calls are re-sent automatically, and you see each one below." : "Auto-resend is off. New proposals will wait for your decision."));
@@ -450,9 +467,15 @@ function radioEvent(radio, announce = true) {
 }
 function renderRadio() {
   const traces = tracesNewestFirst();
-  $("radio").replaceChildren(...["atc", ...visibleAircraft().map((s) => s.id)].map((id) => {
+  // Every station keeps its lane; only the two most recently active are shown (the rest are "idle").
+  const all = ["atc", ...visibleAircraft().map((s) => s.id)];
+  const recent = new Set(all
+    .filter((id) => state.lanes.has(id) || state.captions.has(id) || state.liveOverlap.has(id))
+    .sort((a, b) => Math.max(state.lanes.get(b)?.start_ms || 0, state.captions.get(b)?.ts || 0) - Math.max(state.lanes.get(a)?.start_ms || 0, state.captions.get(a)?.ts || 0))
+    .slice(0, 2));
+  $("radio").replaceChildren(...all.map((id) => {
     const tx = state.lanes.get(id);
-    const row = el("div", undefined, "lane");
+    const row = el("div", undefined, recent.has(id) ? "lane" : "lane idle");
     row.dataset.station = id;
     const speaker = el("b", names[id] || shortName(id));
     if (id in state.keyed) speaker.append(el("small", "ON AIR", "on-air"));
