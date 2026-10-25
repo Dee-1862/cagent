@@ -2,6 +2,11 @@
 
 A running log of changes to the Unstep project. Newest entries go at the top.
 
+## "Where the plane was" no longer depends on the agents (R63)
+
+- Rishit's live check found the step never appeared on a high-confidence hold-short call: it was only added in the late-agent path, which does not run then (and does not run at all without `UNSTEP_ELASTIC_AGENTS`). It is now added when the proposal is recorded, from the stored position under 15 s old, for every proposal. Test drives a proposal through the room.
+
+
 ## Console on Vercel, compute on Render
 
 - `deploy/console/`: a Vercel project with no code, only rewrites of `/` and `/live/*` to the Render hub, and its README. The console's WebSocket opens straight to the hub: `atc_page` fills `window.UNSTEP_HUB_HOST` from `UNSTEP_PUBLIC_URL`, and `atc.js` (Rishit's file, one line, told in D59) uses it on `*.vercel.app` pages.

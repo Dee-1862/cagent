@@ -58,3 +58,24 @@ def test_console_page_tells_the_page_which_hub_to_open_its_socket_to(monkeypatch
     with TestClient(create_live_app(live=False, room=make_room(monkeypatch))) as client:
         html = client.get("/live/atc/").text
     assert 'window.UNSTEP_HUB_HOST = "unstep.onrender.com"' in html and "__UNSTEP" not in html
+
+
+def test_every_proposal_trace_gets_where_the_plane_was_without_the_agents(monkeypatch):
+    import asyncio
+    import time
+    from types import SimpleNamespace
+
+    from tests.test_live_join import room as make_room
+    from unstep import scenario
+    from unstep.contracts import Envelope
+
+    r = make_room(monkeypatch)
+    s = next(x for x in r.stations.values() if x.kind == "aircraft")
+    proposal = scenario.proposed_directive()
+    lat, lon = places.to_latlon(-20.0, 14.0)
+    r.geo = SimpleNamespace(latest={s.id: {"lat": lat, "lon": lon, "areas": ["Taxiway B"], "at": time.monotonic()}})
+    r.traces[proposal.event_id] = {"event_id": proposal.event_id, "callsign": s.callsign, "status": "detected",
+                                   "steps": [], "proposal": None, "timings": []}
+    asyncio.run(r._observe(Envelope(type="ProposedDirective", ts=1, data={}), proposal))
+    steps = r.traces[proposal.event_id]["steps"]
+    assert any("Where the plane was: In Taxiway B" in str(st) for st in steps), steps

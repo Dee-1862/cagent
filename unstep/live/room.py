@@ -1828,6 +1828,11 @@ class LiveRoom:
             self._step(trace, "ground", "proposed",
                        f"Proposed \"{msg.instruction_text}\" ({msg.confidence}: {msg.confidence_method})",
                        blocked_words=msg.blocked_words, citation=msg.rule_citation)
+            # Where the plane is comes from the stored position, not from the agents, so every proposal gets it
+            # (the late-agent path only runs for medium and low confidence calls, R63).
+            where = self._where_is(trace, trace["proposal"])
+            if where:
+                self._step(trace, "ground", "where_is", f"Where the plane was: {where}", position=where)
         elif isinstance(msg, AuditRecord) and msg.stage == "policy":
             trace["policy"] = msg.payload
             auto = msg.payload.get("decision") == "auto_relay"
@@ -1928,9 +1933,6 @@ class LiveRoom:
                    f"Elastic's agents checked the fix and cited {citation or 'no paragraph'} "
                    f"({seconds} s, after the card was shown{after})",
                    citation=citation, workflow_ms=agents.took_ms, confidence=proposal.get("confidence"))
-        where = self._where_is(trace, proposal)
-        if where:
-            self._step(trace, "ground", "where_is", f"Where the plane was: {where}", position=where)
         self.send_to(None, {"type": "trace", "trace": trace})
 
     def _where_is(self, trace: dict, proposal: dict) -> str | None:
