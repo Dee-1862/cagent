@@ -1,4 +1,47 @@
 // Unstep tower console. Only received evidence changes the aircraft states.
+let airport = null;
+const sceneCall = (method, ...args) => { try { airport?.[method](...args); } catch (error) { console.warn("Airport scene", error); } };
+const showEvidence = (on = true) => {
+  $("evidence-sheet").classList.toggle("open", on);
+  $("show-evidence").setAttribute("aria-expanded", String(on));
+};
+function syncScene() {
+  sceneCall("setStations", visibleAircraft());
+  sceneCall("keyed", state.keyed);
+  const latest = tracesNewestFirst();
+  for (const station of visibleAircraft()) {
+    const trace = latest.find((t) => t.callsign === station.id);
+    sceneCall("needsYou", station.id, trace?.status === "needs_you");
+    sceneCall("holdShort", station.id, !!trace && ["delivered", "readback_wrong", "needs_you"].includes(trace.status) && /hold short|hold position|stop/i.test(trace.decision?.instruction_text || trace.proposal?.instruction_text || ""));
+  }
+  renderPlaneTags();
+}
+function renderPlaneTags() {
+  if (!airport) return;
+  const tags = $("plane-tags");
+  const ids = new Set(visibleAircraft().map((s) => s.id));
+  tags.querySelectorAll("[data-station]").forEach((tag) => { if (!ids.has(tag.dataset.station)) tag.remove(); });
+  for (const station of visibleAircraft()) {
+    let tag = [...tags.children].find((node) => node.dataset.station === station.id);
+    if (!tag) { tag = el("button", undefined, "plane-tag"); tag.dataset.station = station.id; tag.addEventListener("click", () => showEvidence()); tags.append(tag); }
+    const trace = tracesNewestFirst().find((t) => t.callsign === station.id);
+    tag.textContent = `${station.name || station.id} · ${station.spoken || station.callsign || station.id}${station.id in state.keyed ? " · ON AIR" : trace?.status === "needs_you" ? " · NEEDS YOU" : trace?.status === "confirmed" ? " · ✓" : ""}`;
+    tag.dataset.status = trace?.status || (station.id in state.keyed ? "keyed" : "");
+    try { const p = airport.project(station.id); tag.hidden = !p?.visible; if (p) { tag.style.left = `${p.x}px`; tag.style.top = `${p.y}px`; tag.style.opacity = p.opacity; } } catch { tag.hidden = true; }
+  }
+}
+async function startAirport() {
+  try {
+    if (!document.createElement("canvas").getContext("webgl2") && !document.createElement("canvas").getContext("webgl")) return;
+    const {createAirport} = await import("./scene3d.js");
+    airport = createAirport($("scene3d"), {quality:"high"});
+    airport.onSelect(() => showEvidence());
+    document.body.classList.add("has-scene");
+    syncScene();
+    (function tickTags() { if (!airport) return; renderPlaneTags(); requestAnimationFrame(tickTags); })();
+  } catch (error) { console.warn("3D airport unavailable; using map", error); }
+}
+startAirport();
 const $ = (id) => document.getElementById(id);
 const names = {atc: "Tower"};
 const shortName = (id) => state.stations.get(id)?.name || (id === "atc" ? "Tower" : id || "A plane");
@@ -11,6 +54,10 @@ function el(tag, text, className) {
   if (className) node.className = className;
   return node;
 }
+// Evidence sheet controls (after $ and el exist; at the top they threw before the console loaded).
+$("show-evidence").addEventListener("click", () => showEvidence(!$("evidence-sheet").classList.contains("open")));
+$("close-evidence").addEventListener("click", () => showEvidence(false));
+$("feed").addEventListener("click", (event) => { if (event.target.closest(".feed-row")) showEvidence(); });
 function notice(text) { $("notice").textContent = text; }
 function send(message) {
   if (!state.ready || state.ws?.readyState !== WebSocket.OPEN) { notice("Connection lost. Nothing was sent."); return false; }
@@ -102,6 +149,7 @@ function receive(message) {
       renderMap(); renderRadio(); break;
     case "stepon_live":
       message.stations.forEach((id) => state.liveOverlap.set(id, message.since_ms));
+      sceneCall("steppedOn", message.stations);
       renderMap(); renderRadio();
       $("happened").textContent = `${message.stations.map(shortName).join(" and ")} are talking at the same time. Someone will miss part of this call.`;
       break;
@@ -116,6 +164,8 @@ function receive(message) {
     }
     case "trace":
       state.traces.set(message.trace.event_id, message.trace);
+      if (message.trace.status === "delivered") sceneCall("advisory", message.trace.callsign);
+      if (["confirmed", "readback_wrong"].includes(message.trace.status)) sceneCall("readback", message.trace.callsign, message.trace.status === "confirmed");
       if (message.trace.status !== "needs_you") state.pending.delete(message.trace.event_id);
       renderTraces(); renderRadio(); break;
     case "autonomy":
@@ -172,6 +222,7 @@ function setStations(stations) {
   state.stations = new Map(stations.map((s) => [s.id, s]));
   for (const s of stations) names[s.id] = isAircraft(s) ? `${s.name || s.id} \u00b7 ${s.spoken || s.callsign || s.id}` : "Tower";
   renderMap();
+  syncScene();
 }
 function isHelicopter(station) {
   return /helicopter|rotorcraft/i.test(station.kind || "") || /^H/i.test(station.callsign || station.id);
@@ -229,6 +280,7 @@ function renderMap() {
       label.setAttribute("textLength", width); label.setAttribute("lengthAdjust", "spacingAndGlyphs");
     }
   });
+  syncScene();
 }
 
 // Aircraft and the one-sentence explanation of the newest event.
