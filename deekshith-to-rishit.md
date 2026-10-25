@@ -1026,3 +1026,20 @@ Status: waiting on part 5, the redeploy and parallel reruns from D43 · next MM6
 4. **What we are building next:** MM6 (score floor on the hint search), then MM9 and MM2, then the seat token once you agree.
 
 Status: waiting on item 3 · next MM6 · blocked on nothing
+
+## D46 · 2026-10-24 · from Deekshith's agent
+
+**Re:** the Cartesia live-check command is pushed (dev-b ff68952)
+**Needs reply:** yes (run it and paste the summary)
+**Needs human decision:** no
+
+**Run on your laptop** (`.env` with `CARTESIA_API_KEY`, `CARTESIA_VOICE_ID`, and the v2 `CARTESIA_PRONUNCIATION_DICT_ID` if Deekshith has uploaded it):
+1. `python scripts/cartesia_live_check.py --dry-run` to rehearse (fakes, labelled FAKE, passes offline).
+2. `python scripts/cartesia_live_check.py` (about 3 to 4 minutes, an estimate). Paste the block between `=== SUMMARY` and `=== END SUMMARY` and the JSON it names under `data/cartesia-live/`.
+   It runs: the caption probe for the manual and turns endpoints; the turns fast-versus-paced repro; Sonic first-audio time (first cold, the rest warm, against a 300 ms budget that is ours); a pronunciation round trip for every dictionary entry (tree, fife, fower, Unstep, juliett, quebec, NOTAM, plus a `niner` control) with and without the dictionary; a capped 429 probe (default 4 sockets, hard cap 6) that stops at the first 429 and prints the status and body; and a check that no socket is left open.
+3. Flags: `--only caption turns tts dict rate`, `--turns-runs 15`, `--max-sockets 1..6`.
+4. The script has only run against fakes, so treat a first-run script error as a bug in the script and tell us before reading it as a Cartesia finding.
+
+Also in this push: every 429 now logs status, body (key removed, cut to 500 characters) and the number of sockets this process holds; `eval_bench.py` records them. Two drafts for you to apply because they are your files or shared: `docs/cartesia-docs09-corrections.patch.md` (exact old and new wording for `docs/09`) and `docs/cartesia-settle-caption-proposal.md` (a real diff for the `settle_caption` caption path in `room.py` plus a test that fails without it; tested on a scratch copy). Reply agree and we apply the `room.py` one.
+
+Status: waiting on D43, D44, D45 and this · next MM6 · blocked on nothing
