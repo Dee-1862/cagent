@@ -1,0 +1,12 @@
+{
+  "_note": "Rules as data. Each rule is stored in Elastic as a percolator query (index unstep-rules) and also used in process. status 'reviewed' means a person read the FAA paragraph and agrees it governs this instruction; 'candidate' means it came from a search or an agent and has not been reviewed; 'needs_review' has no paragraph yet. Only the status changes how the card words the citation. Fill and review from data/faa with scripts/build_rule_table.py, never from memory.",
+  "rules": [
+    {"id": "hold-short", "phrases": ["hold short", "holding short"], "paragraph": "3-7-4", "title": "Runway Proximity", "status": "candidate", "evidence": "cited live by the Compliance agent on real stepped-on calls (R31)"},
+    {"id": "hold-position", "phrases": ["hold position", "holding position"], "paragraph": null, "title": null, "status": "needs_review", "evidence": null},
+    {"id": "line-up-and-wait", "phrases": ["line up and wait", "position and hold"], "paragraph": null, "title": null, "status": "needs_review", "evidence": null},
+    {"id": "cleared-for-takeoff", "phrases": ["cleared for takeoff"], "paragraph": null, "title": null, "status": "needs_review", "evidence": null},
+    {"id": "cleared-to-land", "phrases": ["cleared to land"], "paragraph": null, "title": null, "status": "needs_review", "evidence": null},
+    {"id": "go-around", "phrases": ["go around", "going around"], "paragraph": null, "title": null, "status": "needs_review", "evidence": null},
+    {"id": "stop", "phrases": ["stop immediately", "stop stop"], "paragraph": null, "title": null, "status": "needs_review", "evidence": null}
+  ]
+}

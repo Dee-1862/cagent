@@ -84,6 +84,11 @@ def plan(replace: bool) -> list[tuple[str, str, str, dict | None]]:
     for name, time_field in views.items():  # path from Kibana's data views API: check on first run (E-3)
         steps.append((f"data view {name}", "POST", "kb/api/data_views/data_view",
                       {"data_view": {"title": name, "name": name, "timeFieldName": time_field}, "override": False}))
+    from unstep.ground.rules import MAPPINGS as RULE_MAPPINGS, RULES_INDEX, load_rules, rule_doc
+
+    steps.append((f"index {RULES_INDEX}", "PUT", f"es/{RULES_INDEX}", {"mappings": RULE_MAPPINGS}))
+    for rule in load_rules():  # rules as data: one stored percolator query per rule, refreshed so it answers at once
+        steps.append((f"rule {rule['id']}", "PUT", f"es/{RULES_INDEX}/_doc/{rule['id']}?refresh=true", rule_doc(rule)))
     for tool in d["tools"]:
         steps.append((f"tool {tool['id']}", "POST", "kb/api/agent_builder/tools", tool))
     for agent in d["agents"]:

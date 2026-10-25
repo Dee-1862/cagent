@@ -376,12 +376,17 @@ class GroundAgents:
         rule = None
         if self.elastic is not None and transcript is not None:
             from unstep.cockpit.phraseology import is_restrictive
-            from unstep.ground.elastic_agents import merge, with_closest_rule
+            from unstep.ground.elastic_agents import merge, with_closest_rule, with_stored_rule
 
             # Hybrid search (+ rerank) of the FAA order: the closest rule in the time of a search, before any
             # language model. The card shows it as a search result; the Compliance agent can still replace it.
-            rule = await self.elastic.cite(proposal.instruction_text)
-            proposal = with_closest_rule(proposal, rule)
+            hit = await self.elastic.rule_for(proposal.instruction_text)
+            if hit is not None and hit.paragraph:
+                rule = {"paragraph": hit.paragraph, "title": hit.title}
+                proposal = with_stored_rule(proposal, hit)
+            else:  # no stored rule for this instruction: fall back to the hybrid search
+                rule = await self.elastic.cite(proposal.instruction_text)
+                proposal = with_closest_rule(proposal, rule)
 
             # The agents can veto (Intercept says no match). If the policy might relay this by itself
             # (restrictive and high confidence), the proposal still waits for them, as before. Otherwise

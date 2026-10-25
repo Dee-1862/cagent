@@ -9,6 +9,14 @@ A running log of changes to the Unstep project. Newest entries go at the top.
 
 
 
+
+## Rules as data: the FAA rule for an instruction by stored query, in milliseconds
+
+- Each rule is stored in Elastic (`unstep-rules`) as a percolator query, the same mechanism that checks readbacks. The hub percolates the proposed instruction and puts the matching rule on the card at once, with Elastic's own time, falling back to the same rules in process if Elastic is slow (`UNSTEP_RULES_WAIT_S`, 0.3 s) or down, and to the hybrid search when no rule matches.
+- Rules live in `elastic/rules/rules.json` with a review status. Only `hold-short` has a paragraph, as a candidate (cited live by the agent, not yet read against the FAA text); the card says "Candidate rule, not yet reviewed" until a person marks it reviewed.
+- `scripts/rule_latency.py` compares a dictionary, an in-process scan and Elastic as the rule count grows; the local part is measured (scan 0.02 ms at 7 rules to 9.6 ms at 5,000), the Elastic part needs a live run. Filler rules are synthetic and labelled.
+- `docs/25-latency-ideas.md` records what is fast and why, what is not claimed (not "only Elastic"; the paragraph is not signed off), and ideas not built.
+
 ## Search-first citation, a one-agent workflow and a briefing workflow
 
 - Rishit's live timings (R42) show the Elastic workflow takes about 24 s (intercept 12.7 s, compliance 10.0 s, store 0.3 s), with compliance looking capped at 10 s.
