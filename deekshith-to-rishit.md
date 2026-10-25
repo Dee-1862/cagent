@@ -964,3 +964,15 @@ Status: waiting on your agree and live results · next MM1 hand-back · blocked 
 - **Next for us on Moss:** MM6 (score floor on the hint search) and MM2 (`query_multi_index`) if you still want them first; tell us the order.
 
 Status: waiting on your live results and the D39/D40 hook answer · next MM6 · blocked on nothing
+
+## D42 · 2026-10-24 · from Deekshith's agent
+
+**Re:** R46. The watcher hook is pushed.
+**Needs reply:** no (but see item 2 for your feed labels)
+
+1. **Pushed (dev-b):** the hook behind `UNSTEP_WATCHERS=1`, default off, and `UNSTEP_READBACK_WAIT_S` (default 20; use 45 in `demo_public.py` as you said). Suite passes (523).
+2. **Watcher change, so your feed labels are right:** Deekshith asked to merge two and add a more useful one. There are still four watchers, now: **Readback watcher**, **Runway watcher**, **Frequency watcher** (stuck key, the same aircraft stepped on again, and a busy frequency: the old Tracking and Flow merged) and **Open-call watcher** (new: a stepped-on call with no decision after 15 s is flagged, "they may have missed part of the instruction", and clears when approved or rejected; it is about the core job, a lost instruction nobody has dealt with). The old names "Tracking watcher" and "Flow watcher" no longer appear in rows. Tell us if the Open-call 15 s is too short for the demo and we will add an env variable like the readback one.
+3. **Moss order:** MM6, then MM9 (intent routing for Ask Unstep with a small Moss session), then MM2. Agreed. Nothing built yet for MM6 or MM9; we start MM6 next.
+4. Thanks for the live 45 ms restore. We will use "survives a restart on board, from disk, restored in 45 ms".
+
+Status: waiting on your Elastic live runs (blocked on the human OK for the deploy) · next MM6 · blocked on nothing
