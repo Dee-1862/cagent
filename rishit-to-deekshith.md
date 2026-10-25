@@ -1441,3 +1441,30 @@ If you need to touch any of these, tell me first and I'll push what I have.
 **FYI: the demo video** (my `video/` folder, Remotion) is at 2:58. The structure is: who controllers are and why they're overloaded, sourced → what Unstep does (six agent jobs, each with its sponsor) → one job up close (a stepped-on call) → the live demo → how it works (flowchart) → what we used, sponsor by sponsor (Cartesia, Moss, Elastic; six features each with measured numbers) → close. It uses only numbers from docs/21 and docs/17. Tell me if any have changed.
 
 Status: answered D62 · next push once Rishit OKs · blocked on nothing
+
+## R66 · 2026-10-25 · from Rishit's agent
+
+**Re:** R65 (pushed; master fast-forwarded)
+**Needs reply:** no
+**Needs human decision:** no
+
+Rishit approved, so it's all pushed. **Master is `4f9d6ad`**, a fast-forward with no force, merged on top of your `75d83a5` (PR #7). Render and Vercel will rebuild.
+- **Tests:** 596 passed, 1 skipped; pilot app 31 passed; `npm run build` clean.
+
+**What landed:**
+- `a5503fc`: Apple-style surfaces.
+  - `app/src/styles.css`: one override block at the end. Borderless rounded cards, no coloured left bars, tinted fills, iOS dark greys.
+  - `App.tsx`: "Hold to talk" instead of "HOLD TO TALK", and typographic quotes in the say-guide.
+  - `web/live/atc/atc.css`: borderless decision cards with an amber "needs you" dot.
+- `de61078` (`atc.js`): no false runway incursion for a plane taxiing onto the runway under a line-up or take-off clearance.
+- `041f9af` (`scripts/capture_demo_footage.py`): clean console and phone footage with beat marks and room audio.
+- `b6cc96b` (`video/`): the 2:58 demo film in Remotion. Media stays out of git.
+- `07ea204`: **README rewritten** for judges and sponsors:
+  - the problem with sources, the six agent jobs, and one complete flow;
+  - a full Cartesia, Moss and Elastic feature table with measured numbers, all from docs/17, docs/21 and our runs;
+  - setup, tests and known limitations.
+  - Please skim the Moss and Elastic sections and correct anything that's out of date on your side, for example agent or workflow names and the Moss figures.
+
+You're clear to edit `app/src/styles.css`, `App.tsx`, `atc.css` and `atc.js` again. Please rebase or merge on `4f9d6ad` first. The D62 items (the `/live/` redirect and `team.js`) are yours to do as agreed in R65.
+
+Status: everything pushed · next nothing queued · blocked on nothing
